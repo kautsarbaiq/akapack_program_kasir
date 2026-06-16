@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 
 const registerSchema = z.object({
   full_name: z.string().min(2, 'Nama minimal 2 karakter'),
@@ -45,10 +47,26 @@ export default function RegisterPage() {
   ]
 
   const onSubmit = async (data: RegisterForm) => {
-    try {
-      await new Promise((r) => setTimeout(r, 1500))
-      toast.success('Akun berhasil dibuat! Selamat datang di AKAPACK.')
+    // Mode demo: Supabase belum siap -> langsung masuk
+    if (!isSupabaseConfigured()) {
+      await new Promise((r) => setTimeout(r, 600))
+      toast.success('Akun dibuat (mode demo). Lengkapi Supabase untuk daftar nyata.')
       router.push('/dashboard')
+      return
+    }
+    try {
+      const { error } = await getSupabaseBrowser().auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: { data: { full_name: data.full_name, business_name: data.business_name } },
+      })
+      if (error) {
+        toast.error(`Pendaftaran gagal: ${error.message}`)
+        return
+      }
+      toast.success('Akun berhasil dibuat! Jika verifikasi email aktif, cek inbox Anda.')
+      router.push('/dashboard')
+      router.refresh()
     } catch {
       toast.error('Pendaftaran gagal. Coba lagi.')
     }

@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2, Package, Wand2 } from 'lucide-react'
+import { Loader2, Package, Wand2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -21,7 +21,7 @@ import { useCategoryStore } from '@/stores/use-category-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { generateSKU, formatRupiah } from '@/lib/utils'
 import { productSchema, type ProductFormValues } from '@/lib/validations'
-import type { Product } from '@/types'
+import type { Product, ProductUnit, PriceTier } from '@/types'
 
 const UNITS = ['pcs', 'buah', 'unit', 'kg', 'gram', 'liter', 'ml', 'lusin', 'karton', 'box', 'pack', 'roll', 'meter', 'lembar']
 
@@ -52,7 +52,10 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const categoryId = watch('category_id')
   const unit = watch('unit')
   const isActive = watch('is_active')
+  const unitBase = watch('unit')
   const margin = price > 0 ? Math.round(((price - costPrice) / price) * 100) : 0
+  const [units, setUnits] = useState<ProductUnit[]>([])
+  const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
 
   useEffect(() => {
     if (open) {
@@ -76,16 +79,20 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
           price: 0, cost_price: 0, stock: 0, min_stock: 5, unit: 'pcs', is_active: true,
         })
       }
+      setUnits(product?.units ?? [])
+      setPriceTiers(product?.price_tiers ?? [])
     }
   }, [open, product, reset])
 
   const onSubmit = async (data: ProductFormValues) => {
     await new Promise((r) => setTimeout(r, 400))
+    const cleanUnits = units.filter((u) => u.name.trim() && u.factor > 0)
+    const cleanTiers = priceTiers.filter((t) => t.min_qty > 0 && t.price > 0)
     if (isEdit && product) {
-      updateProduct(product.id, data)
+      updateProduct(product.id, data, cleanUnits, cleanTiers)
       toast.success(`Produk "${data.name}" berhasil diperbarui`)
     } else {
-      addProduct(data)
+      addProduct(data, cleanUnits, cleanTiers)
       toast.success(`Produk "${data.name}" berhasil ditambahkan`)
     }
     onOpenChange(false)
@@ -235,6 +242,67 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
                   <Input type="number" placeholder="5" {...register('min_stock', { valueAsNumber: true })} />
                   <p className="text-xs text-muted-foreground">Notif saat stok di bawah angka ini</p>
                 </div>
+              </div>
+
+              <Separator />
+
+              {/* Satuan tambahan (multi-unit) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Satuan Tambahan (opsional)</Label>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1"
+                    onClick={() => setUnits((u) => [...u, { name: '', factor: 1, price: 0 }])}>
+                    <Wand2 size={13} /> Tambah Satuan
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Mis. 1 Dus = 100 {unitBase || 'pcs'}. Stok dasar berkurang sesuai isi saat terjual.</p>
+                {units.map((u, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input placeholder="Nama (mis. Dus)" className="h-8 flex-1" value={u.name}
+                      onChange={(e) => setUnits((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                    <Input type="number" placeholder="Isi" className="h-8 w-16" value={u.factor || ''}
+                      onChange={(e) => setUnits((arr) => arr.map((x, j) => (j === i ? { ...x, factor: Number(e.target.value) || 0 } : x)))} />
+                    <div className="relative w-28">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
+                      <Input type="number" placeholder="Harga" className="h-8 pl-7" value={u.price || ''}
+                        onChange={(e) => setUnits((arr) => arr.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) || 0 } : x)))} />
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
+                      onClick={() => setUnits((arr) => arr.filter((_, j) => j !== i))}>
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Separator />
+
+              {/* Harga grosir bertingkat */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Harga Grosir (opsional)</Label>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1"
+                    onClick={() => setPriceTiers((t) => [...t, { min_qty: 0, price: 0 }])}>
+                    <Wand2 size={13} /> Tambah Tingkat
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Beli ≥ jumlah tertentu ({unitBase || 'pcs'}) → harga per {unitBase || 'pcs'} otomatis lebih murah di kasir.</p>
+                {priceTiers.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground shrink-0">Min</span>
+                    <Input type="number" placeholder="Qty" className="h-8 w-20" value={t.min_qty || ''}
+                      onChange={(e) => setPriceTiers((arr) => arr.map((x, j) => (j === i ? { ...x, min_qty: Number(e.target.value) || 0 } : x)))} />
+                    <div className="relative flex-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
+                      <Input type="number" placeholder="Harga / unit" className="h-8 pl-7" value={t.price || ''}
+                        onChange={(e) => setPriceTiers((arr) => arr.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) || 0 } : x)))} />
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
+                      onClick={() => setPriceTiers((arr) => arr.filter((_, j) => j !== i))}>
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                ))}
               </div>
             </TabsContent>
 

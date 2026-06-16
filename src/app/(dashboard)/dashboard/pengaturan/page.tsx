@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Save, Store, Percent, Receipt, Bell } from 'lucide-react'
+import { useSettingsStore } from '@/stores/use-settings-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +13,10 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 
 export default function PengaturanPage() {
+  const storedTaxRate = useSettingsStore((s) => s.taxRate)
+  const storedServiceRate = useSettingsStore((s) => s.serviceRate)
+  const saveSettings = useSettingsStore((s) => s.save)
+
   const [taxEnabled, setTaxEnabled] = useState(false)
   const [taxRate, setTaxRate] = useState(11)
   const [serviceEnabled, setServiceEnabled] = useState(false)
@@ -21,7 +26,23 @@ export default function PengaturanPage() {
   const [emailAlert, setEmailAlert] = useState(true)
   const [dailyReport, setDailyReport] = useState(false)
 
+  // Sinkronkan form dari settings store saat data termuat
+  useEffect(() => {
+    setTaxEnabled(storedTaxRate > 0)
+    if (storedTaxRate > 0) setTaxRate(storedTaxRate)
+    setServiceEnabled(storedServiceRate > 0)
+    if (storedServiceRate > 0) setServiceRate(storedServiceRate)
+  }, [storedTaxRate, storedServiceRate])
+
   const handleSave = () => toast.success('Pengaturan berhasil disimpan!')
+
+  const handleSaveTax = () => {
+    saveSettings({
+      taxRate: taxEnabled ? taxRate : 0,
+      serviceRate: serviceEnabled ? serviceRate : 0,
+    })
+    toast.success('Pengaturan pajak & biaya disimpan! Langsung berlaku di kasir.')
+  }
 
   return (
     <div className="space-y-6">
@@ -135,7 +156,7 @@ export default function PengaturanPage() {
                 )}
               </CardContent>
             </Card>
-            <Button onClick={handleSave} className="gap-2" style={{ background: 'oklch(0.55 0.22 264)' }}>
+            <Button onClick={handleSaveTax} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
               <Save size={15} /> Simpan
             </Button>
           </div>

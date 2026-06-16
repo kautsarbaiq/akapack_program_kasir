@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { Header } from '@/components/dashboard/header'
+import { DataBootstrap } from '@/components/data-bootstrap'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <DataBootstrap />
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 

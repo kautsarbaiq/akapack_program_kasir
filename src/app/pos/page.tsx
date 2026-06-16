@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CreditCard, Smartphone, ArrowLeftRight, CheckCircle2,
-  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle
+  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ShiftModal } from '@/components/pos/shift-modal'
 import { CustomerSelector } from '@/components/pos/customer-selector'
 import { ReceiptModal } from '@/components/pos/receipt-modal'
@@ -20,8 +22,12 @@ import { useCategoryStore } from '@/stores/use-category-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useShiftStore } from '@/stores/use-shift-store'
+import { usePromotionStore } from '@/stores/use-promotion-store'
+import { useSettingsStore } from '@/stores/use-settings-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn } from '@/lib/utils'
-import type { Product, Customer, PaymentMethod, Transaction, TransactionItem } from '@/types'
+import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, Promotion } from '@/types'
 import { toast } from 'sonner'
 
 interface CartItem {
@@ -32,6 +38,8 @@ interface CartItem {
   quantity: number
   discount: number
   subtotal: number
+  unit: string
+  factor: number
   image_url?: string
 }
 
@@ -46,6 +54,17 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.Compon
 
 const QUICK_AMOUNTS = [50000, 100000, 200000, 500000]
 
+/** Harga per unit untuk satuan & qty tertentu. Satuan dasar ikut harga grosir bertingkat. */
+function linePriceFor(product: Product, unitName: string, qty: number): number {
+  if (unitName !== product.unit) {
+    const u = product.units?.find((x) => x.name === unitName)
+    return u ? u.price : product.price
+  }
+  const tiers = (product.price_tiers ?? []).filter((t) => t.min_qty > 0).slice().sort((a, b) => b.min_qty - a.min_qty)
+  const t = tiers.find((tt) => qty >= tt.min_qty)
+  return t ? t.price : product.price
+}
+
 export default function POSPage() {
   const products = useProductStore((s) => s.products)
   const decrementStock = useProductStore((s) => s.decrementStock)
@@ -54,19 +73,36 @@ export default function POSPage() {
   const addTransaction = useTransactionStore((s) => s.addTransaction)
   const currentShift = useShiftStore((s) => s.currentShift)
   const recordSale = useShiftStore((s) => s.recordSale)
+  const promotions = usePromotionStore((s) => s.promotions)
+  const recordPromoUse = usePromotionStore((s) => s.recordPromoUse)
+  const redeemPointsAction = useCustomerStore((s) => s.redeemPoints)
+  const taxRate = useSettingsStore((s) => s.taxRate)
+  const serviceRate = useSettingsStore((s) => s.serviceRate)
+  const addMovement = useStockMovementStore((s) => s.addMovement)
+  const heldOrders = useHeldOrderStore((s) => s.held)
+  const holdOrder = useHeldOrderStore((s) => s.hold)
+  const recallOrder = useHeldOrderStore((s) => s.recall)
+  const removeHeld = useHeldOrderStore((s) => s.remove)
 
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [discount, setDiscount] = useState(0)
+  const [promoCode, setPromoCode] = useState('')
+  const [appliedPromo, setAppliedPromo] = useState<Promotion | null>(null)
+  const [pointsRedeem, setPointsRedeem] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
+  const [splitMethod1, setSplitMethod1] = useState<PaymentMethod>('cash')
+  const [splitMethod2, setSplitMethod2] = useState<PaymentMethod>('qris')
+  const [splitAmount1, setSplitAmount1] = useState(0)
   const [paidAmount, setPaidAmount] = useState(0)
   const [showPayment, setShowPayment] = useState(false)
 
   const [shiftOpenModal, setShiftOpenModal] = useState(false)
   const [shiftCloseModal, setShiftCloseModal] = useState(false)
   const [customerSheet, setCustomerSheet] = useState(false)
+  const [showHeld, setShowHeld] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptTxn, setReceiptTxn] = useState<Transaction | null>(null)
 
@@ -80,8 +116,20 @@ export default function POSPage() {
   }, [products, search, selectedCategory])
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
-  const discountAmount = discount
-  const total = Math.max(0, subtotal - discountAmount)
+  const promoDiscount = !appliedPromo
+    ? 0
+    : appliedPromo.type === 'percentage'
+      ? Math.round((subtotal * appliedPromo.value) / 100)
+      : appliedPromo.type === 'fixed'
+        ? Math.min(appliedPromo.value, subtotal)
+        : 0
+  const maxRedeem = Math.max(0, Math.min(selectedCustomer?.points ?? 0, subtotal - discount - promoDiscount))
+  const pointsUsed = Math.max(0, Math.min(pointsRedeem, maxRedeem))
+  const discountAmount = discount + promoDiscount + pointsUsed
+  const base = Math.max(0, subtotal - discountAmount)
+  const taxAmount = Math.round(base * (taxRate / 100))
+  const serviceAmount = Math.round(base * (serviceRate / 100))
+  const total = base + taxAmount + serviceAmount
   const change = calculateChange(total, paidAmount)
 
   const addToCart = useCallback((product: Product) => {
@@ -89,10 +137,12 @@ export default function POSPage() {
     setCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id)
       if (existing) {
-        if (existing.quantity >= product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
+        if (existing.quantity * (existing.factor || 1) >= product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
+        const q = existing.quantity + 1
+        const pr = linePriceFor(product, existing.unit, q)
         return prev.map((i) =>
           i.product_id === product.id
-            ? { ...i, quantity: i.quantity + 1, subtotal: (i.quantity + 1) * i.price }
+            ? { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) }
             : i
         )
       }
@@ -104,17 +154,22 @@ export default function POSPage() {
         quantity: 1,
         discount: 0,
         subtotal: product.price,
+        unit: product.unit,
+        factor: 1,
       }]
     })
   }, [])
 
   const updateQty = (productId: string, delta: number) => {
+    const product = products.find((p) => p.id === productId)
     setCart((prev) => {
       return prev
-        .map((i) => i.product_id === productId
-          ? { ...i, quantity: i.quantity + delta, subtotal: (i.quantity + delta) * i.price }
-          : i
-        )
+        .map((i) => {
+          if (i.product_id !== productId) return i
+          const q = i.quantity + delta
+          const pr = product ? linePriceFor(product, i.unit, q) : i.price
+          return { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) }
+        })
         .filter((i) => i.quantity > 0)
     })
   }
@@ -123,11 +178,79 @@ export default function POSPage() {
     setCart((prev) => prev.filter((i) => i.product_id !== productId))
   }
 
+  const setItemDiscount = (productId: string, value: number) => {
+    setCart((prev) => prev.map((i) => {
+      if (i.product_id !== productId) return i
+      const max = i.price * i.quantity
+      const d = Math.max(0, Math.min(Number.isFinite(value) ? value : 0, max))
+      return { ...i, discount: d, subtotal: max - d }
+    }))
+  }
+
+  const setItemUnit = (productId: string, unitName: string) => {
+    const product = products.find((p) => p.id === productId)
+    if (!product) return
+    setCart((prev) => prev.map((i) => {
+      if (i.product_id !== productId) return i
+      const factor = unitName === product.unit ? 1 : (product.units?.find((x) => x.name === unitName)?.factor ?? 1)
+      const price = linePriceFor(product, unitName, i.quantity)
+      return { ...i, unit: unitName, factor, price, discount: 0, subtotal: i.quantity * price }
+    }))
+  }
+
+  const applyPromo = () => {
+    const code = promoCode.trim().toUpperCase()
+    if (!code) return
+    const promo = promotions.find((p) => p.is_active && p.code && p.code.toUpperCase() === code)
+    if (!promo) { toast.error('Kode promo tidak ditemukan atau tidak aktif'); return }
+    if (promo.min_purchase && subtotal < promo.min_purchase) {
+      toast.error(`Min. belanja ${formatRupiah(promo.min_purchase)} untuk promo ini`)
+      return
+    }
+    setAppliedPromo(promo)
+    toast.success(`Promo "${promo.name}" diterapkan`)
+  }
+
+  const removePromo = () => {
+    setAppliedPromo(null)
+    setPromoCode('')
+  }
+
   const clearCart = () => {
     setCart([])
     setDiscount(0)
+    setPromoCode('')
+    setAppliedPromo(null)
+    setPointsRedeem(0)
+    setSplitAmount1(0)
     setPaidAmount(0)
     setSelectedCustomer(null)
+  }
+
+  const handleHold = () => {
+    if (cart.length === 0) return
+    holdOrder({
+      label: selectedCustomer?.name ?? `Pesanan ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
+      cart,
+      customer: selectedCustomer,
+      discount,
+      pointsRedeem,
+      itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+      total,
+    })
+    toast.success('Pesanan ditahan')
+    clearCart()
+  }
+
+  const handleRecall = (id: string) => {
+    const order = recallOrder(id)
+    if (!order) return
+    setCart(order.cart)
+    setSelectedCustomer(order.customer)
+    setDiscount(order.discount)
+    setPointsRedeem(order.pointsRedeem)
+    setShowHeld(false)
+    toast.success('Pesanan dipulihkan')
   }
 
   const handlePaymentOpen = () => {
@@ -143,6 +266,14 @@ export default function POSPage() {
       toast.error('Jumlah bayar kurang dari total')
       return
     }
+    if (paymentMethod === 'split' && splitMethod1 === splitMethod2) {
+      toast.error('Pilih 2 metode berbeda untuk split')
+      return
+    }
+    const splitAmt1 = Math.min(splitAmount1, total)
+    const splitDetails = paymentMethod === 'split'
+      ? { [splitMethod1]: splitAmt1, [splitMethod2]: total - splitAmt1 }
+      : undefined
 
     const now = new Date().toISOString()
     const txnId = generateId('trx')
@@ -150,7 +281,7 @@ export default function POSPage() {
       id: generateId('item'),
       transaction_id: txnId,
       product_id: c.product_id,
-      product_name: c.product_name,
+      product_name: c.factor !== 1 ? `${c.product_name} (${c.unit})` : c.product_name,
       product_price: c.price,
       quantity: c.quantity,
       discount: c.discount,
@@ -170,20 +301,39 @@ export default function POSPage() {
       items,
       subtotal,
       discount_amount: discountAmount,
-      tax_amount: 0,
-      service_charge_amount: 0,
+      tax_amount: taxAmount,
+      service_charge_amount: serviceAmount,
       total,
       paid_amount: paymentMethod === 'cash' ? paidAmount : total,
       change_amount: paymentMethod === 'cash' ? change : 0,
+      payment_details: splitDetails,
       payment_method: paymentMethod,
       status: 'completed',
       created_at: now,
     }
 
     addTransaction(txn)
-    cart.forEach((c) => decrementStock(c.product_id, c.quantity))
+    cart.forEach((c) => {
+      const qtyBase = c.quantity * c.factor
+      const prod = products.find((p) => p.id === c.product_id)
+      const before = prod?.stock ?? 0
+      const after = Math.max(0, before - qtyBase)
+      decrementStock(c.product_id, qtyBase)
+      addMovement({
+        product_id: c.product_id,
+        type: 'out',
+        quantity: -qtyBase,
+        before_stock: before,
+        after_stock: after,
+        notes: 'Penjualan POS',
+        reference_id: txnId,
+        created_by_name: emp?.name,
+      })
+    })
     if (selectedCustomer) recordPurchase(selectedCustomer.id, total)
+    if (selectedCustomer && pointsUsed > 0) redeemPointsAction(selectedCustomer.id, pointsUsed)
     recordSale(total)
+    if (appliedPromo) recordPromoUse(appliedPromo.id)
 
     setShowPayment(false)
     setReceiptTxn(txn)
@@ -279,9 +429,16 @@ export default function POSPage() {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-medium">{currentShift?.employee?.name ?? 'Tidak ada shift'}</span>
           </div>
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => setShiftCloseModal(true)}>
-            Tutup Shift
-          </Button>
+          <div className="flex items-center gap-1">
+            {heldOrders.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowHeld(true)}>
+                <Clock size={12} /> Tertahan ({heldOrders.length})
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => setShiftCloseModal(true)}>
+              Tutup Shift
+            </Button>
+          </div>
         </div>
 
         {/* Customer */}
@@ -309,12 +466,23 @@ export default function POSPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {cart.map((item) => (
+              {cart.map((item) => {
+                const prod = products.find((p) => p.id === item.product_id)
+                return (
                 <div key={item.product_id} className="flex items-start gap-2">
                   <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 text-sm">📦</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.product_name}</p>
-                    <p className="text-xs text-muted-foreground">{formatRupiah(item.price)} / pcs</p>
+                    <p className="text-xs text-muted-foreground">{formatRupiah(item.price)} / {item.unit}</p>
+                    {prod && prod.units && prod.units.length > 0 && (
+                      <select
+                        value={item.unit}
+                        onChange={(e) => setItemUnit(item.product_id, e.target.value)}
+                        className="mt-1 h-6 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
+                        <option value={prod.unit}>{prod.unit} (dasar)</option>
+                        {prod.units.map((u) => <option key={u.name} value={u.name}>{u.name} (isi {u.factor})</option>)}
+                      </select>
+                    )}
                     <div className="flex items-center gap-2 mt-1.5">
                       <button onClick={() => updateQty(item.product_id, -1)}
                         className="w-6 h-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors">
@@ -326,6 +494,16 @@ export default function POSPage() {
                         <Plus size={11} />
                       </button>
                     </div>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Disc Rp</span>
+                      <input
+                        type="number"
+                        value={item.discount || ''}
+                        placeholder="0"
+                        onChange={(e) => setItemDiscount(item.product_id, Number(e.target.value))}
+                        className="w-20 h-6 rounded border border-input bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold">{formatRupiah(item.subtotal)}</p>
@@ -335,27 +513,64 @@ export default function POSPage() {
                     </button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </ScrollArea>
 
         {/* Summary & Payment */}
         <div className="p-4 space-y-4 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-2">
-            <Tag size={14} className="text-muted-foreground" />
-            <Input
-              type="number"
-              placeholder="Diskon (Rp)"
-              className="h-8 text-sm flex-1"
-              value={discount || ''}
-              onChange={(e) => setDiscount(Number(e.target.value))}
-            />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Tag size={14} className="text-muted-foreground" />
+              <Input
+                type="number"
+                placeholder="Diskon manual (Rp)"
+                className="h-8 text-sm flex-1"
+                value={discount || ''}
+                onChange={(e) => setDiscount(Number(e.target.value))}
+              />
+            </div>
+            {appliedPromo ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 h-8">
+                <span className="text-xs font-medium text-emerald-700 truncate">🎉 {appliedPromo.name} (-{formatRupiah(promoDiscount)})</span>
+                <button onClick={removePromo} className="text-emerald-700 hover:text-emerald-900 shrink-0"><X size={13} /></button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Kode promo / voucher"
+                  className="h-8 text-sm flex-1 font-mono uppercase"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo() } }}
+                />
+                <Button type="button" variant="outline" size="sm" className="h-8" onClick={applyPromo}>Pakai</Button>
+              </div>
+            )}
+            {selectedCustomer && selectedCustomer.points > 0 && (
+              <div className="flex items-center gap-2">
+                <Gift size={14} className="text-muted-foreground" />
+                <Input
+                  type="number"
+                  placeholder={`Tukar poin (maks ${maxRedeem})`}
+                  className="h-8 text-sm flex-1"
+                  value={pointsRedeem || ''}
+                  onChange={(e) => setPointsRedeem(Math.max(0, Math.min(Number(e.target.value) || 0, maxRedeem)))}
+                />
+                <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setPointsRedeem(maxRedeem)}>Maks</Button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
             <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatRupiah(subtotal)}</span></div>
-            {discountAmount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon</span><span>-{formatRupiah(discountAmount)}</span></div>}
+            {discount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon manual</span><span>-{formatRupiah(discount)}</span></div>}
+            {promoDiscount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Promo{appliedPromo ? ` · ${appliedPromo.name}` : ''}</span><span>-{formatRupiah(promoDiscount)}</span></div>}
+            {pointsUsed > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Tukar poin ({pointsUsed})</span><span>-{formatRupiah(pointsUsed)}</span></div>}
+            {taxAmount > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>PPN ({taxRate}%)</span><span>+{formatRupiah(taxAmount)}</span></div>}
+            {serviceAmount > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Service ({serviceRate}%)</span><span>+{formatRupiah(serviceAmount)}</span></div>}
             <Separator />
             <div className="flex justify-between font-bold"><span>Total</span><span className="text-lg">{formatRupiah(total)}</span></div>
           </div>
@@ -377,6 +592,16 @@ export default function POSPage() {
               )
             })}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setPaymentMethod('split')}
+            className={cn(
+              'w-full py-2 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150',
+              paymentMethod === 'split' ? 'text-white border-transparent bg-primary' : 'hover:border-primary/50 text-muted-foreground'
+            )}>
+            <Split size={14} /> Bayar Split (2 metode)
+          </button>
 
           {paymentMethod === 'cash' && (
             <div className="space-y-2">
@@ -405,16 +630,41 @@ export default function POSPage() {
             </div>
           )}
 
+          {paymentMethod === 'split' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Select value={splitMethod1} onValueChange={(v) => { if (v) setSplitMethod1(v as PaymentMethod) }}>
+                  <SelectTrigger className="h-9 flex-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input type="number" placeholder="0" className="h-9 w-32"
+                  value={splitAmount1 || ''}
+                  onChange={(e) => setSplitAmount1(Math.max(0, Math.min(Number(e.target.value) || 0, total)))} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={splitMethod2} onValueChange={(v) => { if (v) setSplitMethod2(v as PaymentMethod) }}>
+                  <SelectTrigger className="h-9 flex-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input type="number" readOnly className="h-9 w-32 bg-muted" value={Math.max(0, total - Math.min(splitAmount1, total))} />
+              </div>
+              <p className="text-xs text-muted-foreground">Metode kedua otomatis menutup sisa tagihan.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" size="sm" className="h-10 text-sm" onClick={clearCart} disabled={cart.length === 0}>
               Batal
             </Button>
-            <Button size="sm" className="h-10 text-sm font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={handlePaymentOpen}
-              disabled={cart.length === 0}>
-              <Receipt size={15} /> Bayar
+            <Button variant="outline" size="sm" className="h-10 text-sm gap-1.5" onClick={handleHold} disabled={cart.length === 0}>
+              <Pause size={14} /> Tahan
             </Button>
           </div>
+          <Button size="sm" className="w-full h-11 text-sm font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+            onClick={handlePaymentOpen}
+            disabled={cart.length === 0}>
+            <Receipt size={15} /> Bayar
+          </Button>
         </div>
       </div>
 
@@ -439,7 +689,9 @@ export default function POSPage() {
             </ScrollArea>
             <Separator />
             <div className="space-y-1">
-              {discountAmount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon</span><span>-{formatRupiah(discountAmount)}</span></div>}
+              {discountAmount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Total Diskon</span><span>-{formatRupiah(discountAmount)}</span></div>}
+              {taxAmount > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">PPN ({taxRate}%)</span><span>+{formatRupiah(taxAmount)}</span></div>}
+              {serviceAmount > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Service ({serviceRate}%)</span><span>+{formatRupiah(serviceAmount)}</span></div>}
               <div className="flex justify-between font-bold text-lg"><span>TOTAL</span><span>{formatRupiah(total)}</span></div>
             </div>
             <div className="rounded-xl p-4 space-y-1 bg-primary/5 border border-primary/20">
@@ -447,6 +699,10 @@ export default function POSPage() {
               {paymentMethod === 'cash' && <>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dibayar</span><span className="font-semibold">{formatRupiah(paidAmount)}</span></div>
                 <div className="flex justify-between text-sm text-emerald-600 font-semibold"><span>Kembalian</span><span>{formatRupiah(change)}</span></div>
+              </>}
+              {paymentMethod === 'split' && <>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">{PAYMENT_METHODS.find((m) => m.value === splitMethod1)?.label ?? splitMethod1}</span><span className="font-semibold">{formatRupiah(Math.min(splitAmount1, total))}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">{PAYMENT_METHODS.find((m) => m.value === splitMethod2)?.label ?? splitMethod2}</span><span className="font-semibold">{formatRupiah(total - Math.min(splitAmount1, total))}</span></div>
               </>}
             </div>
           </div>
@@ -482,6 +738,29 @@ export default function POSPage() {
       <ShiftModal open={shiftCloseModal} onOpenChange={setShiftCloseModal} mode="close" />
       <CustomerSelector open={customerSheet} onOpenChange={setCustomerSheet} selectedId={selectedCustomer?.id ?? null} onSelect={setSelectedCustomer} />
       <ReceiptModal open={showReceipt} onOpenChange={setShowReceipt} transaction={receiptTxn} />
+
+      <Sheet open={showHeld} onOpenChange={setShowHeld}>
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader className="pb-4"><SheetTitle>Pesanan Tertahan</SheetTitle></SheetHeader>
+          <div className="space-y-2">
+            {heldOrders.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Tidak ada pesanan tertahan</p>
+            )}
+            {heldOrders.map((h) => (
+              <div key={h.id} className="rounded-lg border p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{h.label}</p>
+                  <p className="text-xs text-muted-foreground">{h.itemCount} item · {formatRupiah(h.total)}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <Button size="sm" className="h-8 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => handleRecall(h.id)}>Buka</Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-destructive hover:text-destructive" onClick={() => removeHeld(h.id)}><Trash2 size={14} /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

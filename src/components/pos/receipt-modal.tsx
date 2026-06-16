@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, Printer, Plus } from 'lucide-react'
+import { CheckCircle2, Printer, Plus, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogTitle
@@ -38,6 +38,32 @@ interface Props {
 export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
   if (!transaction) return null
 
+  const sendWhatsApp = () => {
+    const t = transaction
+    const lines = [
+      '*AKAPACK* — Struk Pembelian',
+      t.transaction_number,
+      formatDateTime(t.created_at),
+      '--------------------------------',
+      ...t.items.map((it) => `${it.product_name} x${it.quantity}  ${formatRupiah(it.subtotal)}`),
+      '--------------------------------',
+      `Subtotal: ${formatRupiah(t.subtotal)}`,
+      t.discount_amount > 0 ? `Diskon: -${formatRupiah(t.discount_amount)}` : null,
+      t.tax_amount > 0 ? `PPN: +${formatRupiah(t.tax_amount)}` : null,
+      t.service_charge_amount > 0 ? `Service: +${formatRupiah(t.service_charge_amount)}` : null,
+      `*TOTAL: ${formatRupiah(t.total)}*`,
+      `Bayar (${PAYMENT_LABELS[t.payment_method]}): ${formatRupiah(t.paid_amount)}`,
+      t.payment_method === 'cash' ? `Kembalian: ${formatRupiah(t.change_amount)}` : null,
+      '',
+      'Terima kasih telah berbelanja 🙏',
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const raw = (t.customer?.phone ?? '').replace(/\D/g, '')
+    const phone = raw ? (raw.startsWith('0') ? '62' + raw.slice(1) : raw) : ''
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines)}`, '_blank')
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -74,6 +100,8 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           <div className="space-y-0.5">
             <Row label="Subtotal" value={formatRupiah(transaction.subtotal)} />
             {transaction.discount_amount > 0 && <Row label="Diskon" value={`-${formatRupiah(transaction.discount_amount)}`} />}
+            {transaction.tax_amount > 0 && <Row label="PPN" value={`+${formatRupiah(transaction.tax_amount)}`} />}
+            {transaction.service_charge_amount > 0 && <Row label="Service" value={`+${formatRupiah(transaction.service_charge_amount)}`} />}
             <div className="flex justify-between font-bold text-sm pt-0.5">
               <span>TOTAL</span><span>{formatRupiah(transaction.total)}</span>
             </div>
@@ -89,15 +117,20 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 gap-1.5"
-            onClick={() => toast.info('Cetak struk thermal tersedia di POS Desktop (Tauri)')}>
-            <Printer size={15} /> Cetak
+        <div className="space-y-2">
+          <Button className="w-full gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={sendWhatsApp}>
+            <MessageCircle size={15} /> Kirim Struk via WhatsApp
           </Button>
-          <Button className="flex-1 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={() => onOpenChange(false)}>
-            <Plus size={15} /> Transaksi Baru
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 gap-1.5"
+              onClick={() => toast.info('Cetak struk thermal tersedia di POS Desktop (Tauri)')}>
+              <Printer size={15} /> Cetak
+            </Button>
+            <Button className="flex-1 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => onOpenChange(false)}>
+              <Plus size={15} /> Transaksi Baru
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

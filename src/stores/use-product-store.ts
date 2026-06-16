@@ -1,14 +1,18 @@
 import { create } from 'zustand'
-import type { Product } from '@/types'
+import type { Product, ProductUnit, PriceTier } from '@/types'
 import type { ProductFormValues } from '@/lib/validations'
 import { mockProducts } from '@/lib/mock-data'
 import { generateId, getStockStatus } from '@/lib/utils'
+import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 import { useCategoryStore } from './use-category-store'
 
 interface ProductStore {
   products: Product[]
-  addProduct: (values: ProductFormValues) => Product
-  updateProduct: (id: string, values: ProductFormValues) => void
+  loaded: boolean
+  fetch: () => Promise<void>
+  addProduct: (values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[]) => Product
+  updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[]) => void
   deleteProduct: (id: string) => void
   /** Kurangi stok saat transaksi POS */
   decrementStock: (id: string, qty: number) => void
@@ -22,8 +26,23 @@ function resolveCategory(categoryId: string) {
 
 export const useProductStore = create<ProductStore>()((set) => ({
   products: mockProducts,
+  loaded: false,
 
-  addProduct: (values) => {
+  fetch: async () => {
+    const rows = await fetchAll<Product>('products', 'created_at', false)
+    if (rows) {
+      const withMeta = rows.map((p) => ({
+        ...p,
+        category: resolveCategory(p.category_id),
+        stock_status: getStockStatus(p.stock, p.min_stock),
+      }))
+      set({ products: withMeta, loaded: true })
+    } else {
+      set({ loaded: true })
+    }
+  },
+
+  addProduct: (values, units, priceTiers) => {
     const now = new Date().toISOString()
     const newProduct: Product = {
       id: generateId('prod'),
@@ -40,50 +59,97 @@ export const useProductStore = create<ProductStore>()((set) => ({
       stock: values.stock,
       min_stock: values.min_stock,
       unit: values.unit,
+      units: units ?? [],
+      price_tiers: priceTiers ?? [],
       is_active: values.is_active,
       stock_status: getStockStatus(values.stock, values.min_stock),
       created_at: now,
       updated_at: now,
     }
-    set((state) => ({ products: [newProduct, ...state.products] }))
+    set((s) => ({ products: [newProduct, ...s.products] }))
+    void insertRow<Product>('products', {
+      tenant_id: DEFAULT_TENANT_ID,
+      category_id: values.category_id,
+      name: values.name,
+      sku: values.sku,
+      barcode: values.barcode || null,
+      description: values.description || null,
+      price: values.price,
+      cost_price: values.cost_price,
+      stock: values.stock,
+      min_stock: values.min_stock,
+      unit: values.unit,
+      units: units ?? [],
+      price_tiers: priceTiers ?? [],
+      is_active: values.is_active,
+    }).then((saved) => {
+      if (saved) set((s) => ({
+        products: s.products.map((p) => (p.id === newProduct.id
+          ? { ...saved, category: resolveCategory(saved.category_id), stock_status: getStockStatus(saved.stock, saved.min_stock) }
+          : p)),
+      }))
+    })
     return newProduct
   },
 
-  updateProduct: (id, values) =>
-    set((state) => ({
-      products: state.products.map((p) =>
+  updateProduct: (id, values, units, priceTiers) => {
+    set((s) => ({
+      products: s.products.map((p) =>
         p.id === id
           ? {
               ...p,
               ...values,
               barcode: values.barcode || undefined,
               description: values.description || undefined,
+              units: units ?? p.units ?? [],
+              price_tiers: priceTiers ?? p.price_tiers ?? [],
               category: resolveCategory(values.category_id),
               stock_status: getStockStatus(values.stock, values.min_stock),
               updated_at: new Date().toISOString(),
             }
           : p
       ),
-    })),
+    }))
+    void updateRow('products', id, {
+      category_id: values.category_id,
+      name: values.name,
+      sku: values.sku,
+      barcode: values.barcode || null,
+      description: values.description || null,
+      price: values.price,
+      cost_price: values.cost_price,
+      stock: values.stock,
+      min_stock: values.min_stock,
+      unit: values.unit,
+      units: units ?? [],
+      price_tiers: priceTiers ?? [],
+      is_active: values.is_active,
+    })
+  },
 
-  deleteProduct: (id) =>
-    set((state) => ({ products: state.products.filter((p) => p.id !== id) })),
+  deleteProduct: (id) => {
+    set((s) => ({ products: s.products.filter((p) => p.id !== id) }))
+    void deleteRow('products', id)
+  },
 
-  decrementStock: (id, qty) =>
-    set((state) => ({
-      products: state.products.map((p) => {
+  decrementStock: (id, qty) => {
+    let newStock = 0
+    set((s) => ({
+      products: s.products.map((p) => {
         if (p.id !== id) return p
-        const stock = Math.max(0, p.stock - qty)
-        return { ...p, stock, stock_status: getStockStatus(stock, p.min_stock) }
+        newStock = Math.max(0, p.stock - qty)
+        return { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) }
       }),
-    })),
+    }))
+    void updateRow('products', id, { stock: newStock })
+  },
 
-  setStock: (id, newStock) =>
-    set((state) => ({
-      products: state.products.map((p) =>
-        p.id === id
-          ? { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) }
-          : p
+  setStock: (id, newStock) => {
+    set((s) => ({
+      products: s.products.map((p) =>
+        p.id === id ? { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) } : p
       ),
-    })),
+    }))
+    void updateRow('products', id, { stock: newStock })
+  },
 }))

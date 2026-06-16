@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 
 
 const loginSchema = z.object({
@@ -35,14 +37,25 @@ export default function LoginPage() {
   })
 
   const onSubmit = async (data: LoginForm) => {
+    // Mode demo: Supabase belum siap -> langsung masuk (tanpa auth nyata)
+    if (!isSupabaseConfigured()) {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      toast.success('Masuk (mode demo). Lengkapi Supabase untuk login nyata.')
+      router.push('/dashboard')
+      return
+    }
     try {
-      // Simulasi login — akan diganti dengan Supabase Auth
-      await new Promise((resolve) => setTimeout(resolve, 1200))
-      
-      if (data.email && data.password) {
-        toast.success('Login berhasil! Selamat datang di AKAPACK.')
-        router.push('/dashboard')
+      const { error } = await getSupabaseBrowser().auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      })
+      if (error) {
+        toast.error(`Login gagal: ${error.message}`)
+        return
       }
+      toast.success('Login berhasil! Selamat datang di AKAPACK.')
+      router.push('/dashboard')
+      router.refresh()
     } catch {
       toast.error('Login gagal. Periksa email dan password Anda.')
     }
@@ -58,14 +71,6 @@ export default function LoginPage() {
         <p className="text-muted-foreground">
           Masuk ke dashboard AKAPACK Anda
         </p>
-      </div>
-
-      {/* Demo credentials box */}
-      <div className="rounded-xl p-4 text-sm space-y-1"
-        style={{ background: 'oklch(0.55 0.22 264 / 0.08)', border: '1px solid oklch(0.55 0.22 264 / 0.2)' }}>
-        <p className="font-semibold" style={{ color: 'oklch(0.55 0.22 264)' }}>Demo Akses</p>
-        <p className="text-muted-foreground">Email: <span className="font-mono text-foreground">demo@akapack.com</span></p>
-        <p className="text-muted-foreground">Password: <span className="font-mono text-foreground">demo123</span></p>
       </div>
 
       {/* Form */}

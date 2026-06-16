@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { useProductStore } from '@/stores/use-product-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { formatRupiah, getStockStatus } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -18,6 +19,7 @@ type StockFilter = 'all' | 'safe' | 'low' | 'out'
 export default function InventoriPage() {
   const products = useProductStore((s) => s.products)
   const setStock = useProductStore((s) => s.setStock)
+  const addMovement = useStockMovementStore((s) => s.addMovement)
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [addStockOpen, setAddStockOpen] = useState(false)
@@ -43,8 +45,17 @@ export default function InventoriPage() {
     const product = products.find((p) => p.id === addProductId)
     if (!product) { toast.error('Pilih produk dulu'); return }
     if (!Number.isFinite(qty) || qty <= 0) { toast.error('Jumlah tidak valid'); return }
-    setStock(product.id, product.stock + qty)
-    toast.success(`Stok ${product.name} +${qty} → ${product.stock + qty} ${product.unit}`)
+    const before = product.stock
+    setStock(product.id, before + qty)
+    addMovement({
+      product_id: product.id,
+      type: 'in',
+      quantity: qty,
+      before_stock: before,
+      after_stock: before + qty,
+      notes: addNote || 'Tambah stok',
+    })
+    toast.success(`Stok ${product.name} +${qty} → ${before + qty} ${product.unit}`)
     setAddStockOpen(false)
     setAddProductId('')
     setAddQty('')

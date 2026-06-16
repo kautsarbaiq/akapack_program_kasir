@@ -49,6 +49,19 @@ export interface Category {
 // ─── Produk ────────────────────────────
 export type StockStatus = 'safe' | 'low' | 'out'
 
+/** Satuan tambahan: 1 satuan ini = `factor` satuan dasar, dijual seharga `price` */
+export interface ProductUnit {
+  name: string
+  factor: number
+  price: number
+}
+
+/** Harga grosir bertingkat: jika beli ≥ min_qty, harga jadi `price` per unit dasar */
+export interface PriceTier {
+  min_qty: number
+  price: number
+}
+
 export interface Product {
   id: string
   outlet_id: string
@@ -61,9 +74,12 @@ export interface Product {
   image_url?: string
   price: number       // harga jual
   cost_price: number  // HPP (harga pokok penjualan)
-  stock: number       // stok saat ini
+  stock: number       // stok saat ini (dalam satuan dasar)
   min_stock: number   // threshold minimum (untuk alert)
-  unit: string        // pcs, kg, gram, dll
+  unit: string        // satuan dasar: pcs, kg, gram, dll
+  units?: ProductUnit[]       // satuan tambahan (dus, pak, dll)
+  price_tiers?: PriceTier[]   // harga grosir bertingkat
+  has_variants?: boolean
   is_active: boolean
   stock_status?: StockStatus
   created_at: string

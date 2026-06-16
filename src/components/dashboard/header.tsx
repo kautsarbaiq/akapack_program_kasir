@@ -1,7 +1,8 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Menu, Bell, Search, ChevronDown } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -10,6 +11,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -33,9 +36,19 @@ const breadcrumbMap: Record<string, string> = {
   '/dashboard/pengaturan': 'Pengaturan',
 }
 
-export function Header({ onMenuClick, sidebarOpen }: HeaderProps) {
+export function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const pageTitle = breadcrumbMap[pathname] ?? 'Dashboard'
+
+  const handleLogout = async () => {
+    if (isSupabaseConfigured()) {
+      await getSupabaseBrowser().auth.signOut()
+      toast.success('Berhasil keluar')
+    }
+    router.push('/login')
+    router.refresh()
+  }
 
   const notifications = [
     { id: 1, text: 'Stok Powerbank 10000mAh habis', time: '5 mnt', urgent: true },
@@ -121,7 +134,7 @@ export function Header({ onMenuClick, sidebarOpen }: HeaderProps) {
             <DropdownMenuItem>Profil Saya</DropdownMenuItem>
             <DropdownMenuItem>Pengaturan</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleLogout}>
               Keluar
             </DropdownMenuItem>
           </DropdownMenuContent>

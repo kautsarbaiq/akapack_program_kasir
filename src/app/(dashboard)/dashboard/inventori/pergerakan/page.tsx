@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { mockStockMovements } from '@/lib/mock-data'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { formatDateTime } from '@/lib/utils'
 import type { MovementType } from '@/types'
 
@@ -18,9 +18,10 @@ const TYPE_CONFIG: Record<MovementType, { label: string; className: string }> = 
 }
 
 export default function PergerakanStokPage() {
+  const movements = useStockMovementStore((s) => s.movements)
   const [typeFilter, setTypeFilter] = useState<string>('all')
 
-  const filtered = mockStockMovements.filter((m) =>
+  const filtered = movements.filter((m) =>
     typeFilter === 'all' || m.type === typeFilter
   )
 
