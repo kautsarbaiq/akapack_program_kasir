@@ -463,8 +463,8 @@ export default function POSPage() {
                   {hasVar && (
                     <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-700">VARIAN</div>
                   )}
-                  <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 text-2xl">
-                    {product.category?.icon ?? '📦'}
+                  <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 text-2xl overflow-hidden">
+                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : (product.category?.icon ?? '📦')}
                   </div>
                   <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1 flex-1">{product.name}</p>
                   <p className="text-sm font-bold text-primary">{hasVar ? `dari ${formatRupiah(minVarPrice)}` : formatRupiah(product.price)}</p>

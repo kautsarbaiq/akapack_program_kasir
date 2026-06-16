@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2, Package, Wand2, Trash2 } from 'lucide-react'
@@ -20,6 +20,7 @@ import {
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { uploadProductImage } from '@/lib/supabase/storage'
 import { generateSKU, formatRupiah } from '@/lib/utils'
 import { productSchema, type ProductFormValues } from '@/lib/validations'
 import type { Product, ProductUnit, PriceTier } from '@/types'
@@ -41,6 +42,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const addProduct = useProductStore((s) => s.addProduct)
   const updateProduct = useProductStore((s) => s.updateProduct)
   const setHasVariants = useProductStore((s) => s.setHasVariants)
+  const setProductImage = useProductStore((s) => s.setProductImage)
   const addVariant = useVariantStore((s) => s.addVariant)
   const updateVariant = useVariantStore((s) => s.updateVariant)
   const deleteVariant = useVariantStore((s) => s.deleteVariant)
@@ -63,6 +65,9 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const margin = price > 0 ? Math.round(((price - costPrice) / price) * 100) : 0
   const [units, setUnits] = useState<ProductUnit[]>([])
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
+  const [priceOnline, setPriceOnline] = useState(0)
+  const [imageUrl, setImageUrl] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [hasVariants, setHasVariantsLocal] = useState(false)
   const [variantRows, setVariantRows] = useState<VariantRow[]>([])
 
@@ -90,11 +95,23 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
       }
       setUnits(product?.units ?? [])
       setPriceTiers(product?.price_tiers ?? [])
+      setPriceOnline(product?.price_online ?? 0)
+      setImageUrl(product?.image_url ?? '')
       const existingVars = product ? useVariantStore.getState().byProduct(product.id) : []
       setVariantRows(existingVars.map((v) => ({ id: v.id, name: v.name, price: v.price, cost_price: v.cost_price, stock: v.stock })))
       setHasVariantsLocal(product?.has_variants ?? existingVars.length > 0)
     }
   }, [open, product, reset])
+
+  const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    const url = await uploadProductImage(file)
+    setUploading(false)
+    if (url) { setImageUrl(url); toast.success('Foto terupload') }
+    else toast.error('Gagal upload — pastikan migration 0008 (Storage) sudah dijalankan')
+  }
 
   const onSubmit = async (data: ProductFormValues) => {
     await new Promise((r) => setTimeout(r, 400))
@@ -104,9 +121,9 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
     let productId: string
     if (isEdit && product) {
       productId = product.id
-      updateProduct(product.id, data, cleanUnits, cleanTiers)
+      updateProduct(product.id, data, cleanUnits, cleanTiers, priceOnline)
     } else {
-      productId = addProduct(data, cleanUnits, cleanTiers).id
+      productId = addProduct(data, cleanUnits, cleanTiers, priceOnline).id
     }
 
     // Persist varian (diff: hapus yang dibuang, update yang ada, tambah yang baru)
@@ -119,6 +136,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
       else addVariant(productId, vdata)
     })
     setHasVariants(productId, cleanRows.length > 0)
+    if (imageUrl !== (product?.image_url ?? '')) setProductImage(productId, imageUrl)
 
     toast.success(isEdit ? `Produk "${data.name}" berhasil diperbarui` : `Produk "${data.name}" berhasil ditambahkan`)
     onOpenChange(false)
@@ -242,6 +260,16 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label>Harga Jual Online (opsional)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
+                  <Input type="number" className="pl-9" placeholder="Kosong = sama dengan harga toko"
+                    value={priceOnline || ''} onChange={(e) => setPriceOnline(Number(e.target.value) || 0)} />
+                </div>
+                <p className="text-xs text-muted-foreground">Dipakai di toko online (/toko). Isi 0 = pakai harga jual toko.</p>
+              </div>
+
               {/* Margin preview */}
               {price > 0 && (
                 <div className="rounded-xl p-4 space-y-2 text-sm bg-primary/5 border border-primary/15">
@@ -334,21 +362,33 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
             </TabsContent>
 
             {/* Tab Foto */}
-            <TabsContent value="foto" className="pt-4">
-              <div
-                className="border-2 border-dashed rounded-2xl p-12 text-center space-y-3 cursor-pointer hover:border-primary hover:bg-primary/5 transition-all duration-200"
-                onClick={() => toast.info('Fitur upload foto akan tersedia setelah integrasi Supabase Storage')}
-              >
-                <div className="w-16 h-16 rounded-2xl bg-muted mx-auto flex items-center justify-center">
-                  <Package size={28} className="text-muted-foreground" />
+            <TabsContent value="foto" className="pt-4 space-y-3">
+              {imageUrl ? (
+                <div className="space-y-3">
+                  <div className="aspect-square max-w-[240px] mx-auto rounded-2xl overflow-hidden bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrl} alt="Foto produk" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex justify-center gap-2">
+                    <label className="cursor-pointer inline-flex items-center h-9 px-3 rounded-md border text-sm hover:bg-muted">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
+                      Ganti Foto
+                    </label>
+                    <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setImageUrl('')}>Hapus</Button>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium">Upload Foto Produk</p>
-                  <p className="text-sm text-muted-foreground">PNG, JPG, WEBP — maks. 5MB</p>
-                  <p className="text-xs text-muted-foreground mt-1">Klik untuk pilih foto atau drag & drop</p>
-                </div>
-                <Button type="button" variant="outline" size="sm">Pilih Foto</Button>
-              </div>
+              ) : (
+                <label className="block border-2 border-dashed rounded-2xl p-12 text-center space-y-3 cursor-pointer hover:border-primary hover:bg-primary/5 transition-all duration-200">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
+                  <div className="w-16 h-16 rounded-2xl bg-muted mx-auto flex items-center justify-center">
+                    {uploading ? <Loader2 size={26} className="animate-spin text-primary" /> : <Package size={28} className="text-muted-foreground" />}
+                  </div>
+                  <div>
+                    <p className="font-medium">{uploading ? 'Mengupload…' : 'Upload Foto Produk'}</p>
+                    <p className="text-sm text-muted-foreground">PNG, JPG, WEBP — klik untuk pilih</p>
+                  </div>
+                </label>
+              )}
             </TabsContent>
 
             {/* Tab Varian */}

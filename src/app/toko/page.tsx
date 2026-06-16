@@ -67,7 +67,9 @@ export default function TokoCatalog() {
           return (
             <div key={p.id} className="bg-background rounded-xl border overflow-hidden flex flex-col">
               <Link href={`/toko/produk/${p.id}`} className="block">
-                <div className="aspect-square bg-muted flex items-center justify-center text-4xl">{p.category?.icon ?? '📦'}</div>
+                <div className="aspect-square bg-muted flex items-center justify-center text-4xl overflow-hidden">
+                  {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : (p.category?.icon ?? '📦')}
+                </div>
               </Link>
               <div className="p-3 flex flex-col flex-1 gap-1.5">
                 <Link href={`/toko/produk/${p.id}`} className="text-sm font-medium leading-tight line-clamp-2 hover:text-primary flex-1">{p.name}</Link>

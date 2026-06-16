@@ -52,7 +52,9 @@ export default function ProductDetailPage() {
     <div className="space-y-5">
       <Link href="/toko" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={15} /> Kembali</Link>
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="aspect-square bg-muted rounded-2xl flex items-center justify-center text-7xl">{product.category?.icon ?? '📦'}</div>
+        <div className="aspect-square bg-muted rounded-2xl flex items-center justify-center text-7xl overflow-hidden">
+          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : (product.category?.icon ?? '📦')}
+        </div>
         <div className="space-y-4">
           <div>
             <p className="text-xs text-muted-foreground">{product.category?.name}</p>

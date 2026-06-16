@@ -11,8 +11,8 @@ interface ProductStore {
   products: Product[]
   loaded: boolean
   fetch: () => Promise<void>
-  addProduct: (values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[]) => Product
-  updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[]) => void
+  addProduct: (values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => Product
+  updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => void
   deleteProduct: (id: string) => void
   /** Kurangi stok saat transaksi POS */
   decrementStock: (id: string, qty: number) => void
@@ -20,6 +20,8 @@ interface ProductStore {
   setStock: (id: string, newStock: number) => void
   /** Tandai produk punya varian */
   setHasVariants: (id: string, value: boolean) => void
+  /** Set URL foto produk */
+  setProductImage: (id: string, url: string) => void
 }
 
 function resolveCategory(categoryId: string) {
@@ -44,7 +46,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
     }
   },
 
-  addProduct: (values, units, priceTiers) => {
+  addProduct: (values, units, priceTiers, priceOnline) => {
     const now = new Date().toISOString()
     const newProduct: Product = {
       id: generateId('prod'),
@@ -63,6 +65,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
       unit: values.unit,
       units: units ?? [],
       price_tiers: priceTiers ?? [],
+      price_online: priceOnline ?? 0,
       is_active: values.is_active,
       stock_status: getStockStatus(values.stock, values.min_stock),
       created_at: now,
@@ -83,6 +86,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
       unit: values.unit,
       units: units ?? [],
       price_tiers: priceTiers ?? [],
+      price_online: priceOnline ?? 0,
       is_active: values.is_active,
     }).then((saved) => {
       if (saved) set((s) => ({
@@ -94,7 +98,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
     return newProduct
   },
 
-  updateProduct: (id, values, units, priceTiers) => {
+  updateProduct: (id, values, units, priceTiers, priceOnline) => {
     set((s) => ({
       products: s.products.map((p) =>
         p.id === id
@@ -105,6 +109,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
               description: values.description || undefined,
               units: units ?? p.units ?? [],
               price_tiers: priceTiers ?? p.price_tiers ?? [],
+              price_online: priceOnline ?? p.price_online ?? 0,
               category: resolveCategory(values.category_id),
               stock_status: getStockStatus(values.stock, values.min_stock),
               updated_at: new Date().toISOString(),
@@ -125,6 +130,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
       unit: values.unit,
       units: units ?? [],
       price_tiers: priceTiers ?? [],
+      price_online: priceOnline ?? 0,
       is_active: values.is_active,
     })
   },
@@ -160,5 +166,12 @@ export const useProductStore = create<ProductStore>()((set) => ({
       products: s.products.map((p) => (p.id === id ? { ...p, has_variants: value } : p)),
     }))
     void updateRow('products', id, { has_variants: value })
+  },
+
+  setProductImage: (id, url) => {
+    set((s) => ({
+      products: s.products.map((p) => (p.id === id ? { ...p, image_url: url } : p)),
+    }))
+    void updateRow('products', id, { image_url: url })
   },
 }))

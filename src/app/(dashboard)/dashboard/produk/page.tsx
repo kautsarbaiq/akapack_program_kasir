@@ -234,8 +234,8 @@ export default function ProdukPage() {
           {filtered.map((p) => {
             return (
               <Card key={p.id} className="overflow-hidden group cursor-pointer hover:shadow-md transition-all duration-200">
-                <div className="aspect-square bg-muted flex items-center justify-center">
-                  <Package size={32} className="text-muted-foreground" />
+                <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
+                  {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <Package size={32} className="text-muted-foreground" />}
                 </div>
                 <CardContent className="p-3 space-y-1.5">
                   <p className="text-sm font-semibold truncate">{p.name}</p>
