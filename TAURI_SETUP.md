@@ -22,22 +22,35 @@ desktop (Windows/macOS/Linux) dan mobile (Android/iOS). Frontend yang sama dipak
 
 ## 1. Prasyarat (sekali saja)
 
-### a. Rust (wajib semua platform)
-```bash
+> ⚠️ **Jalankan perintah SATU baris per satu.** Jangan tempel komentar (`# ...`) ke
+> terminal — zsh tidak menganggapnya komentar dan akan error (`unknown file attribute`).
+
+### a. Rust
+```
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-# lalu buka terminal baru, cek:
+```
+Buka terminal **baru**, lalu cek:
+```
 rustc --version
 ```
 
-### b. Dependensi JS
-```bash
-cd ~/Documents/akapack
-npm install            # memasang @tauri-apps/cli & @tauri-apps/api
+### b. Tauri CLI — lewat Cargo (BUKAN npm)
+npm versi ini punya bug saat memasang paket biner `@tauri-apps/cli`. Pakai Cargo (Rust sudah ada):
+```
+cargo install tauri-cli --version "^2.0.0" --locked
+```
+Cek:
+```
+cargo tauri --version
 ```
 
-### c. Ikon aplikasi (sekali)
-```bash
-npm run tauri icon path/ke/logo-akapack.png   # generate semua ukuran ikon ke src-tauri/icons/
+### c. Dependensi JS — TIDAK perlu `npm install`
+`node_modules` di mesin ini sudah lengkap (web app sudah jalan) dan frontend tidak mengimpor
+paket npm Tauri apa pun. **Lewati `npm install`.** (Untuk clone baru / CI lihat §6 Catatan npm.)
+
+### d. Ikon aplikasi (ganti dengan path logo aslimu)
+```
+npm run tauri icon /Users/macbookpro/Documents/akapack/logo.png
 ```
 
 ---
@@ -105,3 +118,25 @@ npm run tauri ios build        # hasil .ipa (butuh akun Apple Developer untuk di
 
 Saat export, Next berjalan dengan `output: 'export'`; `proxy.ts` disingkirkan sementara oleh
 `scripts/tauri-export.mjs` karena static export tidak mengizinkan middleware.
+
+---
+
+## 6. Catatan instalasi dependency (PENTING)
+
+npm **10 maupun 11** sama-sama **crash** saat me-resolve dependency tree proyek ini dari nol
+(bug internal npm/arborist: null `matches` / `isDescendantOf` / `name`). Ini **bukan** paket yang
+rusak — terbukti **pnpm me-resolve bersih** (753 paket OK). Jadi untuk memasang dependency, pakai **pnpm**.
+
+- **Di mesin ini:** `node_modules` sudah lengkap → **JANGAN `npm install`**.
+  `npm run dev`, `npm run tauri:dev`, dll tetap jalan (hanya menjalankan script atas node_modules yang ada).
+- **Clone baru / mesin lain / CI:** pakai pnpm (Node ≥20 sudah punya corepack):
+  ```
+  corepack enable
+  ```
+  ```
+  pnpm install
+  ```
+- Sudah ada `pnpm-lock.yaml` di repo (hasil resolve). Commit supaya install deterministik di mana saja.
+- **CI** (`.github/workflows/tauri.yml`) sudah memakai pnpm.
+- **Tauri CLI** lewat Cargo (`cargo install tauri-cli`), bukan npm.
+
