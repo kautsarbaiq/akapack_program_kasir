@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, ArrowLeft, Loader2, ShoppingBag } from 'lucide-react'
+import { CheckCircle2, ArrowLeft, Loader2, ShoppingBag, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,11 +12,10 @@ import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
-import { formatRupiah, generateId, generateTransactionNumber, cn } from '@/lib/utils'
+import { useSettingsStore } from '@/stores/use-settings-store'
+import { formatRupiah, generateId, generateTransactionNumber, waUrl, cn } from '@/lib/utils'
 import type { Transaction, TransactionItem, PaymentMethod } from '@/types'
 import { toast } from 'sonner'
-
-const SHIPPING_FLAT = 10000
 
 export default function CheckoutPage() {
   const items = useStoreCart((s) => s.items)
@@ -28,6 +27,10 @@ export default function CheckoutPage() {
   const variants = useVariantStore((s) => s.variants)
   const decrementVariantStock = useVariantStore((s) => s.decrementVariantStock)
   const addMovement = useStockMovementStore((s) => s.addMovement)
+  const storeName = useSettingsStore((s) => s.storeName)
+  const waNumber = useSettingsStore((s) => s.waNumber)
+  const bankInfo = useSettingsStore((s) => s.bankInfo)
+  const shippingFlat = useSettingsStore((s) => s.shippingFlat)
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -38,7 +41,7 @@ export default function CheckoutPage() {
   const [success, setSuccess] = useState<Transaction | null>(null)
 
   const itemsTotal = items.reduce((s, i) => s + i.price * i.quantity, 0)
-  const shipping = delivery === 'kirim' ? SHIPPING_FLAT : 0
+  const shipping = delivery === 'kirim' ? shippingFlat : 0
   const total = itemsTotal + shipping
 
   const submit = async () => {
@@ -53,6 +56,7 @@ export default function CheckoutPage() {
       id: generateId('item'),
       transaction_id: txnId,
       product_id: i.product_id,
+      variant_id: i.variant_id,
       product_name: i.name,
       product_price: i.price,
       quantity: i.quantity,
@@ -105,6 +109,26 @@ export default function CheckoutPage() {
   }
 
   if (success) {
+    const waText = [
+      `Halo *${storeName || 'AKAPACK'}*, saya mau konfirmasi pesanan:`,
+      '',
+      `No. Pesanan: ${success.transaction_number}`,
+      `Nama: ${name}`,
+      `No. HP: ${phone}`,
+      delivery === 'kirim' ? `Alamat: ${address || '-'}` : 'Ambil di toko',
+      '--------------------------------',
+      ...success.items.map((it) => `• ${it.product_name} x${it.quantity} — ${formatRupiah(it.subtotal)}`),
+      '--------------------------------',
+      `Subtotal: ${formatRupiah(success.subtotal)}`,
+      shipping > 0 ? `Ongkir: ${formatRupiah(shipping)}` : null,
+      `*Total: ${formatRupiah(success.total)}*`,
+      `Pembayaran: ${method === 'cod' ? 'COD (bayar di tempat)' : 'Transfer Bank'}`,
+      '',
+      'Terima kasih 🙏',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
     return (
       <div className="max-w-md mx-auto text-center space-y-4 py-10">
         <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
@@ -117,10 +141,25 @@ export default function CheckoutPage() {
         <div className="rounded-xl border bg-background p-4 text-sm space-y-1 text-left">
           <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold">{formatRupiah(success.total)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Pembayaran</span><span>{method === 'cod' ? 'COD (bayar di tempat)' : 'Transfer Bank'}</span></div>
-          {method === 'transfer' && <p className="text-xs text-muted-foreground pt-2">Silakan transfer ke rekening toko, lalu konfirmasi via WhatsApp. (info rekening menyusul di pengaturan toko)</p>}
+          {method === 'transfer' && (
+            bankInfo.trim() ? (
+              <div className="pt-2 mt-1 border-t">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Silakan transfer ke:</p>
+                <pre className="text-xs whitespace-pre-wrap font-sans">{bankInfo}</pre>
+                <p className="text-xs text-muted-foreground pt-1.5">Setelah transfer, konfirmasi via WhatsApp di bawah.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground pt-2">Silakan konfirmasi via WhatsApp untuk info rekening & pembayaran.</p>
+            )
+          )}
           {method === 'cod' && <p className="text-xs text-muted-foreground pt-2">Bayar saat barang tiba. Tim kami akan menghubungi Anda.</p>}
         </div>
-        <Link href="/toko"><Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">Belanja Lagi</Button></Link>
+        <a href={waUrl(waNumber, waText)} target="_blank" rel="noopener noreferrer" className="block">
+          <Button className="w-full gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700">
+            <MessageCircle size={16} /> Konfirmasi via WhatsApp
+          </Button>
+        </a>
+        <Link href="/toko"><Button variant="outline" className="w-full">Belanja Lagi</Button></Link>
       </div>
     )
   }

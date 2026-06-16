@@ -1,14 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { ShoppingBag, Eye, Phone, MapPin, CheckCircle2 } from 'lucide-react'
+import { ShoppingBag, Eye, Phone, MapPin, CheckCircle2, MessageCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
-import { formatRupiah, formatDateTime } from '@/lib/utils'
+import { useProductStore } from '@/stores/use-product-store'
+import { useVariantStore } from '@/stores/use-variant-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useSettingsStore } from '@/stores/use-settings-store'
+import { formatRupiah, formatDateTime, waUrl } from '@/lib/utils'
 import type { Transaction, TransactionStatus } from '@/types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -30,6 +34,12 @@ const FILTERS: { value: 'all' | TransactionStatus; label: string }[] = [
 export default function PesananOnlinePage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const setStatus = useTransactionStore((s) => s.setStatus)
+  const products = useProductStore((s) => s.products)
+  const incrementStock = useProductStore((s) => s.incrementStock)
+  const variants = useVariantStore((s) => s.variants)
+  const incrementVariantStock = useVariantStore((s) => s.incrementVariantStock)
+  const addMovement = useStockMovementStore((s) => s.addMovement)
+  const storeName = useSettingsStore((s) => s.storeName)
   const [filter, setFilter] = useState<'all' | TransactionStatus>('all')
   const [detail, setDetail] = useState<Transaction | null>(null)
 
@@ -38,10 +48,34 @@ export default function PesananOnlinePage() {
   const newCount = orders.filter((t) => t.status === 'pending').length
 
   const complete = (t: Transaction) => { setStatus(t.id, 'completed'); toast.success('Pesanan ditandai Selesai'); setDetail(null) }
+
   const cancel = (t: Transaction) => {
-    if (confirm('Batalkan pesanan ini? Stok tidak dikembalikan otomatis — sesuaikan via Stok Opname bila perlu.')) {
-      setStatus(t.id, 'void'); toast.success('Pesanan dibatalkan'); setDetail(null)
-    }
+    if (!confirm('Batalkan pesanan ini? Stok yang sempat dipotong akan dikembalikan otomatis.')) return
+    // Kembalikan stok yang dipotong saat pesanan dibuat (reservasi).
+    t.items.forEach((it) => {
+      if (it.variant_id) {
+        const v = variants.find((x) => x.id === it.variant_id)
+        const before = v?.stock ?? 0
+        incrementVariantStock(it.variant_id, it.quantity)
+        addMovement({ product_id: it.product_id, type: 'in', quantity: it.quantity, before_stock: before, after_stock: before + it.quantity, notes: `Pembatalan pesanan ${t.transaction_number} (${it.product_name})`, reference_id: t.id, created_by_name: 'Admin' })
+      } else {
+        const p = products.find((x) => x.id === it.product_id)
+        const before = p?.stock ?? 0
+        incrementStock(it.product_id, it.quantity)
+        addMovement({ product_id: it.product_id, type: 'in', quantity: it.quantity, before_stock: before, after_stock: before + it.quantity, notes: `Pembatalan pesanan ${t.transaction_number}`, reference_id: t.id, created_by_name: 'Admin' })
+      }
+    })
+    setStatus(t.id, 'void')
+    toast.success('Pesanan dibatalkan, stok dikembalikan')
+    setDetail(null)
+  }
+
+  const waCustomer = (t: Transaction) => {
+    const text = [
+      `Halo ${t.customer?.name ?? 'Kak'}, terima kasih sudah pesan di *${storeName || 'AKAPACK'}*.`,
+      `Pesanan *${t.transaction_number}* (${formatRupiah(t.total)}) sedang kami proses. 🙏`,
+    ].join('\n')
+    window.open(waUrl(t.customer?.phone ?? '', text), '_blank')
   }
 
   return (
@@ -115,6 +149,11 @@ export default function PesananOnlinePage() {
                   {detail.customer?.address && <div className="flex items-start gap-2 text-muted-foreground"><MapPin size={13} className="mt-0.5" />{detail.customer.address}</div>}
                   {detail.notes && <p className="text-xs text-muted-foreground pt-1">{detail.notes}</p>}
                 </div>
+                {detail.customer?.phone && (
+                  <Button variant="outline" className="w-full gap-1.5 text-emerald-700 hover:text-emerald-700" onClick={() => waCustomer(detail)}>
+                    <MessageCircle size={15} /> Hubungi via WhatsApp
+                  </Button>
+                )}
                 <div className="space-y-2">
                   <p className="text-sm font-semibold">Item Pesanan</p>
                   {detail.items.map((it) => (

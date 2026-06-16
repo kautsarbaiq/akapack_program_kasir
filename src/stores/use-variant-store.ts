@@ -22,6 +22,8 @@ interface VariantStore {
   deleteVariant: (id: string) => void
   /** Kurangi stok varian saat transaksi POS */
   decrementVariantStock: (id: string, qty: number) => void
+  /** Kembalikan stok varian (mis. pesanan online dibatalkan) */
+  incrementVariantStock: (id: string, qty: number) => void
 }
 
 export const useVariantStore = create<VariantStore>()((set, get) => ({
@@ -90,6 +92,18 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       variants: s.variants.map((v) => {
         if (v.id !== id) return v
         newStock = Math.max(0, v.stock - qty)
+        return { ...v, stock: newStock }
+      }),
+    }))
+    void updateRow('product_variants', id, { stock: newStock })
+  },
+
+  incrementVariantStock: (id, qty) => {
+    let newStock = 0
+    set((s) => ({
+      variants: s.variants.map((v) => {
+        if (v.id !== id) return v
+        newStock = v.stock + qty
         return { ...v, stock: newStock }
       }),
     }))

@@ -173,6 +173,7 @@ export interface TransactionItem {
   id: string
   transaction_id: string
   product_id: string
+  variant_id?: string    // jika item adalah varian — untuk restore stok saat batal
   product?: Product
   product_name: string   // snapshot saat transaksi
   product_price: number  // snapshot saat transaksi
@@ -250,6 +251,56 @@ export interface Promotion {
   used_count: number
   starts_at: string
   ends_at: string
+  is_active: boolean
+  created_at: string
+}
+
+// ─── Akuntansi ─────────────────────────
+export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense'
+
+// Akun di Daftar Akun (Chart of Accounts). Saldo normal mengikuti tipe:
+// asset & expense = debit; liability, equity, revenue = credit.
+export interface Account {
+  id: string
+  code: string            // kode akun, mis. '1-100'
+  name: string            // mis. 'Kas'
+  type: AccountType
+  opening_balance: number // saldo awal (positif sesuai saldo normal akun)
+  is_active: boolean
+  description?: string
+  created_at: string
+}
+
+export type JournalSource = 'manual' | 'pos' | 'online' | 'opening'
+
+export interface JournalLine {
+  account_id: string
+  account_code?: string
+  account_name?: string
+  debit: number
+  credit: number
+}
+
+export interface JournalEntry {
+  id: string
+  number: string          // mis. 'JV-20260616-001'
+  date: string            // tanggal transaksi (ISO)
+  description: string
+  source: JournalSource    // 'pos'/'online' = turunan otomatis; 'manual' = input; 'opening' = saldo awal
+  reference_id?: string   // id transaksi/sumber terkait
+  lines: JournalLine[]    // minimal 2 baris, total debit = total kredit
+  created_at: string
+}
+
+// Aset tetap untuk penyusutan (garis lurus)
+export interface Asset {
+  id: string
+  name: string
+  category: string
+  acquired_at: string        // tanggal perolehan (ISO date)
+  cost: number               // harga perolehan
+  salvage: number            // nilai residu/sisa
+  useful_life_months: number // umur manfaat (bulan)
   is_active: boolean
   created_at: string
 }

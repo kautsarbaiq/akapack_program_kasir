@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured, DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 
@@ -17,10 +18,20 @@ interface SettingsValues {
   receiptFooter: string
 }
 
-interface SettingsStore extends SettingsValues {
+// Pengaturan khusus Toko Online — disimpan di localStorage (belum ada kolomnya di outlets).
+interface OnlineSettings {
+  storePhone: string
+  storeAddress: string
+  waNumber: string   // nomor WhatsApp toko untuk menerima konfirmasi pesanan
+  bankInfo: string   // info rekening / cara bayar (multiline)
+  shippingFlat: number
+}
+
+interface SettingsStore extends SettingsValues, OnlineSettings {
   loaded: boolean
   fetch: () => Promise<void>
   save: (patch: Partial<SettingsValues>) => Promise<void>
+  saveOnline: (patch: Partial<OnlineSettings>) => void
 }
 
 const DEFAULTS: SettingsValues = {
@@ -30,9 +41,22 @@ const DEFAULTS: SettingsValues = {
   receiptFooter: 'Terima kasih telah berbelanja 🙏',
 }
 
-export const useSettingsStore = create<SettingsStore>()((set, get) => ({
+const ONLINE_DEFAULTS: OnlineSettings = {
+  storePhone: '',
+  storeAddress: '',
+  waNumber: '',
+  bankInfo: '',
+  shippingFlat: 10000,
+}
+
+export const useSettingsStore = create<SettingsStore>()(
+  persist(
+    (set, get) => ({
   ...DEFAULTS,
+  ...ONLINE_DEFAULTS,
   loaded: false,
+
+  saveOnline: (patch) => set(patch),
 
   fetch: async () => {
     if (!isSupabaseConfigured()) {
@@ -88,4 +112,19 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       console.warn('[akapack] gagal simpan pengaturan:', e)
     }
   },
-}))
+    }),
+    {
+      name: 'akapack-online-settings',
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: true,
+      // Hanya field Toko Online yang dipersist; field outlet (pajak/nama/footer) tetap dari Supabase.
+      partialize: (s): OnlineSettings => ({
+        storePhone: s.storePhone,
+        storeAddress: s.storeAddress,
+        waNumber: s.waNumber,
+        bankInfo: s.bankInfo,
+        shippingFlat: s.shippingFlat,
+      }),
+    }
+  )
+)

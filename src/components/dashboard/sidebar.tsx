@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShoppingCart, Package, Warehouse,
   Receipt, Users, Tag, UserCheck, BarChart3, Settings,
-  ChevronDown, ChevronRight, LogOut, Store, X,
+  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -53,6 +53,21 @@ const navItems: NavItem[] = [
       { title: 'Riwayat Transaksi', href: '/dashboard/penjualan' },
       { title: 'Pesanan Online', href: '/dashboard/pesanan' },
       { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan' },
+    ],
+  },
+  {
+    title: 'Akuntansi', href: '/dashboard/akuntansi', icon: Calculator,
+    children: [
+      { title: 'Ringkasan', href: '/dashboard/akuntansi' },
+      { title: 'Daftar Akun', href: '/dashboard/akuntansi/akun' },
+      { title: 'Jurnal', href: '/dashboard/akuntansi/jurnal' },
+      { title: 'Buku Besar', href: '/dashboard/akuntansi/buku-besar' },
+      { title: 'Laba Rugi', href: '/dashboard/akuntansi/laba-rugi' },
+      { title: 'Neraca', href: '/dashboard/akuntansi/neraca' },
+      { title: 'Arus Kas', href: '/dashboard/akuntansi/arus-kas' },
+      { title: 'Piutang & Hutang', href: '/dashboard/akuntansi/piutang-hutang' },
+      { title: 'Aset & Penyusutan', href: '/dashboard/akuntansi/aset' },
+      { title: 'Tutup Buku', href: '/dashboard/akuntansi/tutup-buku' },
     ],
   },
   { title: 'Pelanggan', href: '/dashboard/pelanggan', icon: Users },
@@ -248,6 +263,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Bottom section */}
         <div className="px-2 pb-3 space-y-0.5" style={{ borderTop: '1px solid oklch(0.22 0.04 256)', paddingTop: '12px' }}>
+          {/* Buka storefront pembeli di tab baru */}
+          <a href="/toko" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+            style={{ color: 'oklch(0.6 0.02 250)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'oklch(0.2 0.04 256)'; (e.currentTarget as HTMLElement).style.color = 'white' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = 'oklch(0.6 0.02 250)' }}>
+            <Store size={18} className="shrink-0" />
+            <span className={cn('flex-1 transition-all duration-300 truncate', open ? 'opacity-100' : 'opacity-0 lg:opacity-0 w-0')}>Toko Online</span>
+            {open && <ExternalLink size={13} className="shrink-0 opacity-60" />}
+          </a>
           {bottomItems.map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)

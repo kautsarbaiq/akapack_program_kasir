@@ -11,6 +11,8 @@ import type {
   LowStockItem,
   Promotion,
   User,
+  Account,
+  Asset,
 } from '@/types'
 
 // Helper: cast Employee to User shape for cashier field
@@ -369,4 +371,46 @@ export const mockPromotions: Promotion[] = [
     used_count: 12, starts_at: '2024-06-11', ends_at: '2024-06-11',
     is_active: false, created_at: '2024-06-10',
   },
+]
+
+// ─── Daftar Akun / Chart of Accounts ───
+// Saldo awal disusun balance: Aset = Kewajiban + Ekuitas (130jt = 20jt + 110jt).
+const acc = (code: string, name: string, type: Account['type'], opening_balance = 0): Account => ({
+  id: `acc-${code}`, code, name, type, opening_balance, is_active: true, created_at: '2026-01-01',
+})
+
+export const mockAccounts: Account[] = [
+  // Aset (saldo normal debit)
+  acc('1-100', 'Kas', 'asset', 10000000),
+  acc('1-110', 'Bank', 'asset', 50000000),
+  acc('1-120', 'Piutang Usaha', 'asset', 0),
+  acc('1-130', 'Persediaan Barang', 'asset', 30000000),
+  acc('1-200', 'Peralatan & Mesin', 'asset', 40000000),
+  acc('1-210', 'Akumulasi Penyusutan', 'asset', 0), // kontra-aset (saldo kredit mengurangi aset)
+  // Kewajiban (saldo normal kredit)
+  acc('2-100', 'Hutang Usaha', 'liability', 20000000),
+  acc('2-200', 'Hutang PPN', 'liability', 0),
+  // Ekuitas (saldo normal kredit)
+  acc('3-100', 'Modal Pemilik', 'equity', 110000000),
+  acc('3-200', 'Laba Ditahan', 'equity', 0),
+  acc('3-300', 'Prive', 'equity', 0), // kontra-ekuitas
+  // Pendapatan (saldo normal kredit)
+  acc('4-100', 'Penjualan', 'revenue', 0),
+  acc('4-110', 'Pendapatan Pengiriman', 'revenue', 0),
+  acc('4-200', 'Pendapatan Lain-lain', 'revenue', 0),
+  // Beban (saldo normal debit)
+  acc('5-100', 'Harga Pokok Penjualan', 'expense', 0),
+  acc('5-200', 'Diskon Penjualan', 'expense', 0),
+  acc('5-300', 'Beban Gaji', 'expense', 0),
+  acc('5-310', 'Beban Sewa', 'expense', 0),
+  acc('5-320', 'Beban Listrik & Air', 'expense', 0),
+  acc('5-330', 'Beban Operasional Lain', 'expense', 0),
+  acc('5-340', 'Beban Penyusutan', 'expense', 0),
+]
+
+// ─── Aset Tetap (untuk penyusutan) — total perolehan = saldo awal akun 1-200 (40jt) ───
+export const mockAssets: Asset[] = [
+  { id: 'aset-1', name: 'Mesin Cetak Plastik', category: 'Mesin', acquired_at: '2025-01-15', cost: 28000000, salvage: 4000000, useful_life_months: 60, is_active: true, created_at: '2025-01-15' },
+  { id: 'aset-2', name: 'Mesin Sealer', category: 'Mesin', acquired_at: '2025-06-01', cost: 7000000, salvage: 1000000, useful_life_months: 48, is_active: true, created_at: '2025-06-01' },
+  { id: 'aset-3', name: 'Komputer Kasir', category: 'Elektronik', acquired_at: '2025-09-01', cost: 5000000, salvage: 500000, useful_life_months: 36, is_active: true, created_at: '2025-09-01' },
 ]

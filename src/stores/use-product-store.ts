@@ -16,6 +16,8 @@ interface ProductStore {
   deleteProduct: (id: string) => void
   /** Kurangi stok saat transaksi POS */
   decrementStock: (id: string, qty: number) => void
+  /** Kembalikan stok (mis. pesanan online dibatalkan) */
+  incrementStock: (id: string, qty: number) => void
   /** Set stok absolut (stok masuk / opname) */
   setStock: (id: string, newStock: number) => void
   /** Tandai produk punya varian */
@@ -146,6 +148,18 @@ export const useProductStore = create<ProductStore>()((set) => ({
       products: s.products.map((p) => {
         if (p.id !== id) return p
         newStock = Math.max(0, p.stock - qty)
+        return { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) }
+      }),
+    }))
+    void updateRow('products', id, { stock: newStock })
+  },
+
+  incrementStock: (id, qty) => {
+    let newStock = 0
+    set((s) => ({
+      products: s.products.map((p) => {
+        if (p.id !== id) return p
+        newStock = p.stock + qty
         return { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) }
       }),
     }))

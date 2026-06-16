@@ -129,6 +129,38 @@ export function getStockStatus(
   return 'safe'
 }
 
+/** Normalisasi nomor HP Indonesia ke format internasional tanpa "+" (0812… → 62812…). */
+export function normalizePhoneId(phone: string): string {
+  const raw = (phone ?? '').replace(/\D/g, '')
+  if (!raw) return ''
+  if (raw.startsWith('62')) return raw
+  if (raw.startsWith('0')) return '62' + raw.slice(1)
+  return raw
+}
+
+/** Bangun link wa.me. Tanpa nomor → buka WhatsApp dengan teks siap kirim (pilih kontak sendiri). */
+export function waUrl(phone: string, text: string): string {
+  const num = normalizePhoneId(phone)
+  return `https://wa.me/${num}?text=${encodeURIComponent(text)}`
+}
+
+/** Unduh data tabel sebagai CSV (UTF-8 BOM agar rapi di Excel). */
+export function exportCsv(filename: string, rows: (string | number)[][]): void {
+  const csv = rows
+    .map((r) => r.map((c) => {
+      const s = String(c ?? '')
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }).join(','))
+    .join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function getAvatarColor(name: string): string {
   const colors = [
     'bg-blue-500',

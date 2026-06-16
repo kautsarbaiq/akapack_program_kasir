@@ -11,6 +11,11 @@ import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useStoreCart } from '@/stores/use-store-cart'
+import { useAccountStore } from '@/stores/use-account-store'
+import { useJournalStore } from '@/stores/use-journal-store'
+import { useAssetStore } from '@/stores/use-asset-store'
+import { useClosingStore } from '@/stores/use-closing-store'
 
 /**
  * Memuat data dari Supabase sekali saat aplikasi (area login) mount.
@@ -19,6 +24,13 @@ import { useVariantStore } from '@/stores/use-variant-store'
  */
 export function DataBootstrap() {
   useEffect(() => {
+    // Rehydrate store ber-persist SETELAH mount (skipHydration) — cegah hydration mismatch
+    // antara HTML prerender statis (kosong) dan localStorage.
+    void useStoreCart.persist.rehydrate()
+    void useSettingsStore.persist.rehydrate()
+    void useAssetStore.persist.rehydrate()
+    void useClosingStore.persist.rehydrate()
+
     const run = async () => {
       // kategori dulu — produk butuh kategori untuk resolusi nama
       await useCategoryStore.getState().fetch()
@@ -29,12 +41,14 @@ export function DataBootstrap() {
         usePromotionStore.getState().fetch(),
         useSettingsStore.getState().fetch(),
         useVariantStore.getState().fetch(),
+        useAccountStore.getState().fetch(),
       ])
-      // transaksi, shift, pergerakan stok — butuh master data untuk resolusi
+      // transaksi, shift, pergerakan stok, jurnal — butuh master data untuk resolusi
       await Promise.all([
         useTransactionStore.getState().fetch(),
         useShiftStore.getState().fetch(),
         useStockMovementStore.getState().fetch(),
+        useJournalStore.getState().fetch(),
       ])
     }
     void run()

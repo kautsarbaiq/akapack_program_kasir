@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, Store, Percent, Receipt, Bell } from 'lucide-react'
+import { Save, Store, Percent, Receipt, Bell, Globe } from 'lucide-react'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,12 +10,20 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { formatRupiah } from '@/lib/utils'
 import { toast } from 'sonner'
 
 export default function PengaturanPage() {
   const storedTaxRate = useSettingsStore((s) => s.taxRate)
   const storedServiceRate = useSettingsStore((s) => s.serviceRate)
+  const storedStoreName = useSettingsStore((s) => s.storeName)
+  const storedStorePhone = useSettingsStore((s) => s.storePhone)
+  const storedStoreAddress = useSettingsStore((s) => s.storeAddress)
+  const storedWaNumber = useSettingsStore((s) => s.waNumber)
+  const storedBankInfo = useSettingsStore((s) => s.bankInfo)
+  const storedShippingFlat = useSettingsStore((s) => s.shippingFlat)
   const saveSettings = useSettingsStore((s) => s.save)
+  const saveOnline = useSettingsStore((s) => s.saveOnline)
 
   const [taxEnabled, setTaxEnabled] = useState(false)
   const [taxRate, setTaxRate] = useState(11)
@@ -26,6 +34,15 @@ export default function PengaturanPage() {
   const [emailAlert, setEmailAlert] = useState(true)
   const [dailyReport, setDailyReport] = useState(false)
 
+  // Profil toko
+  const [storeName, setStoreName] = useState('')
+  const [storePhone, setStorePhone] = useState('')
+  const [storeAddress, setStoreAddress] = useState('')
+  // Toko online
+  const [waNumber, setWaNumber] = useState('')
+  const [bankInfo, setBankInfo] = useState('')
+  const [shippingFlat, setShippingFlat] = useState(10000)
+
   // Sinkronkan form dari settings store saat data termuat
   useEffect(() => {
     setTaxEnabled(storedTaxRate > 0)
@@ -33,6 +50,26 @@ export default function PengaturanPage() {
     setServiceEnabled(storedServiceRate > 0)
     if (storedServiceRate > 0) setServiceRate(storedServiceRate)
   }, [storedTaxRate, storedServiceRate])
+
+  useEffect(() => {
+    setStoreName(storedStoreName)
+    setStorePhone(storedStorePhone)
+    setStoreAddress(storedStoreAddress)
+    setWaNumber(storedWaNumber)
+    setBankInfo(storedBankInfo)
+    setShippingFlat(storedShippingFlat)
+  }, [storedStoreName, storedStorePhone, storedStoreAddress, storedWaNumber, storedBankInfo, storedShippingFlat])
+
+  const handleSaveProfile = () => {
+    saveSettings({ storeName: storeName.trim() || 'AKAPACK' })
+    saveOnline({ storePhone: storePhone.trim(), storeAddress: storeAddress.trim() })
+    toast.success('Profil toko disimpan!')
+  }
+
+  const handleSaveOnline = () => {
+    saveOnline({ waNumber: waNumber.trim(), bankInfo: bankInfo.trim(), shippingFlat: Number(shippingFlat) || 0 })
+    toast.success('Pengaturan toko online disimpan!')
+  }
 
   const handleSave = () => toast.success('Pengaturan berhasil disimpan!')
 
@@ -54,6 +91,7 @@ export default function PengaturanPage() {
       <Tabs defaultValue="toko">
         <TabsList className="mb-6">
           <TabsTrigger value="toko" className="gap-1.5"><Store size={14} /> Profil Toko</TabsTrigger>
+          <TabsTrigger value="online" className="gap-1.5"><Globe size={14} /> Toko Online</TabsTrigger>
           <TabsTrigger value="pajak" className="gap-1.5"><Percent size={14} /> Pajak & Biaya</TabsTrigger>
           <TabsTrigger value="struk" className="gap-1.5"><Receipt size={14} /> Struk</TabsTrigger>
           <TabsTrigger value="notif" className="gap-1.5"><Bell size={14} /> Notifikasi</TabsTrigger>
@@ -78,15 +116,15 @@ export default function PengaturanPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nama Toko *</Label>
-                  <Input defaultValue="Toko AKAPACK" />
+                  <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Toko AKAPACK" />
                 </div>
                 <div className="space-y-2">
                   <Label>Telepon</Label>
-                  <Input defaultValue="081234567890" />
+                  <Input value={storePhone} onChange={(e) => setStorePhone(e.target.value)} placeholder="081234567890" />
                 </div>
                 <div className="col-span-2 space-y-2">
                   <Label>Alamat Lengkap</Label>
-                  <Input defaultValue="Jl. Contoh No. 123, Jakarta" />
+                  <Input value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} placeholder="Jl. Contoh No. 123, Jakarta" />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
@@ -97,8 +135,44 @@ export default function PengaturanPage() {
                   <Input placeholder="www.tokoanda.com" />
                 </div>
               </div>
-              <Button onClick={handleSave} className="gap-2" style={{ background: 'oklch(0.55 0.22 264)' }}>
+              <Button onClick={handleSaveProfile} className="gap-2" style={{ background: 'oklch(0.55 0.22 264)' }}>
                 <Save size={15} /> Simpan Perubahan
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Toko Online */}
+        <TabsContent value="online">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Pengaturan Toko Online</CardTitle>
+              <CardDescription>Konfigurasi halaman belanja online (/toko) — WhatsApp, pembayaran, & ongkir</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <Label>Nomor WhatsApp Toko</Label>
+                <Input value={waNumber} onChange={(e) => setWaNumber(e.target.value)} placeholder="081234567890" />
+                <p className="text-xs text-muted-foreground">Pembeli akan diarahkan ke nomor ini untuk konfirmasi pesanan.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Info Rekening / Cara Bayar</Label>
+                <textarea value={bankInfo} onChange={(e) => setBankInfo(e.target.value)} rows={4}
+                  placeholder={'BCA 1234567890\na/n Nama Pemilik\n\nGoPay/OVO: 0812xxxx'}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" />
+                <p className="text-xs text-muted-foreground">Ditampilkan ke pembeli yang memilih Transfer Bank di checkout.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Ongkir Flat</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Rp</span>
+                  <Input type="number" className="w-40" value={shippingFlat} onChange={(e) => setShippingFlat(Number(e.target.value))} />
+                  <span className="text-sm text-muted-foreground">/ pengiriman ({formatRupiah(shippingFlat || 0)})</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Berlaku saat pembeli memilih opsi "Dikirim". Pilih "Ambil di Toko" = gratis.</p>
+              </div>
+              <Button onClick={handleSaveOnline} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+                <Save size={15} /> Simpan
               </Button>
             </CardContent>
           </Card>
