@@ -313,33 +313,5 @@ export interface PaginatedResponse<T> {
 }
 
 // ─── Form Types ────────────────────────
-export interface ProductFormValues {
-  name: string
-  category_id: string
-  sku: string
-  barcode?: string
-  description?: string
-  price: number
-  cost_price: number
-  stock: number
-  min_stock: number
-  unit: string
-  is_active: boolean
-}
-
-export interface CustomerFormValues {
-  name: string
-  phone?: string
-  email?: string
-  address?: string
-  points?: number
-}
-
-export interface EmployeeFormValues {
-  name: string
-  role: UserRole
-  phone?: string
-  email?: string
-  pin?: string
-  is_active: boolean
-}
+// Tipe FormValues kini diturunkan dari schema zod (sumber tunggal):
+//   import type { ProductFormValues, CategoryFormValues, ... } from '@/lib/validations'

@@ -1,43 +1,52 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Warehouse, AlertTriangle, XCircle, CheckCircle2, Plus, Search, ArrowUpDown } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AlertTriangle, XCircle, CheckCircle2, Plus, Search } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { mockProducts } from '@/lib/mock-data'
+import { useProductStore } from '@/stores/use-product-store'
 import { formatRupiah, getStockStatus } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type StockFilter = 'all' | 'safe' | 'low' | 'out'
 
 export default function InventoriPage() {
+  const products = useProductStore((s) => s.products)
+  const setStock = useProductStore((s) => s.setStock)
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [addStockOpen, setAddStockOpen] = useState(false)
+  const [addProductId, setAddProductId] = useState('')
   const [addQty, setAddQty] = useState('')
   const [addNote, setAddNote] = useState('')
 
   const filtered = useMemo(() => {
-    return mockProducts.filter((p) => {
+    return products.filter((p) => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
       const status = getStockStatus(p.stock, p.min_stock)
       const matchStock = stockFilter === 'all' || stockFilter === status
       return matchSearch && matchStock
     })
-  }, [search, stockFilter])
+  }, [products, search, stockFilter])
 
-  const totalValue = mockProducts.reduce((sum, p) => sum + p.stock * p.cost_price, 0)
-  const lowCount = mockProducts.filter(p => getStockStatus(p.stock, p.min_stock) === 'low').length
-  const outCount = mockProducts.filter(p => getStockStatus(p.stock, p.min_stock) === 'out').length
+  const totalValue = products.reduce((sum, p) => sum + p.stock * p.cost_price, 0)
+  const lowCount = products.filter(p => getStockStatus(p.stock, p.min_stock) === 'low').length
+  const outCount = products.filter(p => getStockStatus(p.stock, p.min_stock) === 'out').length
 
   const handleAddStock = () => {
-    toast.success(`Stok berhasil ditambah sebanyak ${addQty} unit`)
+    const qty = Number(addQty)
+    const product = products.find((p) => p.id === addProductId)
+    if (!product) { toast.error('Pilih produk dulu'); return }
+    if (!Number.isFinite(qty) || qty <= 0) { toast.error('Jumlah tidak valid'); return }
+    setStock(product.id, product.stock + qty)
+    toast.success(`Stok ${product.name} +${qty} → ${product.stock + qty} ${product.unit}`)
     setAddStockOpen(false)
+    setAddProductId('')
     setAddQty('')
     setAddNote('')
   }
@@ -58,8 +67,8 @@ export default function InventoriPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5 text-xs">Stock Opname</Button>
-          <Button size="sm" className="gap-1.5" style={{ background: 'oklch(0.55 0.22 264)' }}
-            onClick={() => setAddStockOpen(true)}>
+          <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => { setAddProductId(''); setAddStockOpen(true) }}>
             <Plus size={15} /> Tambah Stok
           </Button>
         </div>
@@ -68,7 +77,7 @@ export default function InventoriPage() {
       {/* Summary */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'Total SKU', value: mockProducts.length, color: 'text-foreground' },
+          { label: 'Total SKU', value: products.length, color: 'text-foreground' },
           { label: 'Nilai Stok', value: formatRupiah(totalValue), color: 'text-foreground', small: true },
           { label: 'Stok Menipis', value: lowCount, color: 'text-amber-600' },
           { label: 'Stok Habis', value: outCount, color: 'text-destructive' },
@@ -131,7 +140,7 @@ export default function InventoriPage() {
                     <td className="py-3 px-4 font-semibold">{formatRupiah(p.stock * p.cost_price)}</td>
                     <td className="py-3 px-4">
                       <Button variant="outline" size="sm" className="h-7 text-xs gap-1"
-                        onClick={() => setAddStockOpen(true)}>
+                        onClick={() => { setAddProductId(p.id); setAddStockOpen(true) }}>
                         <Plus size={12} /> Stok
                       </Button>
                     </td>
@@ -152,10 +161,10 @@ export default function InventoriPage() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Produk</Label>
-              <Select>
+              <Select value={addProductId} onValueChange={(v) => { if (v) setAddProductId(v) }}>
                 <SelectTrigger><SelectValue placeholder="Pilih produk..." /></SelectTrigger>
                 <SelectContent>
-                  {mockProducts.map((p) => (
+                  {products.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name} (stok: {p.stock})</SelectItem>
                   ))}
                 </SelectContent>
@@ -172,7 +181,7 @@ export default function InventoriPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddStockOpen(false)}>Batal</Button>
-            <Button onClick={handleAddStock} style={{ background: 'oklch(0.55 0.22 264)' }} disabled={!addQty}>
+            <Button onClick={handleAddStock} className="bg-primary text-primary-foreground hover:bg-primary/90" disabled={!addQty || !addProductId}>
               Simpan
             </Button>
           </DialogFooter>

@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -28,6 +27,24 @@ const PIE_COLORS = [
   'oklch(0.65 0.18 220)',
 ]
 
+function KPICard({ title, value, change, subtitle }: { title: string; value: string; change?: number; subtitle?: string }) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        {change !== undefined && (
+          <div className={`flex items-center gap-1 text-xs font-semibold mb-2 ${change >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            {change >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+            {Math.abs(change)}% vs periode sebelumnya
+          </div>
+        )}
+        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-sm text-muted-foreground mt-1">{title}</p>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function LaporanPenjualanPage() {
   const [period, setPeriod] = useState('30')
 
@@ -51,22 +68,6 @@ export default function LaporanPenjualanPage() {
     value: data.total,
     count: data.count,
   }))
-
-  const KPICard = ({ title, value, change, subtitle }: { title: string; value: string; change?: number; subtitle?: string }) => (
-    <Card>
-      <CardContent className="p-5">
-        {change !== undefined && (
-          <div className={`flex items-center gap-1 text-xs font-semibold mb-2 ${change >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-            {change >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-            {Math.abs(change)}% vs periode sebelumnya
-          </div>
-        )}
-        <p className="text-2xl font-bold">{value}</p>
-        <p className="text-sm text-muted-foreground mt-1">{title}</p>
-        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-      </CardContent>
-    </Card>
-  )
 
   return (
     <div className="space-y-6">

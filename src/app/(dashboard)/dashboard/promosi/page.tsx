@@ -5,8 +5,10 @@ import { Plus, Tag, Percent, Banknote, Clock, CheckCircle2, XCircle } from 'luci
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { mockPromotions } from '@/lib/mock-data'
+import { usePromotionStore } from '@/stores/use-promotion-store'
+import { PromotionFormDialog } from '@/components/dashboard/promotion-form-dialog'
 import { formatRupiah, formatDate } from '@/lib/utils'
+import type { Promotion } from '@/types'
 import { toast } from 'sonner'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -17,7 +19,10 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 export default function PromosiPage() {
-  const [promos] = useState(mockPromotions)
+  const promos = usePromotionStore((s) => s.promotions)
+  const toggleActive = usePromotionStore((s) => s.toggleActive)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Promotion | null>(null)
 
   const active = promos.filter(p => p.is_active).length
   const totalUses = promos.reduce((s, p) => s + p.used_count, 0)
@@ -29,7 +34,8 @@ export default function PromosiPage() {
           <h1 className="text-2xl font-bold">Promosi & Diskon</h1>
           <p className="text-muted-foreground text-sm mt-1">Kelola program promosi dan voucher toko</p>
         </div>
-        <Button size="sm" className="gap-1.5" style={{ background: 'oklch(0.55 0.22 264)' }}>
+        <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => { setEditTarget(null); setFormOpen(true) }}>
           <Plus size={15} /> Buat Promosi
         </Button>
       </div>
@@ -108,9 +114,10 @@ export default function PromosiPage() {
               )}
 
               <div className="flex gap-2 pt-1">
-                <Button variant="outline" size="sm" className="flex-1 h-8 text-xs">Edit</Button>
-                <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs text-destructive hover:text-destructive"
-                  onClick={() => toast.error('Nonaktifkan promosi?')}>
+                <Button variant="outline" size="sm" className="flex-1 h-8 text-xs"
+                  onClick={() => { setEditTarget(promo); setFormOpen(true) }}>Edit</Button>
+                <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs"
+                  onClick={() => { toggleActive(promo.id); toast.success(promo.is_active ? `Promosi "${promo.name}" dinonaktifkan` : `Promosi "${promo.name}" diaktifkan`) }}>
                   {promo.is_active ? 'Nonaktifkan' : 'Aktifkan'}
                 </Button>
               </div>
@@ -120,7 +127,7 @@ export default function PromosiPage() {
 
         {/* Add new card */}
         <Card className="border-dashed cursor-pointer hover:border-primary hover:bg-primary/5 transition-all duration-200"
-          onClick={() => toast.info('Form buat promosi baru')}>
+          onClick={() => { setEditTarget(null); setFormOpen(true) }}>
           <CardContent className="p-5 flex flex-col items-center justify-center h-full min-h-[220px] gap-2">
             <div className="w-10 h-10 rounded-full border-2 border-dashed border-muted-foreground/50 flex items-center justify-center">
               <Plus size={20} className="text-muted-foreground" />
@@ -129,6 +136,8 @@ export default function PromosiPage() {
           </CardContent>
         </Card>
       </div>
+
+      <PromotionFormDialog open={formOpen} onOpenChange={setFormOpen} promotion={editTarget} />
     </div>
   )
 }

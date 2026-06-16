@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
-import { mockTransactions } from '@/lib/mock-data'
+import { useTransactionStore } from '@/stores/use-transaction-store'
 import { formatRupiah, formatDateTime } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { toast } from 'sonner'
@@ -23,13 +23,15 @@ const PAYMENT_COLORS: Record<string, string> = {
 }
 
 export default function PenjualanPage() {
+  const transactions = useTransactionStore((s) => s.transactions)
+  const voidTransaction = useTransactionStore((s) => s.voidTransaction)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
 
-  const totalOmzet = mockTransactions.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
-  const totalTrx = mockTransactions.filter(t => t.status === 'completed').length
+  const totalOmzet = transactions.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
+  const totalTrx = transactions.filter(t => t.status === 'completed').length
 
-  const filtered = mockTransactions.filter((t) => {
+  const filtered = transactions.filter((t) => {
     const q = search.toLowerCase()
     return !search || t.transaction_number.toLowerCase().includes(q) || (t.customer?.name ?? '').toLowerCase().includes(q)
   })
@@ -177,7 +179,11 @@ export default function PenjualanPage() {
                     <FileText size={14} /> Cetak Struk
                   </Button>
                   {selected.status === 'completed' && (
-                    <Button variant="destructive" className="flex-1" onClick={() => { toast.error('Fitur void memerlukan konfirmasi'); setSelected(null) }}>
+                    <Button variant="destructive" className="flex-1" onClick={() => {
+                      if (confirm('Void transaksi ini? Stok tidak dikembalikan otomatis.')) {
+                        voidTransaction(selected.id); toast.success('Transaksi berhasil di-void'); setSelected(null)
+                      }
+                    }}>
                       Void Transaksi
                     </Button>
                   )}

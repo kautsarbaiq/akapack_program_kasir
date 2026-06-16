@@ -30,12 +30,12 @@ function toUser(emp: Employee): User {
 
 // ─── Categories ───────────────────────
 export const mockCategories: Category[] = [
-  { id: 'cat-1', outlet_id: 'outlet-1', name: 'Pakaian', color: '#3B82F6', icon: 'Shirt', sort_order: 1, product_count: 12, is_active: true, created_at: '2024-01-01' },
-  { id: 'cat-2', outlet_id: 'outlet-1', name: 'Elektronik', color: '#8B5CF6', icon: 'Cpu', sort_order: 2, product_count: 8, is_active: true, created_at: '2024-01-01' },
-  { id: 'cat-3', outlet_id: 'outlet-1', name: 'Makanan', color: '#F59E0B', icon: 'UtensilsCrossed', sort_order: 3, product_count: 15, is_active: true, created_at: '2024-01-01' },
-  { id: 'cat-4', outlet_id: 'outlet-1', name: 'Minuman', color: '#10B981', icon: 'Coffee', sort_order: 4, product_count: 10, is_active: true, created_at: '2024-01-01' },
-  { id: 'cat-5', outlet_id: 'outlet-1', name: 'Aksesoris', color: '#EF4444', icon: 'Watch', sort_order: 5, product_count: 6, is_active: true, created_at: '2024-01-01' },
-  { id: 'cat-6', outlet_id: 'outlet-1', name: 'Alat Tulis', color: '#06B6D4', icon: 'PenLine', sort_order: 6, product_count: 9, is_active: true, created_at: '2024-01-01' },
+  { id: 'cat-1', outlet_id: 'outlet-1', name: 'Pakaian', color: '#3B82F6', icon: '👕', sort_order: 1, product_count: 12, is_active: true, created_at: '2024-01-01' },
+  { id: 'cat-2', outlet_id: 'outlet-1', name: 'Elektronik', color: '#8B5CF6', icon: '💻', sort_order: 2, product_count: 8, is_active: true, created_at: '2024-01-01' },
+  { id: 'cat-3', outlet_id: 'outlet-1', name: 'Makanan', color: '#F59E0B', icon: '🍜', sort_order: 3, product_count: 15, is_active: true, created_at: '2024-01-01' },
+  { id: 'cat-4', outlet_id: 'outlet-1', name: 'Minuman', color: '#10B981', icon: '☕', sort_order: 4, product_count: 10, is_active: true, created_at: '2024-01-01' },
+  { id: 'cat-5', outlet_id: 'outlet-1', name: 'Aksesoris', color: '#EF4444', icon: '⌚', sort_order: 5, product_count: 6, is_active: true, created_at: '2024-01-01' },
+  { id: 'cat-6', outlet_id: 'outlet-1', name: 'Alat Tulis', color: '#06B6D4', icon: '✏️', sort_order: 6, product_count: 9, is_active: true, created_at: '2024-01-01' },
 ]
 
 // ─── Products ─────────────────────────

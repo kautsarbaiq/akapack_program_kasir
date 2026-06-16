@@ -66,6 +66,21 @@ export function generateSKU(prefix: string = 'PRD'): string {
   return `${prefix}-${timestamp}-${random}`
 }
 
+export function generateId(prefix: string): string {
+  const timestamp = Date.now().toString(36)
+  const random = Math.random().toString(36).substring(2, 7)
+  return `${prefix}-${timestamp}${random}`
+}
+
+export function generateVoucherCode(length: number = 6): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = ''
+  for (let i = 0; i < length; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return code
+}
+
 export function generateTransactionNumber(): string {
   const now = new Date()
   const date = now.toISOString().slice(0, 10).replace(/-/g, '')

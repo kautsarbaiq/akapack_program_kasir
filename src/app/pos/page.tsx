@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CreditCard, Smartphone, ArrowLeftRight, CheckCircle2,
-  ShoppingCart, X, ChevronRight, Receipt
+  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,11 +12,17 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { mockProducts, mockCategories, mockCustomers } from '@/lib/mock-data'
-import { formatRupiah, calculateChange } from '@/lib/utils'
-import type { Product, Customer, PaymentMethod } from '@/types'
+import { ShiftModal } from '@/components/pos/shift-modal'
+import { CustomerSelector } from '@/components/pos/customer-selector'
+import { ReceiptModal } from '@/components/pos/receipt-modal'
+import { useProductStore } from '@/stores/use-product-store'
+import { useCategoryStore } from '@/stores/use-category-store'
+import { useCustomerStore } from '@/stores/use-customer-store'
+import { useTransactionStore } from '@/stores/use-transaction-store'
+import { useShiftStore } from '@/stores/use-shift-store'
+import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn } from '@/lib/utils'
+import type { Product, Customer, PaymentMethod, Transaction, TransactionItem } from '@/types'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
 
 interface CartItem {
   product_id: string
@@ -41,6 +47,14 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.Compon
 const QUICK_AMOUNTS = [50000, 100000, 200000, 500000]
 
 export default function POSPage() {
+  const products = useProductStore((s) => s.products)
+  const decrementStock = useProductStore((s) => s.decrementStock)
+  const categories = useCategoryStore((s) => s.categories)
+  const recordPurchase = useCustomerStore((s) => s.recordPurchase)
+  const addTransaction = useTransactionStore((s) => s.addTransaction)
+  const currentShift = useShiftStore((s) => s.currentShift)
+  const recordSale = useShiftStore((s) => s.recordSale)
+
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [cart, setCart] = useState<CartItem[]>([])
@@ -49,16 +63,21 @@ export default function POSPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [paidAmount, setPaidAmount] = useState(0)
   const [showPayment, setShowPayment] = useState(false)
-  const [showSuccess, setShowSuccess] = useState(false)
+
+  const [shiftOpenModal, setShiftOpenModal] = useState(false)
+  const [shiftCloseModal, setShiftCloseModal] = useState(false)
+  const [customerSheet, setCustomerSheet] = useState(false)
+  const [showReceipt, setShowReceipt] = useState(false)
+  const [receiptTxn, setReceiptTxn] = useState<Transaction | null>(null)
 
   const filteredProducts = useMemo(() => {
-    return mockProducts.filter((p) => {
+    return products.filter((p) => {
       if (!p.is_active) return false
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
       const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory
       return matchSearch && matchCat
     })
-  }, [search, selectedCategory])
+  }, [products, search, selectedCategory])
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
   const discountAmount = discount
@@ -70,6 +89,7 @@ export default function POSPage() {
     setCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id)
       if (existing) {
+        if (existing.quantity >= product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
         return prev.map((i) =>
           i.product_id === product.id
             ? { ...i, quantity: i.quantity + 1, subtotal: (i.quantity + 1) * i.price }
@@ -110,39 +130,81 @@ export default function POSPage() {
     setSelectedCustomer(null)
   }
 
-  const handleConfirm = () => {
-    setShowPayment(false)
-    setShowSuccess(true)
-    setTimeout(() => {
-      setShowSuccess(false)
-      clearCart()
-      toast.success('Transaksi berhasil! Struk telah digenerate.')
-    }, 2000)
-  }
-
   const handlePaymentOpen = () => {
     if (cart.length === 0) { toast.error('Keranjang masih kosong!'); return }
     if (paymentMethod === 'cash' && paidAmount === 0) setPaidAmount(total)
     setShowPayment(true)
   }
 
+  const handleConfirm = () => {
+    if (!currentShift) { toast.error('Shift belum dibuka'); return }
+    if (cart.length === 0) return
+    if (paymentMethod === 'cash' && paidAmount < total) {
+      toast.error('Jumlah bayar kurang dari total')
+      return
+    }
+
+    const now = new Date().toISOString()
+    const txnId = generateId('trx')
+    const items: TransactionItem[] = cart.map((c) => ({
+      id: generateId('item'),
+      transaction_id: txnId,
+      product_id: c.product_id,
+      product_name: c.product_name,
+      product_price: c.price,
+      quantity: c.quantity,
+      discount: c.discount,
+      subtotal: c.subtotal,
+    }))
+    const emp = currentShift.employee
+    const txn: Transaction = {
+      id: txnId,
+      outlet_id: 'outlet-1',
+      transaction_number: generateTransactionNumber(),
+      customer_id: selectedCustomer?.id,
+      customer: selectedCustomer ?? undefined,
+      cashier_id: emp?.id ?? 'emp-1',
+      cashier: emp
+        ? { id: emp.id, email: emp.email ?? '', full_name: emp.name, role: emp.role, is_active: emp.is_active, created_at: emp.created_at }
+        : undefined,
+      items,
+      subtotal,
+      discount_amount: discountAmount,
+      tax_amount: 0,
+      service_charge_amount: 0,
+      total,
+      paid_amount: paymentMethod === 'cash' ? paidAmount : total,
+      change_amount: paymentMethod === 'cash' ? change : 0,
+      payment_method: paymentMethod,
+      status: 'completed',
+      created_at: now,
+    }
+
+    addTransaction(txn)
+    cart.forEach((c) => decrementStock(c.product_id, c.quantity))
+    if (selectedCustomer) recordPurchase(selectedCustomer.id, total)
+    recordSale(total)
+
+    setShowPayment(false)
+    setReceiptTxn(txn)
+    setShowReceipt(true)
+    clearCart()
+  }
+
+  const categoryTabs = [{ id: 'all', name: 'Semua', icon: '🏪' }, ...categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? '📦' }))]
+
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="relative flex h-full overflow-hidden">
       {/* ── LEFT: Category Sidebar ── */}
       <div className="w-20 flex flex-col shrink-0 py-3 gap-1 overflow-y-auto"
         style={{ background: 'oklch(0.13 0.03 256)', borderRight: '1px solid oklch(0.22 0.04 256)' }}>
-        {[{ id: 'all', name: 'Semua', icon: '🏪' }, ...mockCategories.map(c => ({
-          id: c.id, name: c.name,
-          icon: c.name === 'Pakaian' ? '👕' : c.name === 'Elektronik' ? '💻' : c.name === 'Makanan' ? '🍜' : c.name === 'Minuman' ? '☕' : c.name === 'Aksesoris' ? '⌚' : '✏️'
-        }))].map((cat) => (
+        {categoryTabs.map((cat) => (
           <button
             key={cat.id}
             onClick={() => setSelectedCategory(cat.id)}
             className={cn(
               'flex flex-col items-center gap-1 py-3 mx-2 rounded-xl text-center transition-all duration-150',
-              selectedCategory === cat.id
-                ? 'text-white'
-                : 'opacity-60 hover:opacity-90'
+              selectedCategory === cat.id ? 'text-white' : 'opacity-60 hover:opacity-90'
             )}
             style={{ background: selectedCategory === cat.id ? 'oklch(0.55 0.22 264)' : undefined }}>
             <span className="text-xl">{cat.icon}</span>
@@ -155,7 +217,6 @@ export default function POSPage() {
 
       {/* ── MIDDLE: Product Grid ── */}
       <div className="flex-1 flex flex-col overflow-hidden bg-muted/30">
-        {/* Search */}
         <div className="p-3 shrink-0">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -168,7 +229,6 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Products */}
         <ScrollArea className="flex-1 px-3 pb-3">
           <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
             {filteredProducts.map((product) => {
@@ -181,21 +241,18 @@ export default function POSPage() {
                   disabled={isOutOfStock}
                   className={cn(
                     'relative flex flex-col bg-card rounded-xl border p-3 text-left transition-all duration-150 overflow-hidden',
-                    isOutOfStock
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:border-primary hover:shadow-md active:scale-95 cursor-pointer'
+                    isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:shadow-md active:scale-95 cursor-pointer'
                   )}>
                   {inCart && (
-                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                      style={{ background: 'oklch(0.55 0.22 264)' }}>
+                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-primary">
                       {inCart.quantity}
                     </div>
                   )}
                   <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 text-2xl">
-                    {product.category?.name === 'Pakaian' ? '👕' : product.category?.name === 'Elektronik' ? '💻' : product.category?.name === 'Makanan' ? '🍜' : product.category?.name === 'Minuman' ? '☕' : product.category?.name === 'Aksesoris' ? '⌚' : '📦'}
+                    {product.category?.icon ?? '📦'}
                   </div>
                   <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1 flex-1">{product.name}</p>
-                  <p className="text-sm font-bold" style={{ color: 'oklch(0.55 0.22 264)' }}>{formatRupiah(product.price)}</p>
+                  <p className="text-sm font-bold text-primary">{formatRupiah(product.price)}</p>
                   <p className="text-xs text-muted-foreground">Stok: {product.stock}</p>
                   {isOutOfStock && (
                     <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-xl">
@@ -216,9 +273,21 @@ export default function POSPage() {
 
       {/* ── RIGHT: Cart ── */}
       <div className="w-96 flex flex-col shrink-0 bg-card border-l">
+        {/* Shift bar */}
+        <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-medium">{currentShift?.employee?.name ?? 'Tidak ada shift'}</span>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => setShiftCloseModal(true)}>
+            Tutup Shift
+          </Button>
+        </div>
+
         {/* Customer */}
         <div className="p-4 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-          <button className="w-full flex items-center gap-2 py-2 px-3 rounded-lg bg-muted/60 hover:bg-muted transition-colors">
+          <button onClick={() => setCustomerSheet(true)}
+            className="w-full flex items-center gap-2 py-2 px-3 rounded-lg bg-muted/60 hover:bg-muted transition-colors">
             <User size={15} className="text-muted-foreground" />
             <span className="text-sm flex-1 text-left text-muted-foreground">
               {selectedCustomer ? selectedCustomer.name : 'Pelanggan Umum'}
@@ -253,8 +322,7 @@ export default function POSPage() {
                       </button>
                       <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
                       <button onClick={() => updateQty(item.product_id, 1)}
-                        className="w-6 h-6 rounded-md flex items-center justify-center text-white transition-colors"
-                        style={{ background: 'oklch(0.55 0.22 264)' }}>
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-white transition-colors bg-primary">
                         <Plus size={11} />
                       </button>
                     </div>
@@ -274,7 +342,6 @@ export default function POSPage() {
 
         {/* Summary & Payment */}
         <div className="p-4 space-y-4 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
-          {/* Discount */}
           <div className="flex items-center gap-2">
             <Tag size={14} className="text-muted-foreground" />
             <Input
@@ -286,7 +353,6 @@ export default function POSPage() {
             />
           </div>
 
-          {/* Summary */}
           <div className="space-y-1.5">
             <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatRupiah(subtotal)}</span></div>
             {discountAmount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon</span><span>-{formatRupiah(discountAmount)}</span></div>}
@@ -294,7 +360,6 @@ export default function POSPage() {
             <div className="flex justify-between font-bold"><span>Total</span><span className="text-lg">{formatRupiah(total)}</span></div>
           </div>
 
-          {/* Payment method */}
           <div className="grid grid-cols-3 gap-1.5">
             {PAYMENT_METHODS.map((m) => {
               const Icon = m.icon
@@ -304,11 +369,8 @@ export default function POSPage() {
                   onClick={() => setPaymentMethod(m.value)}
                   className={cn(
                     'flex flex-col items-center gap-1 py-2 rounded-lg border text-xs font-medium transition-all duration-150',
-                    paymentMethod === m.value
-                      ? 'text-white border-transparent'
-                      : 'hover:border-primary/50 text-muted-foreground'
-                  )}
-                  style={{ background: paymentMethod === m.value ? 'oklch(0.55 0.22 264)' : undefined }}>
+                    paymentMethod === m.value ? 'text-white border-transparent bg-primary' : 'hover:border-primary/50 text-muted-foreground'
+                  )}>
                   <Icon size={15} />
                   {m.label}
                 </button>
@@ -316,7 +378,6 @@ export default function POSPage() {
             })}
           </div>
 
-          {/* Cash input */}
           {paymentMethod === 'cash' && (
             <div className="space-y-2">
               <Input
@@ -344,13 +405,11 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Action buttons */}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" size="sm" className="h-10 text-sm" onClick={clearCart} disabled={cart.length === 0}>
               Batal
             </Button>
-            <Button size="sm" className="h-10 text-sm font-semibold gap-1.5"
-              style={{ background: 'oklch(0.55 0.18 160)' }}
+            <Button size="sm" className="h-10 text-sm font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={handlePaymentOpen}
               disabled={cart.length === 0}>
               <Receipt size={15} /> Bayar
@@ -383,7 +442,7 @@ export default function POSPage() {
               {discountAmount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon</span><span>-{formatRupiah(discountAmount)}</span></div>}
               <div className="flex justify-between font-bold text-lg"><span>TOTAL</span><span>{formatRupiah(total)}</span></div>
             </div>
-            <div className="rounded-xl p-4 space-y-1" style={{ background: 'oklch(0.55 0.22 264 / 0.08)', border: '1px solid oklch(0.55 0.22 264 / 0.2)' }}>
+            <div className="rounded-xl p-4 space-y-1 bg-primary/5 border border-primary/20">
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Metode Bayar</span><span className="font-semibold capitalize">{paymentMethod === 'cash' ? 'Tunai' : paymentMethod.toUpperCase()}</span></div>
               {paymentMethod === 'cash' && <>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dibayar</span><span className="font-semibold">{formatRupiah(paidAmount)}</span></div>
@@ -393,27 +452,36 @@ export default function POSPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => setShowPayment(false)}>Kembali</Button>
-            <Button className="flex-1 font-semibold gap-1.5" onClick={handleConfirm}
-              style={{ background: 'oklch(0.55 0.18 160)' }}>
+            <Button className="flex-1 font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={handleConfirm}>
               <CheckCircle2 size={16} /> Konfirmasi
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Success Animation ── */}
-      {showSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-card rounded-2xl p-10 flex flex-col items-center gap-4 shadow-2xl">
-            <div className="w-20 h-20 rounded-full flex items-center justify-center"
-              style={{ background: 'oklch(0.65 0.18 160 / 0.15)' }}>
-              <CheckCircle2 size={40} style={{ color: 'oklch(0.55 0.18 160)' }} />
+      {/* ── Shift not open overlay ── */}
+      {!currentShift && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+          <div className="text-center space-y-4 max-w-xs px-6">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+              <Lock size={28} className="text-primary" />
             </div>
-            <p className="text-xl font-bold">Transaksi Berhasil!</p>
-            <p className="text-muted-foreground text-sm">Struk sedang diproses...</p>
+            <div>
+              <h2 className="text-lg font-bold">Shift Belum Dibuka</h2>
+              <p className="text-sm text-muted-foreground">Buka shift kasir dulu untuk mulai bertransaksi.</p>
+            </div>
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5" onClick={() => setShiftOpenModal(true)}>
+              <PlayCircle size={16} /> Buka Shift
+            </Button>
           </div>
         </div>
       )}
+
+      {/* ── Modals ── */}
+      <ShiftModal open={shiftOpenModal} onOpenChange={setShiftOpenModal} mode="open" />
+      <ShiftModal open={shiftCloseModal} onOpenChange={setShiftCloseModal} mode="close" />
+      <CustomerSelector open={customerSheet} onOpenChange={setCustomerSheet} selectedId={selectedCustomer?.id ?? null} onSelect={setSelectedCustomer} />
+      <ReceiptModal open={showReceipt} onOpenChange={setShowReceipt} transaction={receiptTxn} />
     </div>
   )
 }

@@ -4,10 +4,11 @@ import { useState } from 'react'
 import { Plus, Pencil, ToggleLeft, ToggleRight, Shield, User, UserCheck } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { mockEmployees } from '@/lib/mock-data'
+import { useEmployeeStore } from '@/stores/use-employee-store'
+import { EmployeeFormDialog } from '@/components/dashboard/employee-form-dialog'
 import { getInitials, getAvatarColor } from '@/lib/utils'
+import type { Employee } from '@/types'
 import { toast } from 'sonner'
 
 const ROLE_LABELS: Record<string, string> = { owner: 'Pemilik', manager: 'Manager', cashier: 'Kasir' }
@@ -19,11 +20,14 @@ const ROLE_COLORS: Record<string, string> = {
 const ROLE_ICONS: Record<string, React.ComponentType<{ size?: number }>> = { owner: Shield, manager: UserCheck, cashier: User }
 
 export default function KaryawanPage() {
-  const [employees, setEmployees] = useState(mockEmployees)
+  const employees = useEmployeeStore((s) => s.employees)
+  const storeToggle = useEmployeeStore((s) => s.toggleActive)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Employee | null>(null)
 
   const toggleActive = (id: string) => {
-    setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, is_active: !e.is_active } : e))
     const emp = employees.find(e => e.id === id)
+    storeToggle(id)
     toast.success(`${emp?.name} ${emp?.is_active ? 'dinonaktifkan' : 'diaktifkan'}`)
   }
 
@@ -42,7 +46,8 @@ export default function KaryawanPage() {
           <h1 className="text-2xl font-bold">Manajemen Karyawan</h1>
           <p className="text-muted-foreground text-sm mt-1">Kelola tim dan hak akses karyawan</p>
         </div>
-        <Button size="sm" className="gap-1.5" style={{ background: 'oklch(0.55 0.22 264)' }}>
+        <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => { setEditTarget(null); setFormOpen(true) }}>
           <Plus size={15} /> Tambah Karyawan
         </Button>
       </div>
@@ -92,7 +97,8 @@ export default function KaryawanPage() {
                 {emp.phone && <p className="text-xs text-muted-foreground mt-2">{emp.phone}</p>}
                 {emp.pin && <p className="text-xs text-muted-foreground">PIN: ****</p>}
                 <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" className="flex-1 h-7 text-xs gap-1">
+                  <Button variant="outline" size="sm" className="flex-1 h-7 text-xs gap-1"
+                    onClick={() => { setEditTarget(emp); setFormOpen(true) }}>
                     <Pencil size={11} /> Edit
                   </Button>
                 </div>
@@ -103,7 +109,7 @@ export default function KaryawanPage() {
 
         {/* Add card */}
         <Card className="border-dashed cursor-pointer hover:border-primary hover:bg-primary/5 transition-all duration-200"
-          onClick={() => toast.info('Form tambah karyawan')}>
+          onClick={() => { setEditTarget(null); setFormOpen(true) }}>
           <CardContent className="p-5 flex flex-col items-center justify-center h-full min-h-[180px] gap-2">
             <div className="w-10 h-10 rounded-full border-2 border-dashed border-muted-foreground/50 flex items-center justify-center">
               <Plus size={20} className="text-muted-foreground" />
@@ -112,6 +118,8 @@ export default function KaryawanPage() {
           </CardContent>
         </Card>
       </div>
+
+      <EmployeeFormDialog open={formOpen} onOpenChange={setFormOpen} employee={editTarget} />
     </div>
   )
 }

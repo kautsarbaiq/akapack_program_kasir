@@ -9,22 +9,38 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
-import { mockCustomers } from '@/lib/mock-data'
+import { useCustomerStore } from '@/stores/use-customer-store'
+import { CustomerFormDialog } from '@/components/dashboard/customer-form-dialog'
 import { formatRupiah, formatDate, getInitials, getAvatarColor } from '@/lib/utils'
 import type { Customer } from '@/types'
+import { toast } from 'sonner'
 
 export default function PelangganPage() {
+  const customers = useCustomerStore((s) => s.customers)
+  const addPoints = useCustomerStore((s) => s.addPoints)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Customer | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Customer | null>(null)
 
-  const filtered = mockCustomers.filter((c) => {
+  const filtered = customers.filter((c) => {
     const q = search.toLowerCase()
     return !search || c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q) || (c.email ?? '').toLowerCase().includes(q)
   })
 
-  const totalCustomers = mockCustomers.length
-  const totalPoints = mockCustomers.reduce((s, c) => s + c.points, 0)
-  const avgSpend = Math.round(mockCustomers.reduce((s, c) => s + c.total_spent, 0) / mockCustomers.length)
+  const totalCustomers = customers.length
+  const totalPoints = customers.reduce((s, c) => s + c.points, 0)
+  const avgSpend = Math.round(customers.reduce((s, c) => s + c.total_spent, 0) / (customers.length || 1))
+
+  const handleAddPoints = (cust: Customer) => {
+    const input = window.prompt(`Tambah poin untuk ${cust.name}:`, '100')
+    if (input === null) return
+    const n = Number(input)
+    if (!Number.isFinite(n) || n <= 0) { toast.error('Jumlah poin tidak valid'); return }
+    addPoints(cust.id, n)
+    setSelected({ ...cust, points: cust.points + n })
+    toast.success(`+${n} poin untuk ${cust.name}`)
+  }
 
   return (
     <div className="space-y-6">
@@ -33,7 +49,8 @@ export default function PelangganPage() {
           <h1 className="text-2xl font-bold">Database Pelanggan</h1>
           <p className="text-muted-foreground text-sm mt-1">Kelola data dan loyalitas pelanggan Anda</p>
         </div>
-        <Button size="sm" className="gap-1.5" style={{ background: 'oklch(0.55 0.22 264)' }}>
+        <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => { setEditTarget(null); setFormOpen(true) }}>
           <Plus size={15} /> Tambah Pelanggan
         </Button>
       </div>
@@ -153,14 +170,22 @@ export default function PelangganPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1">Edit Data</Button>
-                  <Button className="flex-1" style={{ background: 'oklch(0.55 0.22 264)' }}>+ Tambah Poin</Button>
+                  <Button variant="outline" className="flex-1"
+                    onClick={() => { setEditTarget(selected); setFormOpen(true); setSelected(null) }}>
+                    Edit Data
+                  </Button>
+                  <Button className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={() => selected && handleAddPoints(selected)}>
+                    + Tambah Poin
+                  </Button>
                 </div>
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      <CustomerFormDialog open={formOpen} onOpenChange={setFormOpen} customer={editTarget} />
     </div>
   )
 }

@@ -2,11 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import {
-  Package, Plus, Search, Filter, LayoutGrid, List,
+  Package, Plus, Search, LayoutGrid, List,
   Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle,
-  Download, Upload, MoreHorizontal
+  Download, Upload
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +18,9 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle
 } from '@/components/ui/alert-dialog'
-import { mockProducts, mockCategories } from '@/lib/mock-data'
+import { useProductStore } from '@/stores/use-product-store'
+import { useCategoryStore } from '@/stores/use-category-store'
+import { ProductFormDialog } from '@/components/dashboard/product-form-dialog'
 import { formatRupiah, getStockStatus } from '@/lib/utils'
 import type { Product } from '@/types'
 import { toast } from 'sonner'
@@ -28,15 +30,21 @@ type FilterStatus = 'all' | 'active' | 'inactive'
 type FilterStock = 'all' | 'safe' | 'low' | 'out'
 
 export default function ProdukPage() {
+  const products = useProductStore((s) => s.products)
+  const removeProduct = useProductStore((s) => s.deleteProduct)
+  const categories = useCategoryStore((s) => s.categories)
+
   const [view, setView] = useState<ViewMode>('table')
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all')
   const [stockFilter, setStockFilter] = useState<FilterStock>('all')
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Product | null>(null)
 
   const filtered = useMemo(() => {
-    return mockProducts.filter((p) => {
+    return products.filter((p) => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
       const matchCategory = categoryFilter === 'all' || p.category_id === categoryFilter
       const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? p.is_active : !p.is_active)
@@ -44,17 +52,19 @@ export default function ProdukPage() {
       const matchStock = stockFilter === 'all' || stockFilter === stockStatus
       return matchSearch && matchCategory && matchStatus && matchStock
     })
-  }, [search, categoryFilter, statusFilter, stockFilter])
+  }, [products, search, categoryFilter, statusFilter, stockFilter])
 
   const stats = {
-    total: mockProducts.length,
-    active: mockProducts.filter(p => p.is_active).length,
-    low: mockProducts.filter(p => getStockStatus(p.stock, p.min_stock) === 'low').length,
-    out: mockProducts.filter(p => getStockStatus(p.stock, p.min_stock) === 'out').length,
+    total: products.length,
+    active: products.filter(p => p.is_active).length,
+    low: products.filter(p => getStockStatus(p.stock, p.min_stock) === 'low').length,
+    out: products.filter(p => getStockStatus(p.stock, p.min_stock) === 'out').length,
   }
 
   const handleDelete = () => {
-    toast.success(`Produk "${deleteTarget?.name}" berhasil dihapus`)
+    if (!deleteTarget) return
+    removeProduct(deleteTarget.id)
+    toast.success(`Produk "${deleteTarget.name}" berhasil dihapus`)
     setDeleteTarget(null)
   }
 
@@ -80,7 +90,8 @@ export default function ProdukPage() {
           <Button variant="outline" size="sm" className="gap-1.5 text-xs">
             <Download size={14} /> Export
           </Button>
-          <Button size="sm" className="gap-1.5" style={{ background: 'oklch(0.55 0.22 264)' }}>
+          <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => { setEditTarget(null); setFormOpen(true) }}>
             <Plus size={15} /> Tambah Produk
           </Button>
         </div>
@@ -115,7 +126,7 @@ export default function ProdukPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kategori</SelectItem>
-            {mockCategories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
@@ -192,7 +203,8 @@ export default function ProdukPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                            onClick={() => { setEditTarget(p); setFormOpen(true) }}>
                             <Pencil size={13} />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
@@ -220,7 +232,6 @@ export default function ProdukPage() {
       {view === 'grid' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {filtered.map((p) => {
-            const stockStatus = getStockStatus(p.stock, p.min_stock)
             return (
               <Card key={p.id} className="overflow-hidden group cursor-pointer hover:shadow-md transition-all duration-200">
                 <div className="aspect-square bg-muted flex items-center justify-center">
@@ -233,7 +244,7 @@ export default function ProdukPage() {
                   <div className="flex items-center justify-between">
                     <StockBadge stock={p.stock} minStock={p.min_stock} />
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-1 rounded hover:bg-muted"><Pencil size={12} /></button>
+                      <button className="p-1 rounded hover:bg-muted" onClick={() => { setEditTarget(p); setFormOpen(true) }}><Pencil size={12} /></button>
                       <button className="p-1 rounded hover:bg-muted text-destructive" onClick={() => setDeleteTarget(p)}><Trash2 size={12} /></button>
                     </div>
                   </div>
@@ -261,6 +272,8 @@ export default function ProdukPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ProductFormDialog open={formOpen} onOpenChange={setFormOpen} product={editTarget} />
     </div>
   )
 }
