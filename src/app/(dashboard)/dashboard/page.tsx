@@ -1,81 +1,108 @@
 'use client'
 
+import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, BarChart, Bar
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, ShoppingCart, Package,
-  Users, DollarSign, AlertTriangle, ArrowUpRight,
-  ArrowDownRight, Eye, Plus
+  Users, DollarSign, AlertTriangle, Eye, Plus,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import {
-  mockDashboardStats, mockSalesChart, mockTopProducts,
-  mockLowStockItems, mockTransactions
-} from '@/lib/mock-data'
+import { useTransactionStore } from '@/stores/use-transaction-store'
+import { useProductStore } from '@/stores/use-product-store'
+import { useCustomerStore } from '@/stores/use-customer-store'
+import { useSettingsStore } from '@/stores/use-settings-store'
 import { formatRupiah, formatNumber, formatDateTime } from '@/lib/utils'
 
 export default function DashboardPage() {
-  const stats = mockDashboardStats
+  const transactions = useTransactionStore((s) => s.transactions)
+  const products = useProductStore((s) => s.products)
+  const customers = useCustomerStore((s) => s.customers)
+  const storeName = useSettingsStore((s) => s.storeName)
+  const [period, setPeriod] = useState('30')
+
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Selamat Pagi' : now.getHours() < 17 ? 'Selamat Siang' : 'Selamat Sore'
 
+  const r = useMemo(() => {
+    const completed = transactions.filter((t) => t.status === 'completed')
+    const todayKey = new Date().toISOString().slice(0, 10)
+    const yd = new Date(); yd.setDate(yd.getDate() - 1)
+    const yKey = yd.toISOString().slice(0, 10)
+    const sumDay = (key: string) => {
+      const ts = completed.filter((t) => t.created_at.slice(0, 10) === key)
+      return {
+        rev: ts.reduce((s, t) => s + t.total, 0),
+        trx: ts.length,
+        items: ts.reduce((s, t) => s + t.items.reduce((a, i) => a + i.quantity, 0), 0),
+      }
+    }
+    const today = sumDay(todayKey)
+    const yest = sumDay(yKey)
+    const pct = (a: number, b: number) => (b > 0 ? Math.round(((a - b) / b) * 100) : 0)
+    const newCust = customers.filter((c) => (c.created_at || '').slice(0, 10) === todayKey).length
+
+    const days = Number(period)
+    const chart = Array.from({ length: days }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (days - 1 - i))
+      const k = d.toISOString().slice(0, 10)
+      return {
+        label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+        revenue: completed.filter((t) => t.created_at.slice(0, 10) === k).reduce((s, t) => s + t.total, 0),
+      }
+    })
+
+    const agg: Record<string, { name: string; sold: number; rev: number }> = {}
+    completed.forEach((t) => t.items.forEach((it) => {
+      if (!agg[it.product_id]) agg[it.product_id] = { name: it.product_name, sold: 0, rev: 0 }
+      agg[it.product_id].sold += it.quantity
+      agg[it.product_id].rev += it.subtotal
+    }))
+    const totalRev = Object.values(agg).reduce((s, p) => s + p.rev, 0)
+    const top = Object.values(agg)
+      .map((p) => ({ ...p, pct: totalRev > 0 ? Math.round((p.rev / totalRev) * 100) : 0 }))
+      .sort((a, b) => b.rev - a.rev)
+      .slice(0, 5)
+
+    const low = products
+      .filter((p) => p.is_active && p.stock <= p.min_stock)
+      .map((p) => ({ id: p.id, name: p.name, sku: p.sku, cat: p.category?.name ?? '-', stock: p.stock, min: p.min_stock, status: p.stock === 0 ? 'out' : 'low' }))
+      .sort((a, b) => a.stock - b.stock)
+      .slice(0, 6)
+
+    const recent = transactions.slice(0, 5)
+    return { today, revChange: pct(today.rev, yest.rev), trxChange: pct(today.trx, yest.trx), itemsChange: pct(today.items, yest.items), newCust, chart, top, low, recent }
+  }, [transactions, products, customers, period])
+
   const kpiCards = [
-    {
-      title: 'Omzet Hari Ini',
-      value: formatRupiah(stats.today_revenue),
-      change: stats.revenue_change,
-      icon: DollarSign,
-      iconBg: 'oklch(0.55 0.22 264 / 0.1)',
-      iconColor: 'oklch(0.55 0.22 264)',
-    },
-    {
-      title: 'Jumlah Transaksi',
-      value: formatNumber(stats.today_transactions),
-      change: stats.transactions_change,
-      icon: ShoppingCart,
-      iconBg: 'oklch(0.65 0.18 160 / 0.1)',
-      iconColor: 'oklch(0.55 0.18 160)',
-    },
-    {
-      title: 'Produk Terjual',
-      value: formatNumber(stats.today_items_sold),
-      change: stats.items_change,
-      icon: Package,
-      iconBg: 'oklch(0.75 0.18 85 / 0.1)',
-      iconColor: 'oklch(0.6 0.18 85)',
-    },
-    {
-      title: 'Pelanggan Baru',
-      value: formatNumber(stats.today_new_customers),
-      change: stats.customers_change,
-      icon: Users,
-      iconBg: 'oklch(0.65 0.2 310 / 0.1)',
-      iconColor: 'oklch(0.55 0.2 310)',
-    },
+    { title: 'Omzet Hari Ini', value: formatRupiah(r.today.rev), change: r.revChange, icon: DollarSign, iconBg: 'oklch(0.55 0.22 264 / 0.1)', iconColor: 'oklch(0.55 0.22 264)' },
+    { title: 'Jumlah Transaksi', value: formatNumber(r.today.trx), change: r.trxChange, icon: ShoppingCart, iconBg: 'oklch(0.65 0.18 160 / 0.1)', iconColor: 'oklch(0.55 0.18 160)' },
+    { title: 'Produk Terjual', value: formatNumber(r.today.items), change: r.itemsChange, icon: Package, iconBg: 'oklch(0.75 0.18 85 / 0.1)', iconColor: 'oklch(0.6 0.18 85)' },
+    { title: 'Pelanggan Baru', value: formatNumber(r.newCust), change: 0, icon: Users, iconBg: 'oklch(0.65 0.2 310 / 0.1)', iconColor: 'oklch(0.55 0.2 310)' },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Greeting */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{greeting}, Andi! 👋</h1>
+          <h1 className="text-2xl font-bold text-foreground">{greeting}! 👋</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — Toko AKAPACK
+            {now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — {storeName || 'AKAPACK'}
           </p>
         </div>
-        <Button size="sm" className="gap-2" style={{ background: 'oklch(0.55 0.22 264)' }}>
-          <ShoppingCart size={15} /> Buka POS Kasir
-        </Button>
+        <Link href="/pos">
+          <Button size="sm" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <ShoppingCart size={15} /> Buka POS Kasir
+          </Button>
+        </Link>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiCards.map((card) => {
           const Icon = card.icon
@@ -85,14 +112,15 @@ export default function DashboardPage() {
             <Card key={card.title} className="overflow-hidden">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: card.iconBg }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: card.iconBg }}>
                     <Icon size={20} style={{ color: card.iconColor }} />
                   </div>
-                  <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                    <TrendIcon size={12} />
-                    {Math.abs(card.change)}%
-                  </div>
+                  {card.change !== 0 && (
+                    <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                      <TrendIcon size={12} />
+                      {Math.abs(card.change)}%
+                    </div>
+                  )}
                 </div>
                 <p className="text-2xl font-bold text-foreground">{card.value}</p>
                 <p className="text-xs text-muted-foreground mt-1">{card.title}</p>
@@ -102,14 +130,13 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Chart */}
       <Card>
         <CardHeader className="flex-row items-start justify-between pb-4">
           <div>
             <CardTitle>Grafik Penjualan</CardTitle>
-            <CardDescription>Omzet dan jumlah transaksi per hari</CardDescription>
+            <CardDescription>Omzet harian (transaksi nyata)</CardDescription>
           </div>
-          <Tabs defaultValue="30">
+          <Tabs value={period} onValueChange={setPeriod}>
             <TabsList className="h-8">
               <TabsTrigger value="7" className="text-xs h-7 px-2.5">7 Hari</TabsTrigger>
               <TabsTrigger value="30" className="text-xs h-7 px-2.5">30 Hari</TabsTrigger>
@@ -119,7 +146,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={mockSalesChart} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+            <AreaChart data={r.chart} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="oklch(0.55 0.22 264)" stopOpacity={0.3} />
@@ -127,98 +154,85 @@ export default function DashboardPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.01 250)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'oklch(0.6 0.01 250)' }} axisLine={false} tickLine={false} interval={4} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'oklch(0.6 0.01 250)' }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(r.chart.length / 7))} />
               <YAxis tick={{ fontSize: 11, fill: 'oklch(0.6 0.01 250)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}jt`} />
-              <Tooltip
-                formatter={(val: unknown) => [formatRupiah(Number(val)), 'Omzet']}
-                contentStyle={{ borderRadius: '12px', border: '1px solid oklch(0.9 0.01 250)', fontSize: 12 }}
-              />
+              <Tooltip formatter={(val: unknown) => [formatRupiah(Number(val)), 'Omzet']} contentStyle={{ borderRadius: '12px', border: '1px solid oklch(0.9 0.01 250)', fontSize: 12 }} />
               <Area type="monotone" dataKey="revenue" stroke="oklch(0.55 0.22 264)" strokeWidth={2.5} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 5 }} />
             </AreaChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      {/* Bottom Grid */}
       <div className="grid lg:grid-cols-2 gap-4">
-        {/* Top Products */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">🏆 Produk Terlaris</CardTitle>
-              <Button variant="ghost" size="sm" className="text-xs gap-1">
-                <Eye size={13} /> Lihat Semua
-              </Button>
+              <Link href="/dashboard/penjualan/laporan"><Button variant="ghost" size="sm" className="text-xs gap-1"><Eye size={13} /> Lihat Semua</Button></Link>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {mockTopProducts.map((p, i) => (
-              <div key={p.product_id}>
+            {r.top.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">Belum ada penjualan</p>}
+            {r.top.map((p, i) => (
+              <div key={p.name + i}>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-muted-foreground w-5 shrink-0">#{i + 1}</span>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: `oklch(0.55 0.22 264 / ${0.15 - i * 0.02})` }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `oklch(0.55 0.22 264 / ${0.15 - i * 0.02})` }}>
                     <Package size={15} style={{ color: 'oklch(0.55 0.22 264)' }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{p.product_name}</p>
+                    <p className="text-sm font-medium truncate">{p.name}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${p.percentage}%`, background: 'oklch(0.55 0.22 264)' }} />
+                        <div className="h-full rounded-full" style={{ width: `${p.pct}%`, background: 'oklch(0.55 0.22 264)' }} />
                       </div>
-                      <span className="text-xs text-muted-foreground shrink-0">{p.total_sold} terjual</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{p.sold} terjual</span>
                     </div>
                   </div>
-                  <span className="text-sm font-semibold shrink-0">{formatRupiah(p.total_revenue)}</span>
+                  <span className="text-sm font-semibold shrink-0">{formatRupiah(p.rev)}</span>
                 </div>
-                {i < mockTopProducts.length - 1 && <Separator className="mt-3" />}
+                {i < r.top.length - 1 && <Separator className="mt-3" />}
               </div>
             ))}
           </CardContent>
         </Card>
 
-        {/* Low Stock Alert */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle size={16} className="text-amber-500" />
-                Perhatian Stok
-              </CardTitle>
-              <Button variant="ghost" size="sm" className="text-xs gap-1">
-                <Plus size={13} /> Tambah Stok
-              </Button>
+              <CardTitle className="text-base flex items-center gap-2"><AlertTriangle size={16} className="text-amber-500" /> Perhatian Stok</CardTitle>
+              <Link href="/dashboard/inventori"><Button variant="ghost" size="sm" className="text-xs gap-1"><Plus size={13} /> Tambah Stok</Button></Link>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {mockLowStockItems.map((item, i) => (
-              <div key={item.product_id}>
+            {r.low.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">Semua stok aman 👍</p>}
+            {r.low.map((item, i) => (
+              <div key={item.id}>
                 <div className="flex items-center gap-3">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${item.status === 'out' ? 'bg-destructive' : 'bg-amber-500'}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.product_name}</p>
-                    <p className="text-xs text-muted-foreground">{item.sku} · {item.category_name}</p>
+                    <p className="text-sm font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.sku} · {item.cat}</p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className={`text-sm font-bold ${item.status === 'out' ? 'text-destructive' : 'text-amber-500'}`}>
-                      {item.current_stock} {item.status === 'out' ? 'HABIS' : 'sisa'}
+                      {item.stock} {item.status === 'out' ? 'HABIS' : 'sisa'}
                     </p>
-                    <p className="text-xs text-muted-foreground">Min: {item.min_stock}</p>
+                    <p className="text-xs text-muted-foreground">Min: {item.min}</p>
                   </div>
                 </div>
-                {i < mockLowStockItems.length - 1 && <Separator className="mt-3" />}
+                {i < r.low.length - 1 && <Separator className="mt-3" />}
               </div>
             ))}
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent Transactions */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Transaksi Terbaru</CardTitle>
-            <Button variant="ghost" size="sm" className="text-xs">Lihat Semua</Button>
+            <Link href="/dashboard/penjualan"><Button variant="ghost" size="sm" className="text-xs">Lihat Semua</Button></Link>
           </div>
         </CardHeader>
         <CardContent>
@@ -232,19 +246,19 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {mockTransactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-muted/50 transition-colors"
-                    style={{ borderBottom: '1px solid var(--border)' }}>
+                {r.recent.length === 0 && (
+                  <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">Belum ada transaksi</td></tr>
+                )}
+                {r.recent.map((t) => (
+                  <tr key={t.id} className="hover:bg-muted/50 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
                     <td className="py-3 px-3 font-mono text-xs font-medium">{t.transaction_number}</td>
                     <td className="py-3 px-3 text-sm">{t.customer?.name ?? 'Pelanggan Umum'}</td>
                     <td className="py-3 px-3 font-semibold">{formatRupiah(t.total)}</td>
-                    <td className="py-3 px-3">
-                      <Badge variant="secondary" className="text-xs capitalize">{t.payment_method}</Badge>
-                    </td>
+                    <td className="py-3 px-3"><Badge variant="secondary" className="text-xs capitalize">{t.payment_method}</Badge></td>
                     <td className="py-3 px-3 text-xs text-muted-foreground">{formatDateTime(t.created_at)}</td>
                     <td className="py-3 px-3">
-                      <Badge variant="outline" className={`text-xs ${t.status === 'completed' ? 'border-emerald-500 text-emerald-600' : 'border-destructive text-destructive'}`}>
-                        {t.status === 'completed' ? 'Selesai' : t.status === 'void' ? 'Void' : 'Refund'}
+                      <Badge variant="outline" className={`text-xs ${t.status === 'completed' ? 'border-emerald-500 text-emerald-600' : t.status === 'pending' ? 'border-amber-400 text-amber-600' : 'border-destructive text-destructive'}`}>
+                        {t.status === 'completed' ? 'Selesai' : t.status === 'pending' ? 'Pending' : t.status === 'void' ? 'Void' : 'Refund'}
                       </Badge>
                     </td>
                   </tr>
