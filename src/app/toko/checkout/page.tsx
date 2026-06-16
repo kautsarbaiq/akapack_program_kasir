@@ -1,0 +1,177 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { CheckCircle2, ArrowLeft, Loader2, ShoppingBag } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useStoreCart } from '@/stores/use-store-cart'
+import { useCustomerStore } from '@/stores/use-customer-store'
+import { useTransactionStore } from '@/stores/use-transaction-store'
+import { useProductStore } from '@/stores/use-product-store'
+import { useVariantStore } from '@/stores/use-variant-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { formatRupiah, generateId, generateTransactionNumber, cn } from '@/lib/utils'
+import type { Transaction, TransactionItem, PaymentMethod } from '@/types'
+import { toast } from 'sonner'
+
+export default function CheckoutPage() {
+  const items = useStoreCart((s) => s.items)
+  const clear = useStoreCart((s) => s.clear)
+  const addCustomer = useCustomerStore((s) => s.addCustomer)
+  const addTransaction = useTransactionStore((s) => s.addTransaction)
+  const products = useProductStore((s) => s.products)
+  const decrementStock = useProductStore((s) => s.decrementStock)
+  const variants = useVariantStore((s) => s.variants)
+  const decrementVariantStock = useVariantStore((s) => s.decrementVariantStock)
+  const addMovement = useStockMovementStore((s) => s.addMovement)
+
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [method, setMethod] = useState<'transfer' | 'cod'>('transfer')
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState<Transaction | null>(null)
+
+  const total = items.reduce((s, i) => s + i.price * i.quantity, 0)
+
+  const submit = async () => {
+    if (!name.trim() || !phone.trim()) { toast.error('Nama & No. HP wajib diisi'); return }
+    if (items.length === 0) return
+    setSubmitting(true)
+    await new Promise((r) => setTimeout(r, 500))
+
+    const customer = addCustomer({ name: name.trim(), phone: phone.trim(), email: '', address: address.trim(), points: 0 })
+    const txnId = generateId('trx')
+    const txnItems: TransactionItem[] = items.map((i) => ({
+      id: generateId('item'),
+      transaction_id: txnId,
+      product_id: i.product_id,
+      product_name: i.name,
+      product_price: i.price,
+      quantity: i.quantity,
+      discount: 0,
+      subtotal: i.price * i.quantity,
+    }))
+    const pm: PaymentMethod = method === 'cod' ? 'cash' : 'transfer'
+    const txn: Transaction = {
+      id: txnId,
+      outlet_id: 'outlet-1',
+      transaction_number: generateTransactionNumber(),
+      customer_id: customer.id,
+      customer,
+      cashier_id: '',
+      items: txnItems,
+      subtotal: total,
+      discount_amount: 0,
+      tax_amount: 0,
+      service_charge_amount: 0,
+      total,
+      paid_amount: method === 'cod' ? 0 : total,
+      change_amount: 0,
+      payment_method: pm,
+      notes: `Pesanan Online ${method === 'cod' ? '(COD)' : '(Transfer)'}`,
+      status: 'completed',
+      created_at: new Date().toISOString(),
+    }
+    addTransaction(txn)
+    items.forEach((i) => {
+      if (i.variant_id) {
+        const v = variants.find((x) => x.id === i.variant_id)
+        const before = v?.stock ?? 0
+        const after = Math.max(0, before - i.quantity)
+        decrementVariantStock(i.variant_id, i.quantity)
+        addMovement({ product_id: i.product_id, type: 'out', quantity: -i.quantity, before_stock: before, after_stock: after, notes: `Online (${i.name})`, reference_id: txnId, created_by_name: 'Online Store' })
+      } else {
+        const prod = products.find((p) => p.id === i.product_id)
+        const before = prod?.stock ?? 0
+        const after = Math.max(0, before - i.quantity)
+        decrementStock(i.product_id, i.quantity)
+        addMovement({ product_id: i.product_id, type: 'out', quantity: -i.quantity, before_stock: before, after_stock: after, notes: 'Pesanan Online', reference_id: txnId, created_by_name: 'Online Store' })
+      }
+    })
+    clear()
+    setSuccess(txn)
+    setSubmitting(false)
+  }
+
+  if (success) {
+    return (
+      <div className="max-w-md mx-auto text-center space-y-4 py-10">
+        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+          <CheckCircle2 size={34} className="text-emerald-600" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold">Pesanan Diterima!</h1>
+          <p className="text-sm text-muted-foreground">No. Pesanan <span className="font-mono">{success.transaction_number}</span></p>
+        </div>
+        <div className="rounded-xl border bg-background p-4 text-sm space-y-1 text-left">
+          <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold">{formatRupiah(success.total)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Pembayaran</span><span>{method === 'cod' ? 'COD (bayar di tempat)' : 'Transfer Bank'}</span></div>
+          {method === 'transfer' && <p className="text-xs text-muted-foreground pt-2">Silakan transfer ke rekening toko, lalu konfirmasi via WhatsApp. (info rekening menyusul di pengaturan toko)</p>}
+          {method === 'cod' && <p className="text-xs text-muted-foreground pt-2">Bayar saat barang tiba. Tim kami akan menghubungi Anda.</p>}
+        </div>
+        <Link href="/toko"><Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">Belanja Lagi</Button></Link>
+      </div>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="text-center py-16 space-y-3">
+        <ShoppingBag size={40} className="mx-auto text-muted-foreground" />
+        <p className="text-muted-foreground">Keranjang masih kosong</p>
+        <Link href="/toko" className="text-primary text-sm">← Mulai belanja</Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-5">
+      <Link href="/toko" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={15} /> Lanjut belanja</Link>
+      <h1 className="text-2xl font-bold">Checkout</h1>
+
+      <div className="grid md:grid-cols-2 gap-5">
+        {/* Form */}
+        <div className="space-y-4">
+          <div className="space-y-2"><Label>Nama Penerima *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama lengkap" className="bg-background" /></div>
+          <div className="space-y-2"><Label>No. WhatsApp *</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08xxxxxxxxxx" className="bg-background" /></div>
+          <div className="space-y-2">
+            <Label>Alamat Pengiriman</Label>
+            <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Alamat lengkap (kosongkan jika ambil di toko)"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[70px] resize-none focus:outline-none focus:ring-2 focus:ring-ring" />
+          </div>
+          <div className="space-y-2">
+            <Label>Metode Pembayaran</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {([['transfer', 'Transfer Bank'], ['cod', 'COD / Bayar di Tempat']] as const).map(([val, label]) => (
+                <button key={val} type="button" onClick={() => setMethod(val)}
+                  className={cn('py-2.5 rounded-lg border text-sm font-medium', method === val ? 'border-primary bg-primary/5 text-primary' : 'bg-background')}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Ringkasan */}
+        <div className="space-y-3">
+          <div className="rounded-xl border bg-background p-4 space-y-2">
+            <p className="font-semibold text-sm">Ringkasan Pesanan</p>
+            {items.map((i) => (
+              <div key={i.key} className="flex justify-between text-sm">
+                <span className="text-muted-foreground truncate pr-2">{i.name} × {i.quantity}</span>
+                <span>{formatRupiah(i.price * i.quantity)}</span>
+              </div>
+            ))}
+            <div className="border-t pt-2 flex justify-between font-bold"><span>Total</span><span className="text-lg">{formatRupiah(total)}</span></div>
+          </div>
+          <Button className="w-full h-11 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5" onClick={submit} disabled={submitting}>
+            {submitting && <Loader2 size={16} className="animate-spin" />} Buat Pesanan
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -86,8 +86,10 @@ export interface Product {
   barcode?: string
   description?: string
   image_url?: string
-  price: number       // harga jual
+  price: number       // harga jual (toko/POS)
   cost_price: number  // HPP (harga pokok penjualan)
+  price_market?: number  // harga pasar/coret (opsional)
+  price_online?: number  // harga jual di online store (opsional)
   stock: number       // stok saat ini (dalam satuan dasar)
   min_stock: number   // threshold minimum (untuk alert)
   unit: string        // satuan dasar: pcs, kg, gram, dll
