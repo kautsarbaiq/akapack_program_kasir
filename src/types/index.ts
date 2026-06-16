@@ -62,6 +62,20 @@ export interface PriceTier {
   price: number
 }
 
+/** Varian produk (mis. model mesin / ukuran) — punya harga & stok sendiri */
+export interface ProductVariant {
+  id: string
+  product_id: string
+  name: string
+  sku?: string
+  barcode?: string
+  price: number
+  cost_price: number
+  stock: number
+  is_active: boolean
+  created_at: string
+}
+
 export interface Product {
   id: string
   outlet_id: string

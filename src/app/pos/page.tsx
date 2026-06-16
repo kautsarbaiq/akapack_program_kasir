@@ -26,12 +26,15 @@ import { usePromotionStore } from '@/stores/use-promotion-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useHeldOrderStore } from '@/stores/use-held-order-store'
+import { useVariantStore } from '@/stores/use-variant-store'
 import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn } from '@/lib/utils'
-import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, Promotion } from '@/types'
+import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, Promotion, ProductVariant } from '@/types'
 import { toast } from 'sonner'
 
 interface CartItem {
+  key: string            // unik per baris: variant_id atau product_id
   product_id: string
+  variant_id?: string
   product_name: string
   sku: string
   price: number
@@ -83,6 +86,8 @@ export default function POSPage() {
   const holdOrder = useHeldOrderStore((s) => s.hold)
   const recallOrder = useHeldOrderStore((s) => s.recall)
   const removeHeld = useHeldOrderStore((s) => s.remove)
+  const variants = useVariantStore((s) => s.variants)
+  const decrementVariantStock = useVariantStore((s) => s.decrementVariantStock)
 
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
@@ -103,6 +108,7 @@ export default function POSPage() {
   const [shiftCloseModal, setShiftCloseModal] = useState(false)
   const [customerSheet, setCustomerSheet] = useState(false)
   const [showHeld, setShowHeld] = useState(false)
+  const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptTxn, setReceiptTxn] = useState<Transaction | null>(null)
 
@@ -132,21 +138,28 @@ export default function POSPage() {
   const total = base + taxAmount + serviceAmount
   const change = calculateChange(total, paidAmount)
 
+  const productVariants = (productId: string) => variants.filter((v) => v.product_id === productId)
+
+  const handleProductClick = (product: Product) => {
+    if (product.has_variants && productVariants(product.id).length > 0) {
+      setPickerProduct(product)
+      return
+    }
+    addToCart(product)
+  }
+
   const addToCart = useCallback((product: Product) => {
     if (product.stock === 0) { toast.error('Stok produk habis!'); return }
     setCart((prev) => {
-      const existing = prev.find((i) => i.product_id === product.id)
+      const existing = prev.find((i) => i.key === product.id)
       if (existing) {
         if (existing.quantity * (existing.factor || 1) >= product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
         const q = existing.quantity + 1
         const pr = linePriceFor(product, existing.unit, q)
-        return prev.map((i) =>
-          i.product_id === product.id
-            ? { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) }
-            : i
-        )
+        return prev.map((i) => (i.key === product.id ? { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) } : i))
       }
       return [...prev, {
+        key: product.id,
         product_id: product.id,
         product_name: product.name,
         sku: product.sku,
@@ -160,38 +173,66 @@ export default function POSPage() {
     })
   }, [])
 
-  const updateQty = (productId: string, delta: number) => {
-    const product = products.find((p) => p.id === productId)
+  const addVariantToCart = (product: Product, variant: ProductVariant) => {
+    setPickerProduct(null)
+    setCart((prev) => {
+      const existing = prev.find((i) => i.key === variant.id)
+      if (existing) {
+        if (existing.quantity >= variant.stock) { toast.error(`Stok ${variant.name} hanya ${variant.stock}`); return prev }
+        const q = existing.quantity + 1
+        return prev.map((i) => (i.key === variant.id ? { ...i, quantity: q, subtotal: Math.max(0, q * i.price - i.discount) } : i))
+      }
+      return [...prev, {
+        key: variant.id,
+        product_id: product.id,
+        variant_id: variant.id,
+        product_name: `${product.name} — ${variant.name}`,
+        sku: variant.sku ?? product.sku,
+        price: variant.price,
+        quantity: 1,
+        discount: 0,
+        subtotal: variant.price,
+        unit: product.unit,
+        factor: 1,
+      }]
+    })
+  }
+
+  const updateQty = (key: string, delta: number) => {
     setCart((prev) => {
       return prev
         .map((i) => {
-          if (i.product_id !== productId) return i
+          if (i.key !== key) return i
           const q = i.quantity + delta
-          const pr = product ? linePriceFor(product, i.unit, q) : i.price
+          let pr = i.price
+          if (!i.variant_id) {
+            const product = products.find((p) => p.id === i.product_id)
+            if (product) pr = linePriceFor(product, i.unit, q)
+          }
           return { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) }
         })
         .filter((i) => i.quantity > 0)
     })
   }
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((i) => i.product_id !== productId))
+  const removeFromCart = (key: string) => {
+    setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
-  const setItemDiscount = (productId: string, value: number) => {
+  const setItemDiscount = (key: string, value: number) => {
     setCart((prev) => prev.map((i) => {
-      if (i.product_id !== productId) return i
+      if (i.key !== key) return i
       const max = i.price * i.quantity
       const d = Math.max(0, Math.min(Number.isFinite(value) ? value : 0, max))
       return { ...i, discount: d, subtotal: max - d }
     }))
   }
 
-  const setItemUnit = (productId: string, unitName: string) => {
-    const product = products.find((p) => p.id === productId)
-    if (!product) return
+  const setItemUnit = (key: string, unitName: string) => {
     setCart((prev) => prev.map((i) => {
-      if (i.product_id !== productId) return i
+      if (i.key !== key) return i
+      const product = products.find((p) => p.id === i.product_id)
+      if (!product) return i
       const factor = unitName === product.unit ? 1 : (product.units?.find((x) => x.name === unitName)?.factor ?? 1)
       const price = linePriceFor(product, unitName, i.quantity)
       return { ...i, unit: unitName, factor, price, discount: 0, subtotal: i.quantity * price }
@@ -314,6 +355,23 @@ export default function POSPage() {
 
     addTransaction(txn)
     cart.forEach((c) => {
+      if (c.variant_id) {
+        const v = variants.find((x) => x.id === c.variant_id)
+        const before = v?.stock ?? 0
+        const after = Math.max(0, before - c.quantity)
+        decrementVariantStock(c.variant_id, c.quantity)
+        addMovement({
+          product_id: c.product_id,
+          type: 'out',
+          quantity: -c.quantity,
+          before_stock: before,
+          after_stock: after,
+          notes: `Penjualan POS (${c.product_name})`,
+          reference_id: txnId,
+          created_by_name: emp?.name,
+        })
+        return
+      }
       const qtyBase = c.quantity * c.factor
       const prod = products.find((p) => p.id === c.product_id)
       const before = prod?.stock ?? 0
@@ -382,28 +440,35 @@ export default function POSPage() {
         <ScrollArea className="flex-1 px-3 pb-3">
           <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
             {filteredProducts.map((product) => {
-              const isOutOfStock = product.stock === 0
-              const inCart = cart.find((i) => i.product_id === product.id)
+              const vlist = product.has_variants ? productVariants(product.id) : []
+              const hasVar = vlist.length > 0
+              const effectiveStock = hasVar ? vlist.reduce((s, v) => s + v.stock, 0) : product.stock
+              const isOutOfStock = effectiveStock === 0
+              const inCartQty = cart.filter((i) => i.product_id === product.id).reduce((s, i) => s + i.quantity, 0)
+              const minVarPrice = hasVar ? Math.min(...vlist.map((v) => v.price)) : product.price
               return (
                 <button
                   key={product.id}
-                  onClick={() => addToCart(product)}
+                  onClick={() => handleProductClick(product)}
                   disabled={isOutOfStock}
                   className={cn(
                     'relative flex flex-col bg-card rounded-xl border p-3 text-left transition-all duration-150 overflow-hidden',
                     isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:shadow-md active:scale-95 cursor-pointer'
                   )}>
-                  {inCart && (
+                  {inCartQty > 0 && (
                     <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-primary">
-                      {inCart.quantity}
+                      {inCartQty}
                     </div>
+                  )}
+                  {hasVar && (
+                    <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-700">VARIAN</div>
                   )}
                   <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 text-2xl">
                     {product.category?.icon ?? '📦'}
                   </div>
                   <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1 flex-1">{product.name}</p>
-                  <p className="text-sm font-bold text-primary">{formatRupiah(product.price)}</p>
-                  <p className="text-xs text-muted-foreground">Stok: {product.stock}</p>
+                  <p className="text-sm font-bold text-primary">{hasVar ? `dari ${formatRupiah(minVarPrice)}` : formatRupiah(product.price)}</p>
+                  <p className="text-xs text-muted-foreground">{hasVar ? `${vlist.length} varian` : `Stok: ${product.stock}`}</p>
                   {isOutOfStock && (
                     <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-xl">
                       <span className="text-xs font-bold text-destructive">HABIS</span>
@@ -469,27 +534,27 @@ export default function POSPage() {
               {cart.map((item) => {
                 const prod = products.find((p) => p.id === item.product_id)
                 return (
-                <div key={item.product_id} className="flex items-start gap-2">
+                <div key={item.key} className="flex items-start gap-2">
                   <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 text-sm">📦</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.product_name}</p>
                     <p className="text-xs text-muted-foreground">{formatRupiah(item.price)} / {item.unit}</p>
-                    {prod && prod.units && prod.units.length > 0 && (
+                    {!item.variant_id && prod && prod.units && prod.units.length > 0 && (
                       <select
                         value={item.unit}
-                        onChange={(e) => setItemUnit(item.product_id, e.target.value)}
+                        onChange={(e) => setItemUnit(item.key, e.target.value)}
                         className="mt-1 h-6 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
                         <option value={prod.unit}>{prod.unit} (dasar)</option>
                         {prod.units.map((u) => <option key={u.name} value={u.name}>{u.name} (isi {u.factor})</option>)}
                       </select>
                     )}
                     <div className="flex items-center gap-2 mt-1.5">
-                      <button onClick={() => updateQty(item.product_id, -1)}
+                      <button onClick={() => updateQty(item.key, -1)}
                         className="w-6 h-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors">
                         <Minus size={11} />
                       </button>
                       <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
-                      <button onClick={() => updateQty(item.product_id, 1)}
+                      <button onClick={() => updateQty(item.key, 1)}
                         className="w-6 h-6 rounded-md flex items-center justify-center text-white transition-colors bg-primary">
                         <Plus size={11} />
                       </button>
@@ -500,14 +565,14 @@ export default function POSPage() {
                         type="number"
                         value={item.discount || ''}
                         placeholder="0"
-                        onChange={(e) => setItemDiscount(item.product_id, Number(e.target.value))}
+                        onChange={(e) => setItemDiscount(item.key, Number(e.target.value))}
                         className="w-20 h-6 rounded border border-input bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold">{formatRupiah(item.subtotal)}</p>
-                    <button onClick={() => removeFromCart(item.product_id)}
+                    <button onClick={() => removeFromCart(item.key)}
                       className="mt-1 p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive transition-colors">
                       <Trash2 size={12} />
                     </button>
@@ -738,6 +803,27 @@ export default function POSPage() {
       <ShiftModal open={shiftCloseModal} onOpenChange={setShiftCloseModal} mode="close" />
       <CustomerSelector open={customerSheet} onOpenChange={setCustomerSheet} selectedId={selectedCustomer?.id ?? null} onSelect={setSelectedCustomer} />
       <ReceiptModal open={showReceipt} onOpenChange={setShowReceipt} transaction={receiptTxn} />
+
+      <Dialog open={!!pickerProduct} onOpenChange={(o) => { if (!o) setPickerProduct(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Tag size={18} /> Pilih Varian — {pickerProduct?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            {pickerProduct && productVariants(pickerProduct.id).map((v) => (
+              <button key={v.id} disabled={v.stock === 0}
+                onClick={() => addVariantToCart(pickerProduct, v)}
+                className={cn('w-full flex items-center justify-between gap-2 p-3 rounded-lg border text-left transition-colors', v.stock === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5')}>
+                <div>
+                  <p className="text-sm font-medium">{v.name}</p>
+                  <p className="text-xs text-muted-foreground">Stok: {v.stock}</p>
+                </div>
+                <span className="text-sm font-bold text-primary">{formatRupiah(v.price)}</span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={showHeld} onOpenChange={setShowHeld}>
         <SheetContent className="overflow-y-auto">

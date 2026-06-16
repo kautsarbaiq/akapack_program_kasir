@@ -3,7 +3,9 @@ import type { Customer } from '@/types'
 import { generateId } from '@/lib/utils'
 
 export interface HeldCartItem {
+  key: string
   product_id: string
+  variant_id?: string
   product_name: string
   sku: string
   price: number

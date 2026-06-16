@@ -10,6 +10,7 @@ import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useVariantStore } from '@/stores/use-variant-store'
 
 /**
  * Memuat data dari Supabase sekali saat aplikasi (area login) mount.
@@ -27,6 +28,7 @@ export function DataBootstrap() {
         useEmployeeStore.getState().fetch(),
         usePromotionStore.getState().fetch(),
         useSettingsStore.getState().fetch(),
+        useVariantStore.getState().fetch(),
       ])
       // transaksi, shift, pergerakan stok — butuh master data untuk resolusi
       await Promise.all([

@@ -19,11 +19,14 @@ import {
 } from '@/components/ui/select'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useProductStore } from '@/stores/use-product-store'
+import { useVariantStore } from '@/stores/use-variant-store'
 import { generateSKU, formatRupiah } from '@/lib/utils'
 import { productSchema, type ProductFormValues } from '@/lib/validations'
 import type { Product, ProductUnit, PriceTier } from '@/types'
 
 const UNITS = ['pcs', 'buah', 'unit', 'kg', 'gram', 'liter', 'ml', 'lusin', 'karton', 'box', 'pack', 'roll', 'meter', 'lembar']
+
+type VariantRow = { id?: string; name: string; price: number; cost_price: number; stock: number }
 
 interface Props {
   open: boolean
@@ -37,6 +40,10 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const categories = useCategoryStore((s) => s.categories)
   const addProduct = useProductStore((s) => s.addProduct)
   const updateProduct = useProductStore((s) => s.updateProduct)
+  const setHasVariants = useProductStore((s) => s.setHasVariants)
+  const addVariant = useVariantStore((s) => s.addVariant)
+  const updateVariant = useVariantStore((s) => s.updateVariant)
+  const deleteVariant = useVariantStore((s) => s.deleteVariant)
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
@@ -56,6 +63,8 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const margin = price > 0 ? Math.round(((price - costPrice) / price) * 100) : 0
   const [units, setUnits] = useState<ProductUnit[]>([])
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
+  const [hasVariants, setHasVariantsLocal] = useState(false)
+  const [variantRows, setVariantRows] = useState<VariantRow[]>([])
 
   useEffect(() => {
     if (open) {
@@ -81,6 +90,9 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
       }
       setUnits(product?.units ?? [])
       setPriceTiers(product?.price_tiers ?? [])
+      const existingVars = product ? useVariantStore.getState().byProduct(product.id) : []
+      setVariantRows(existingVars.map((v) => ({ id: v.id, name: v.name, price: v.price, cost_price: v.cost_price, stock: v.stock })))
+      setHasVariantsLocal(product?.has_variants ?? existingVars.length > 0)
     }
   }, [open, product, reset])
 
@@ -88,13 +100,27 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
     await new Promise((r) => setTimeout(r, 400))
     const cleanUnits = units.filter((u) => u.name.trim() && u.factor > 0)
     const cleanTiers = priceTiers.filter((t) => t.min_qty > 0 && t.price > 0)
+
+    let productId: string
     if (isEdit && product) {
+      productId = product.id
       updateProduct(product.id, data, cleanUnits, cleanTiers)
-      toast.success(`Produk "${data.name}" berhasil diperbarui`)
     } else {
-      addProduct(data, cleanUnits, cleanTiers)
-      toast.success(`Produk "${data.name}" berhasil ditambahkan`)
+      productId = addProduct(data, cleanUnits, cleanTiers).id
     }
+
+    // Persist varian (diff: hapus yang dibuang, update yang ada, tambah yang baru)
+    const cleanRows = hasVariants ? variantRows.filter((r) => r.name.trim()) : []
+    const original = useVariantStore.getState().byProduct(productId)
+    original.forEach((o) => { if (!cleanRows.some((r) => r.id === o.id)) deleteVariant(o.id) })
+    cleanRows.forEach((r) => {
+      const vdata = { name: r.name, price: r.price, cost_price: r.cost_price, stock: r.stock }
+      if (r.id) updateVariant(r.id, vdata)
+      else addVariant(productId, vdata)
+    })
+    setHasVariants(productId, cleanRows.length > 0)
+
+    toast.success(isEdit ? `Produk "${data.name}" berhasil diperbarui` : `Produk "${data.name}" berhasil ditambahkan`)
     onOpenChange(false)
     onSuccess?.()
   }
@@ -120,6 +146,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
             <TabsList className="w-full">
               <TabsTrigger value="info" className="flex-1">Info Dasar</TabsTrigger>
               <TabsTrigger value="harga" className="flex-1">Harga & Stok</TabsTrigger>
+              <TabsTrigger value="varian" className="flex-1">Varian</TabsTrigger>
               <TabsTrigger value="foto" className="flex-1">Foto</TabsTrigger>
             </TabsList>
 
@@ -322,6 +349,47 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
                 </div>
                 <Button type="button" variant="outline" size="sm">Pilih Foto</Button>
               </div>
+            </TabsContent>
+
+            {/* Tab Varian */}
+            <TabsContent value="varian" className="space-y-4 pt-4">
+              <div className="flex items-center justify-between py-2 rounded-lg px-3 bg-muted/50">
+                <div>
+                  <p className="text-sm font-medium">Produk Punya Varian</p>
+                  <p className="text-xs text-muted-foreground">Mis. model/tipe mesin atau ukuran — tiap varian punya harga & stok sendiri</p>
+                </div>
+                <Switch checked={hasVariants} onCheckedChange={setHasVariantsLocal} />
+              </div>
+
+              {hasVariants && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Daftar Varian</Label>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1"
+                      onClick={() => setVariantRows((r) => [...r, { name: '', price: 0, cost_price: 0, stock: 0 }])}>
+                      <Wand2 size={13} /> Tambah Varian
+                    </Button>
+                  </div>
+                  {variantRows.map((v, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input placeholder="Nama varian (mis. Model A)" className="h-8 flex-1" value={v.name}
+                        onChange={(e) => setVariantRows((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                      <Input type="number" placeholder="Harga" className="h-8 w-24" value={v.price || ''}
+                        onChange={(e) => setVariantRows((arr) => arr.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) || 0 } : x)))} />
+                      <Input type="number" placeholder="Modal" className="h-8 w-24" value={v.cost_price || ''}
+                        onChange={(e) => setVariantRows((arr) => arr.map((x, j) => (j === i ? { ...x, cost_price: Number(e.target.value) || 0 } : x)))} />
+                      <Input type="number" placeholder="Stok" className="h-8 w-16" value={v.stock || ''}
+                        onChange={(e) => setVariantRows((arr) => arr.map((x, j) => (j === i ? { ...x, stock: Number(e.target.value) || 0 } : x)))} />
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
+                        onClick={() => setVariantRows((arr) => arr.filter((_, j) => j !== i))}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  ))}
+                  {variantRows.length === 0 && <p className="text-xs text-muted-foreground">Belum ada varian. Klik &ldquo;Tambah Varian&rdquo;.</p>}
+                  <p className="text-xs text-muted-foreground pt-1">Kolom: Nama · Harga · Modal (HPP) · Stok. Stok per varian dihitung terpisah.</p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 

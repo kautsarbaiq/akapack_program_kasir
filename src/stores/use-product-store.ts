@@ -18,6 +18,8 @@ interface ProductStore {
   decrementStock: (id: string, qty: number) => void
   /** Set stok absolut (stok masuk / opname) */
   setStock: (id: string, newStock: number) => void
+  /** Tandai produk punya varian */
+  setHasVariants: (id: string, value: boolean) => void
 }
 
 function resolveCategory(categoryId: string) {
@@ -151,5 +153,12 @@ export const useProductStore = create<ProductStore>()((set) => ({
       ),
     }))
     void updateRow('products', id, { stock: newStock })
+  },
+
+  setHasVariants: (id, value) => {
+    set((s) => ({
+      products: s.products.map((p) => (p.id === id ? { ...p, has_variants: value } : p)),
+    }))
+    void updateRow('products', id, { has_variants: value })
   },
 }))
