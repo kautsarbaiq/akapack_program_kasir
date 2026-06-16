@@ -36,6 +36,9 @@ interface TxnRow {
   change_amount: number
   payment_method: PaymentMethod
   status: TransactionStatus
+  notes: string | null
+  source: string | null
+  shipping_cost: number | null
   created_at: string
   transaction_items: TxnItemRow[] | null
 }
@@ -66,6 +69,9 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         change_amount: txn.change_amount,
         payment_method: txn.payment_method,
         status: txn.status,
+        notes: txn.notes ?? null,
+        source: txn.source ?? 'pos',
+        shipping_cost: txn.shipping_cost ?? 0,
       })
       .select('id')
       .single()
@@ -102,6 +108,7 @@ interface TransactionStore {
   fetch: () => Promise<void>
   addTransaction: (txn: Transaction) => void
   voidTransaction: (id: string) => void
+  setStatus: (id: string, status: TransactionStatus) => void
 }
 
 export const useTransactionStore = create<TransactionStore>()((set) => ({
@@ -156,6 +163,9 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
           change_amount: r.change_amount,
           payment_method: r.payment_method,
           status: r.status,
+          notes: r.notes ?? undefined,
+          source: (r.source as 'pos' | 'online') ?? undefined,
+          shipping_cost: r.shipping_cost ?? undefined,
           created_at: r.created_at,
         }
       })
@@ -183,5 +193,12 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
       transactions: s.transactions.map((t) => (t.id === id ? { ...t, status: 'void' } : t)),
     }))
     if (isUuid(id)) void updateRow('transactions', id, { status: 'void' })
+  },
+
+  setStatus: (id, status) => {
+    set((s) => ({
+      transactions: s.transactions.map((t) => (t.id === id ? { ...t, status } : t)),
+    }))
+    if (isUuid(id)) void updateRow('transactions', id, { status })
   },
 }))

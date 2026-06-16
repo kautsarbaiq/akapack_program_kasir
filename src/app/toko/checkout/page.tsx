@@ -16,6 +16,8 @@ import { formatRupiah, generateId, generateTransactionNumber, cn } from '@/lib/u
 import type { Transaction, TransactionItem, PaymentMethod } from '@/types'
 import { toast } from 'sonner'
 
+const SHIPPING_FLAT = 10000
+
 export default function CheckoutPage() {
   const items = useStoreCart((s) => s.items)
   const clear = useStoreCart((s) => s.clear)
@@ -31,10 +33,13 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
   const [method, setMethod] = useState<'transfer' | 'cod'>('transfer')
+  const [delivery, setDelivery] = useState<'kirim' | 'pickup'>('kirim')
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState<Transaction | null>(null)
 
-  const total = items.reduce((s, i) => s + i.price * i.quantity, 0)
+  const itemsTotal = items.reduce((s, i) => s + i.price * i.quantity, 0)
+  const shipping = delivery === 'kirim' ? SHIPPING_FLAT : 0
+  const total = itemsTotal + shipping
 
   const submit = async () => {
     if (!name.trim() || !phone.trim()) { toast.error('Nama & No. HP wajib diisi'); return }
@@ -63,19 +68,22 @@ export default function CheckoutPage() {
       customer,
       cashier_id: '',
       items: txnItems,
-      subtotal: total,
+      subtotal: itemsTotal,
       discount_amount: 0,
       tax_amount: 0,
       service_charge_amount: 0,
+      shipping_cost: shipping,
       total,
       paid_amount: method === 'cod' ? 0 : total,
       change_amount: 0,
       payment_method: pm,
-      notes: `Pesanan Online ${method === 'cod' ? '(COD)' : '(Transfer)'}`,
-      status: 'completed',
+      source: 'online',
+      notes: `Pesanan Online · ${delivery === 'kirim' ? 'Dikirim' : 'Ambil di toko'} · ${method === 'cod' ? 'COD' : 'Transfer'}`,
+      status: 'pending',
       created_at: new Date().toISOString(),
     }
     addTransaction(txn)
+    // Stok dipotong saat order (reservasi); pesanan mulai berstatus "pending" sampai dikonfirmasi admin.
     items.forEach((i) => {
       if (i.variant_id) {
         const v = variants.find((x) => x.id === i.variant_id)
@@ -143,6 +151,17 @@ export default function CheckoutPage() {
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[70px] resize-none focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div className="space-y-2">
+            <Label>Pengiriman</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {([['kirim', 'Dikirim (+ongkir)'], ['pickup', 'Ambil di Toko']] as const).map(([val, label]) => (
+                <button key={val} type="button" onClick={() => setDelivery(val)}
+                  className={cn('py-2.5 rounded-lg border text-sm font-medium', delivery === val ? 'border-primary bg-primary/5 text-primary' : 'bg-background')}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
             <Label>Metode Pembayaran</Label>
             <div className="grid grid-cols-2 gap-2">
               {([['transfer', 'Transfer Bank'], ['cod', 'COD / Bayar di Tempat']] as const).map(([val, label]) => (
@@ -165,6 +184,8 @@ export default function CheckoutPage() {
                 <span>{formatRupiah(i.price * i.quantity)}</span>
               </div>
             ))}
+            <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatRupiah(itemsTotal)}</span></div>
+            {shipping > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Ongkir</span><span>{formatRupiah(shipping)}</span></div>}
             <div className="border-t pt-2 flex justify-between font-bold"><span>Total</span><span className="text-lg">{formatRupiah(total)}</span></div>
           </div>
           <Button className="w-full h-11 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5" onClick={submit} disabled={submitting}>

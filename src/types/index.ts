@@ -163,6 +163,8 @@ export interface Transaction {
   payment_method: PaymentMethod
   payment_details?: Record<string, number>
   notes?: string
+  source?: 'pos' | 'online'
+  shipping_cost?: number
   status: TransactionStatus
   created_at: string
 }

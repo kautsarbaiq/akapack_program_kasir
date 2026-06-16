@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
     title: 'Penjualan', href: '/dashboard/penjualan', icon: Receipt,
     children: [
       { title: 'Riwayat Transaksi', href: '/dashboard/penjualan' },
+      { title: 'Pesanan Online', href: '/dashboard/pesanan' },
       { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan' },
     ],
   },

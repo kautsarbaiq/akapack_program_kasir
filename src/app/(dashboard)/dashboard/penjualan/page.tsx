@@ -116,8 +116,8 @@ export default function PenjualanPage() {
                     <td className="py-3 px-4 text-sm text-muted-foreground">{t.cashier?.full_name ?? '-'}</td>
                     <td className="py-3 px-4 text-xs text-muted-foreground">{formatDateTime(t.created_at)}</td>
                     <td className="py-3 px-4">
-                      <Badge variant="outline" className={`text-xs ${t.status === 'completed' ? 'border-emerald-400 text-emerald-600' : 'border-destructive text-destructive'}`}>
-                        {t.status === 'completed' ? 'Selesai' : 'Void'}
+                      <Badge variant="outline" className={`text-xs ${t.status === 'completed' ? 'border-emerald-400 text-emerald-600' : t.status === 'pending' ? 'border-amber-400 text-amber-600' : 'border-destructive text-destructive'}`}>
+                        {t.status === 'completed' ? 'Selesai' : t.status === 'pending' ? 'Pending' : 'Void'}
                       </Badge>
                     </td>
                     <td className="py-3 px-4">
@@ -149,8 +149,8 @@ export default function PenjualanPage() {
                   <div className="flex justify-between text-sm"><span className="text-muted-foreground">Waktu</span><span>{formatDateTime(selected.created_at)}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-muted-foreground">Pelanggan</span><span>{selected.customer?.name ?? 'Umum'}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-muted-foreground">Status</span>
-                    <Badge variant="outline" className={`text-xs ${selected.status === 'completed' ? 'border-emerald-400 text-emerald-600' : 'border-destructive text-destructive'}`}>
-                      {selected.status === 'completed' ? 'Selesai' : 'Void'}
+                    <Badge variant="outline" className={`text-xs ${selected.status === 'completed' ? 'border-emerald-400 text-emerald-600' : selected.status === 'pending' ? 'border-amber-400 text-amber-600' : 'border-destructive text-destructive'}`}>
+                      {selected.status === 'completed' ? 'Selesai' : selected.status === 'pending' ? 'Pending' : 'Void'}
                     </Badge>
                   </div>
                 </div>
