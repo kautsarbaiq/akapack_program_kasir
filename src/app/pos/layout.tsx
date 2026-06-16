@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DataBootstrap } from '@/components/data-bootstrap'
+import { AuthGuard } from '@/components/auth-guard'
 
 export const metadata: Metadata = {
   title: 'POS Kasir | AKAPACK',
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
 
 export default function POSLayout({ children }: { children: React.ReactNode }) {
   return (
+    <AuthGuard>
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <DataBootstrap />
       {/* POS Header */}
@@ -39,5 +41,6 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </div>
+    </AuthGuard>
   )
 }

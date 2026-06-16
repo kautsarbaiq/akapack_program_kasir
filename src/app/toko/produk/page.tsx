@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,9 +11,9 @@ import { useStoreCart } from '@/stores/use-store-cart'
 import { formatRupiah, cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
-export default function ProductDetailPage() {
-  const params = useParams()
-  const id = String(params.id)
+function ProductDetail() {
+  const searchParams = useSearchParams()
+  const id = searchParams.get('id') ?? ''
   const router = useRouter()
   const product = useProductStore((s) => s.products.find((p) => p.id === id))
   const variants = useVariantStore((s) => s.variants.filter((v) => v.product_id === id))
@@ -92,5 +92,13 @@ export default function ProductDetailPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ProductDetailPage() {
+  return (
+    <Suspense fallback={<div className="py-16 text-center text-muted-foreground">Memuat…</div>}>
+      <ProductDetail />
+    </Suspense>
   )
 }

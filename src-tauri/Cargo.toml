@@ -1,0 +1,24 @@
+[package]
+name = "akapack"
+version = "0.1.0"
+description = "AKAPACK — POS & Manajemen Retail"
+authors = ["AKAPACK"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# Library dipakai bersama desktop & mobile (Tauri v2).
+[lib]
+name = "akapack_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Dipakai Tauri saat build produksi (mengaktifkan custom-protocol).
+custom-protocol = ["tauri/custom-protocol"]

@@ -66,18 +66,18 @@ export default function TokoCatalog() {
           const price = hasVar ? Math.min(...vlist.map((v) => v.price)) : onlinePrice(p)
           return (
             <div key={p.id} className="bg-background rounded-xl border overflow-hidden flex flex-col">
-              <Link href={`/toko/produk/${p.id}`} className="block">
+              <Link href={`/toko/produk?id=${p.id}`} className="block">
                 <div className="aspect-square bg-muted flex items-center justify-center text-4xl overflow-hidden">
                   {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : (p.category?.icon ?? '📦')}
                 </div>
               </Link>
               <div className="p-3 flex flex-col flex-1 gap-1.5">
-                <Link href={`/toko/produk/${p.id}`} className="text-sm font-medium leading-tight line-clamp-2 hover:text-primary flex-1">{p.name}</Link>
+                <Link href={`/toko/produk?id=${p.id}`} className="text-sm font-medium leading-tight line-clamp-2 hover:text-primary flex-1">{p.name}</Link>
                 <p className="text-sm font-bold text-primary">{hasVar ? `dari ${formatRupiah(price)}` : formatRupiah(price)}</p>
                 {out ? (
                   <span className="text-xs text-destructive">Stok habis</span>
                 ) : hasVar ? (
-                  <Link href={`/toko/produk/${p.id}`}><Button size="sm" variant="outline" className="w-full h-8 text-xs">Pilih Varian</Button></Link>
+                  <Link href={`/toko/produk?id=${p.id}`}><Button size="sm" variant="outline" className="w-full h-8 text-xs">Pilih Varian</Button></Link>
                 ) : (
                   <Button size="sm" className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
                     onClick={() => { add({ key: p.id, product_id: p.id, name: p.name, price: onlinePrice(p) }); toast.success('Ditambahkan ke keranjang') }}>

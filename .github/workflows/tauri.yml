@@ -1,0 +1,61 @@
+name: Build AKAPACK (Tauri)
+
+# Jalankan manual (Actions → Run workflow) atau saat push tag v* (mis. v0.1.0).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest' # → .msi / .exe
+          - platform: 'macos-latest'   # → .dmg / .app (Apple Silicon + Intel)
+          - platform: 'ubuntu-22.04'   # → .deb / .AppImage
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Dependensi Linux (webkit)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential libssl-dev libgtk-3-dev
+
+      - name: Install deps JS
+        run: npm install
+
+      - name: Tulis .env.local dari secrets
+        shell: bash
+        run: |
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env.local
+
+      - name: Build & rilis (Tauri)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'app-latest' }}
+          releaseName: 'AKAPACK ${{ github.ref_name }}'
+          releaseBody: 'Installer AKAPACK untuk Windows, macOS, dan Linux. Lihat aset di bawah.'
+          releaseDraft: true
+          prerelease: false
