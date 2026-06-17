@@ -18,6 +18,7 @@ import { useAssetStore } from '@/stores/use-asset-store'
 import { useClosingStore } from '@/stores/use-closing-store'
 import { useSupplierStore } from '@/stores/use-supplier-store'
 import { usePurchaseStore } from '@/stores/use-purchase-store'
+import { useStockOutStore } from '@/stores/use-stockout-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
@@ -64,6 +65,7 @@ export function DataBootstrap() {
         useStockMovementStore.getState().fetch(),
         useJournalStore.getState().fetch(),
         usePurchaseStore.getState().fetch(),
+        useStockOutStore.getState().fetch(),
         useAttendanceStore.getState().fetch(),
       ])
     }

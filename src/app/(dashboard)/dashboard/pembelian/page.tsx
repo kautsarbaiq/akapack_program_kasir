@@ -2,14 +2,14 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { ShoppingCart, Plus, Truck, Eye, X, PackageCheck, BadgeCheck, Trash2 } from 'lucide-react'
+import { ShoppingCart, Plus, Truck, Eye, X, PackageCheck, BadgeCheck, Trash2, Printer } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { PurchaseDocument } from '@/components/dashboard/purchase-document'
 import { usePurchaseStore } from '@/stores/use-purchase-store'
 import { useSupplierStore } from '@/stores/use-supplier-store'
 import { useProductStore } from '@/stores/use-product-store'
@@ -142,6 +142,8 @@ export default function PembelianPage() {
     setDetail(null)
   }
 
+  const handlePrint = () => { if (typeof window !== 'undefined') window.print() }
+
   const FILTERS: { value: 'all' | PurchaseStatus; label: string }[] = [
     { value: 'all', label: 'Semua' }, { value: 'ordered', label: 'Dipesan' }, { value: 'received', label: 'Diterima' }, { value: 'cancelled', label: 'Batal' },
   ]
@@ -150,8 +152,8 @@ export default function PembelianPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><ShoppingCart size={22} /> Pembelian</h1>
-          <p className="text-muted-foreground text-sm mt-1">Purchase Order ke supplier — terima barang menambah stok & mencatat hutang otomatis</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><ShoppingCart size={22} /> Pembelian / Stok Masuk</h1>
+          <p className="text-muted-foreground text-sm mt-1">Dokumen pembelian per tanggal — posting (terima) menambah stok, mencatat hutang & jurnal otomatis. Bisa dicetak.</p>
         </div>
         <div className="flex gap-2">
           <Link href="/dashboard/pembelian/supplier"><Button variant="outline" className="gap-1.5"><Truck size={16} /> Supplier</Button></Link>
@@ -217,47 +219,46 @@ export default function PembelianPage() {
         </CardContent>
       </Card>
 
-      {/* Detail */}
-      <Sheet open={!!detail} onOpenChange={() => setDetail(null)}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+      {/* Detail — dokumen Stok Masuk (bisa dicetak) */}
+      <Dialog open={!!detail} onOpenChange={() => setDetail(null)}>
+        <DialogContent showCloseButton={false} className="sm:max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0">
           {detail && (
             <>
-              <SheetHeader className="pb-4"><SheetTitle className="flex items-center gap-2"><ShoppingCart size={18} /> {detail.number}</SheetTitle></SheetHeader>
-              <div className="space-y-5">
-                <div className="rounded-xl p-4 bg-muted/50 text-sm space-y-1">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span className="font-medium">{detail.supplier?.name ?? '-'}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Pembayaran</span><span>{PAYMENT[detail.payment]}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Status</span><span>{STATUS[detail.status].label}</span></div>
-                  {detail.notes && <p className="text-xs text-muted-foreground pt-1">{detail.notes}</p>}
+              {/* Toolbar (tidak ikut tercetak) */}
+              <div className="flex items-center justify-between gap-2 px-5 py-3 border-b sticky top-0 bg-background z-10 print:hidden">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ShoppingCart size={17} className="shrink-0" />
+                  <span className="font-mono font-semibold text-sm truncate">{detail.number}</span>
+                  <Badge variant="outline" className={`text-xs ${STATUS[detail.status].cls}`}>{detail.status === 'received' ? 'Posted' : STATUS[detail.status].label}</Badge>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold">Item</p>
-                  {detail.items.map((it) => (
-                    <div key={it.id} className="flex justify-between text-sm py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
-                      <span>{it.product_name} × {it.qty} @ {formatRupiah(it.cost)}</span>
-                      <span className="font-semibold">{formatRupiah(it.subtotal)}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between font-bold pt-1"><span>Total</span><span>{formatRupiah(detail.total)}</span></div>
-                </div>
-                {isPending(detail) && <p className="text-xs text-amber-600">Menyimpan PO… tunggu sebentar sebelum memproses.</p>}
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {(detail.status === 'ordered' || detail.status === 'draft') && (
                     <>
-                      <Button disabled={isPending(detail)} className="flex-1 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => receive(detail)}><PackageCheck size={15} /> Terima Barang</Button>
-                      <Button variant="outline" disabled={isPending(detail)} className="gap-1.5" onClick={() => cancelOrder(detail)}><X size={15} /> Batal</Button>
+                      <Button size="sm" disabled={isPending(detail)} className="h-8 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => receive(detail)}><PackageCheck size={14} /> Posting (Terima)</Button>
+                      <Button size="sm" variant="outline" disabled={isPending(detail)} className="h-8 gap-1.5" onClick={() => cancelOrder(detail)}><X size={14} /> Batal</Button>
                     </>
                   )}
                   {detail.status === 'received' && detail.payment === 'credit' && !detail.paid && (
-                    <Button variant="outline" disabled={isPending(detail)} className="flex-1 gap-1.5" onClick={() => markPaid(detail)}><BadgeCheck size={15} /> Tandai Lunas</Button>
+                    <Button size="sm" variant="outline" disabled={isPending(detail)} className="h-8 gap-1.5" onClick={() => markPaid(detail)}><BadgeCheck size={14} /> Lunas</Button>
                   )}
-                  <Button variant="outline" disabled={isPending(detail)} className="text-destructive hover:text-destructive gap-1.5" onClick={() => remove(detail)}><Trash2 size={15} /> Hapus</Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={handlePrint}><Printer size={14} /> Cetak</Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" disabled={isPending(detail)} onClick={() => remove(detail)}><Trash2 size={14} /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setDetail(null)}><X size={15} /></Button>
+                </div>
+              </div>
+              {detail.status === 'received' && (
+                <p className="px-5 py-2 text-xs text-emerald-700 bg-emerald-50 border-b print:hidden">Dokumen sudah <b>Posted</b> — stok telah masuk & jurnal tercatat. Untuk koreksi, hapus dokumen (stok dikembalikan).</p>
+              )}
+              {isPending(detail) && <p className="px-5 py-2 text-xs text-amber-600 print:hidden">Menyimpan dokumen… tunggu sebentar sebelum memposting.</p>}
+              <div className="p-5 bg-muted/20">
+                <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
+                  <PurchaseDocument po={detail} />
                 </div>
               </div>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog Buat PO */}
       <Dialog open={open} onOpenChange={setOpen}>

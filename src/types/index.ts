@@ -359,6 +359,35 @@ export interface PurchaseOrder {
   created_at: string
 }
 
+// ─── Stok Keluar (dokumen pengeluaran stok) ──
+export type StockOutStatus = 'draft' | 'posted' | 'cancelled'
+export type StockOutReason = 'rusak' | 'hilang' | 'pemakaian' | 'retur' | 'penyesuaian' | 'lainnya'
+
+export interface StockOutItem {
+  id: string
+  stock_out_id: string
+  product_id: string
+  product_name: string
+  qty: number
+  cost: number       // nilai modal per unit saat keluar
+  subtotal: number
+}
+
+export interface StockOut {
+  id: string
+  number: string     // OUT-YYYYMMDD-xxx
+  outlet_id: string
+  reason: StockOutReason
+  items: StockOutItem[]
+  total: number      // total nilai modal
+  total_qty: number
+  status: StockOutStatus
+  notes?: string
+  date: string
+  posted_at?: string
+  created_at: string
+}
+
 // ─── Dashboard Stats ───────────────────
 export interface DashboardStats {
   today_revenue: number

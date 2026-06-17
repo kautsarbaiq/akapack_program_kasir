@@ -8,6 +8,15 @@ import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 import { useCategoryStore } from './use-category-store'
 
+/** Input bulkAdd: form produk standar + opsi kaya dari import katalog (foto & harga online). */
+export type BulkProductInput = ProductFormValues & { image_url?: string; price_online?: number }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const asUuidOrNull = (s?: string | null) => (s && UUID_RE.test(s) ? s : null)
+const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
+
+export type ProductPatch = { id: string; price?: number; cost_price?: number; price_online?: number; image_url?: string; category_id?: string }
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
@@ -22,7 +31,9 @@ interface ProductStore {
   fetch: () => Promise<void>
   addProduct: (values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => Product
   /** Buat banyak produk sekaligus (import). 1x update memori + batch insert DB. Korelasi by SKU; kembalikan produk (urut input) + jumlah gagal. */
-  bulkAdd: (rows: ProductFormValues[]) => Promise<{ products: Product[]; failed: number }>
+  bulkAdd: (rows: BulkProductInput[]) => Promise<{ products: Product[]; failed: number }>
+  /** Perbarui sebagian field banyak produk (re-import katalog). Update memori 1x + batch DB. Kembalikan jumlah gagal. */
+  bulkPatch: (patches: ProductPatch[]) => Promise<number>
   updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => void
   deleteProduct: (id: string) => void
   /** Kurangi stok saat transaksi POS */
@@ -128,9 +139,9 @@ export const useProductStore = create<ProductStore>()((set) => ({
     const now = new Date().toISOString()
     const created: Product[] = rows.map((v) => ({
       id: generateId('prod'), outlet_id: 'outlet-1', category_id: v.category_id, category: resolveCategory(v.category_id),
-      name: v.name, sku: v.sku, barcode: v.barcode || undefined, description: v.description || undefined, image_url: undefined,
+      name: v.name, sku: v.sku, barcode: v.barcode || undefined, description: v.description || undefined, image_url: v.image_url || undefined,
       price: v.price, cost_price: v.cost_price, stock: v.stock, min_stock: v.min_stock, unit: v.unit,
-      units: [], price_tiers: [], price_online: 0, is_active: v.is_active,
+      units: [], price_tiers: [], price_online: v.price_online ?? 0, is_active: v.is_active,
       stock_status: getStockStatus(v.stock, v.min_stock), created_at: now, updated_at: now,
     }))
     set((s) => ({ products: [...created, ...s.products] }))
@@ -141,9 +152,9 @@ export const useProductStore = create<ProductStore>()((set) => ({
     let failed = 0
     for (const c of chunk(created, 500)) {
       const payload = c.map((p) => ({
-        tenant_id: DEFAULT_TENANT_ID, category_id: p.category_id, name: p.name, sku: p.sku, barcode: p.barcode ?? null,
-        description: p.description ?? null, price: p.price, cost_price: p.cost_price, stock: p.stock, min_stock: p.min_stock,
-        unit: p.unit, units: [], price_tiers: [], price_online: 0, is_active: p.is_active,
+        tenant_id: DEFAULT_TENANT_ID, category_id: asUuidOrNull(p.category_id), name: p.name, sku: p.sku, barcode: p.barcode ?? null,
+        description: p.description ?? null, image_url: p.image_url ?? null, price: p.price, cost_price: p.cost_price, stock: p.stock, min_stock: p.min_stock,
+        unit: p.unit, units: [], price_tiers: [], price_online: p.price_online ?? 0, is_active: p.is_active,
       }))
       try {
         const { data, error } = await sb.from('products').insert(payload).select()
@@ -166,6 +177,48 @@ export const useProductStore = create<ProductStore>()((set) => ({
       offset += c.length
     }
     return { products: finals, failed }
+  },
+
+  bulkPatch: async (patches) => {
+    if (patches.length === 0) return 0
+    const byId = new Map(patches.map((p) => [p.id, p]))
+    set((s) => ({
+      products: s.products.map((p) => {
+        const patch = byId.get(p.id)
+        if (!patch) return p
+        const next = {
+          ...p,
+          price: patch.price ?? p.price,
+          cost_price: patch.cost_price ?? p.cost_price,
+          price_online: patch.price_online ?? p.price_online,
+          image_url: patch.image_url ?? p.image_url,
+          category_id: patch.category_id ?? p.category_id,
+          updated_at: new Date().toISOString(),
+        }
+        return { ...next, category: resolveCategory(next.category_id) }
+      }),
+    }))
+    if (!isSupabaseConfigured()) return 0
+    const sb = getSupabaseBrowser()
+    let failed = 0
+    // Hanya produk yang sudah uuid yang bisa di-update ke DB
+    const dbPatches = patches.filter((p) => isUuid(p.id))
+    for (const grp of chunk(dbPatches, 25)) {
+      const results = await Promise.all(grp.map(async (patch) => {
+        const upd: Record<string, unknown> = {}
+        if (patch.price !== undefined) upd.price = patch.price
+        if (patch.cost_price !== undefined) upd.cost_price = patch.cost_price
+        if (patch.price_online !== undefined) upd.price_online = patch.price_online
+        if (patch.image_url !== undefined) upd.image_url = patch.image_url
+        if (patch.category_id !== undefined) upd.category_id = asUuidOrNull(patch.category_id)
+        if (Object.keys(upd).length === 0) return true
+        const { error } = await sb.from('products').update(upd).eq('id', patch.id)
+        if (error) { console.warn('[akapack] bulkPatch products:', error.message); return false }
+        return true
+      }))
+      failed += results.filter((ok) => !ok).length
+    }
+    return failed
   },
 
   updateProduct: (id, values, units, priceTiers, priceOnline) => {

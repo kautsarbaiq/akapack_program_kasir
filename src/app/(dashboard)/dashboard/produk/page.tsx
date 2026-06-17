@@ -21,6 +21,7 @@ import {
 import { useProductStore } from '@/stores/use-product-store'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { ProductFormDialog } from '@/components/dashboard/product-form-dialog'
+import { ImportProdukDialog } from '@/components/dashboard/import-produk-dialog'
 import { formatRupiah, getStockStatus } from '@/lib/utils'
 import type { Product } from '@/types'
 import { toast } from 'sonner'
@@ -42,6 +43,31 @@ export default function ProdukPage() {
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Product | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+
+  const handleExport = async () => {
+    if (products.length === 0) { toast.error('Belum ada produk untuk diekspor'); return }
+    const XLSX = await import('xlsx')
+    const rows = products.map((p) => ({
+      name: p.name,
+      category: p.category?.name ?? '',
+      sku: p.sku,
+      barcode: p.barcode ?? '',
+      buy_price: p.cost_price,
+      sell_price: p.price_online || p.price,
+      pos_sell_price: p.price,
+      stock_qty: p.stock,
+      uom: p.unit,
+      published: p.is_active ? 1 : 0,
+      description: p.description ?? '',
+      photo_1: p.image_url ?? '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'product')
+    XLSX.writeFile(wb, `katalog-produk-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    toast.success(`${products.length} produk diekspor`)
+  }
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -84,10 +110,10 @@ export default function ProdukPage() {
           <p className="text-muted-foreground text-sm mt-1">Kelola semua produk dan stok Anda</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setImportOpen(true)}>
             <Upload size={14} /> Import
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handleExport}>
             <Download size={14} /> Export
           </Button>
           <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
@@ -274,6 +300,7 @@ export default function ProdukPage() {
       </AlertDialog>
 
       <ProductFormDialog open={formOpen} onOpenChange={setFormOpen} product={editTarget} />
+      <ImportProdukDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   )
 }
