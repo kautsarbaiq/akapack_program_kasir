@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Employee, Shift } from '@/types'
 import { generateId } from '@/lib/utils'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
-import { isSupabaseConfigured, DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { isSupabaseConfigured, DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 import { updateRow } from '@/lib/supabase/repo'
 import { useEmployeeStore } from './use-employee-store'
 
@@ -106,7 +106,7 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
   openShift: (employee, openingCash) => {
     const shift: Shift = {
       id: generateId('shift'),
-      outlet_id: 'outlet-1',
+      outlet_id: DEFAULT_OUTLET_ID,
       employee_id: employee.id,
       employee,
       opening_cash: openingCash,

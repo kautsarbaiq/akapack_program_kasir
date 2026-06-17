@@ -3,7 +3,7 @@ import type { Category } from '@/types'
 import type { CategoryFormValues } from '@/lib/validations'
 import { mockCategories } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
@@ -33,7 +33,7 @@ export const useCategoryStore = create<CategoryStore>()((set, get) => ({
   addCategory: (values) => {
     const newCategory: Category = {
       id: generateId('cat'),
-      outlet_id: 'outlet-1',
+      outlet_id: DEFAULT_OUTLET_ID,
       name: values.name,
       color: values.color,
       icon: values.icon,
@@ -86,7 +86,7 @@ export const useCategoryStore = create<CategoryStore>()((set, get) => ({
     const baseOrder = get().categories.length
     const newCats: Category[] = want.map((name, i) => ({
       id: generateId('cat'),
-      outlet_id: 'outlet-1',
+      outlet_id: DEFAULT_OUTLET_ID,
       name,
       color: CAT_COLORS[(baseOrder + i) % CAT_COLORS.length],
       icon: 'Package',

@@ -3,7 +3,7 @@ import type { Promotion } from '@/types'
 import type { PromotionFormValues } from '@/lib/validations'
 import { mockPromotions } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
 interface PromotionStore {
@@ -31,7 +31,7 @@ export const usePromotionStore = create<PromotionStore>()((set, get) => ({
   addPromotion: (values) => {
     const newPromotion: Promotion = {
       id: generateId('promo'),
-      outlet_id: 'outlet-1',
+      outlet_id: DEFAULT_OUTLET_ID,
       name: values.name,
       type: values.type,
       value: values.value,

@@ -3,7 +3,7 @@ import type { Product, ProductUnit, PriceTier } from '@/types'
 import type { ProductFormValues } from '@/lib/validations'
 import { mockProducts } from '@/lib/mock-data'
 import { generateId, getStockStatus } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 import { useCategoryStore } from './use-category-store'
@@ -83,7 +83,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
     const now = new Date().toISOString()
     const newProduct: Product = {
       id: generateId('prod'),
-      outlet_id: 'outlet-1',
+      outlet_id: DEFAULT_OUTLET_ID,
       category_id: values.category_id,
       category: resolveCategory(values.category_id),
       name: values.name,
@@ -141,7 +141,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
   bulkAdd: async (rows) => {
     const now = new Date().toISOString()
     const created: Product[] = rows.map((v) => ({
-      id: generateId('prod'), outlet_id: 'outlet-1', category_id: v.category_id, category: resolveCategory(v.category_id),
+      id: generateId('prod'), outlet_id: DEFAULT_OUTLET_ID, category_id: v.category_id, category: resolveCategory(v.category_id),
       name: v.name, sku: v.sku, barcode: v.barcode || undefined, description: v.description || undefined, image_url: v.image_url || undefined,
       price: v.price, cost_price: v.cost_price, stock: v.stock, min_stock: v.min_stock, unit: v.unit,
       units: [], price_tiers: [], price_online: v.price_online ?? 0, is_active: v.is_active,

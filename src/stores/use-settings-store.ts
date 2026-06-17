@@ -6,6 +6,7 @@ import { isSupabaseConfigured, DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID } from '@/li
 interface OutletRow {
   id: string
   name: string | null
+  email: string | null
   tax_rate: number | null
   service_charge: number | null
   receipt_footer: string | null
@@ -15,6 +16,7 @@ interface SettingsValues {
   taxRate: number
   serviceRate: number
   storeName: string
+  storeEmail: string
   receiptFooter: string
 }
 
@@ -38,6 +40,7 @@ const DEFAULTS: SettingsValues = {
   taxRate: 0,
   serviceRate: 0,
   storeName: 'AKAPACK',
+  storeEmail: '',
   receiptFooter: 'Terima kasih telah berbelanja 🙏',
 }
 
@@ -66,7 +69,7 @@ export const useSettingsStore = create<SettingsStore>()(
     try {
       const { data, error } = await getSupabaseBrowser()
         .from('outlets')
-        .select('id, name, tax_rate, service_charge, receipt_footer')
+        .select('id, name, email, tax_rate, service_charge, receipt_footer')
         .eq('id', DEFAULT_OUTLET_ID)
         .maybeSingle()
       if (error) {
@@ -79,6 +82,7 @@ export const useSettingsStore = create<SettingsStore>()(
           taxRate: row.tax_rate ?? 0,
           serviceRate: row.service_charge ?? 0,
           storeName: row.name ?? DEFAULTS.storeName,
+          storeEmail: row.email ?? '',
           receiptFooter: row.receipt_footer ?? DEFAULTS.receiptFooter,
           loaded: true,
         })
@@ -102,6 +106,7 @@ export const useSettingsStore = create<SettingsStore>()(
             id: DEFAULT_OUTLET_ID,
             tenant_id: DEFAULT_TENANT_ID,
             name: s.storeName,
+            email: s.storeEmail || null,
             tax_rate: s.taxRate,
             service_charge: s.serviceRate,
             receipt_footer: s.receiptFooter,

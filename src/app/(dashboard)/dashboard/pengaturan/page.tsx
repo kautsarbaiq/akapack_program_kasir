@@ -17,6 +17,8 @@ export default function PengaturanPage() {
   const storedTaxRate = useSettingsStore((s) => s.taxRate)
   const storedServiceRate = useSettingsStore((s) => s.serviceRate)
   const storedStoreName = useSettingsStore((s) => s.storeName)
+  const storedStoreEmail = useSettingsStore((s) => s.storeEmail)
+  const storedReceiptFooter = useSettingsStore((s) => s.receiptFooter)
   const storedStorePhone = useSettingsStore((s) => s.storePhone)
   const storedStoreAddress = useSettingsStore((s) => s.storeAddress)
   const storedWaNumber = useSettingsStore((s) => s.waNumber)
@@ -36,8 +38,10 @@ export default function PengaturanPage() {
 
   // Profil toko
   const [storeName, setStoreName] = useState('')
+  const [storeEmail, setStoreEmail] = useState('')
   const [storePhone, setStorePhone] = useState('')
   const [storeAddress, setStoreAddress] = useState('')
+  const [receiptFooter, setReceiptFooter] = useState('')
   // Toko online
   const [waNumber, setWaNumber] = useState('')
   const [bankInfo, setBankInfo] = useState('')
@@ -53,17 +57,24 @@ export default function PengaturanPage() {
 
   useEffect(() => {
     setStoreName(storedStoreName)
+    setStoreEmail(storedStoreEmail)
+    setReceiptFooter(storedReceiptFooter)
     setStorePhone(storedStorePhone)
     setStoreAddress(storedStoreAddress)
     setWaNumber(storedWaNumber)
     setBankInfo(storedBankInfo)
     setShippingFlat(storedShippingFlat)
-  }, [storedStoreName, storedStorePhone, storedStoreAddress, storedWaNumber, storedBankInfo, storedShippingFlat])
+  }, [storedStoreName, storedStoreEmail, storedReceiptFooter, storedStorePhone, storedStoreAddress, storedWaNumber, storedBankInfo, storedShippingFlat])
 
   const handleSaveProfile = () => {
-    saveSettings({ storeName: storeName.trim() || 'AKAPACK' })
+    saveSettings({ storeName: storeName.trim() || 'AKAPACK', storeEmail: storeEmail.trim() })
     saveOnline({ storePhone: storePhone.trim(), storeAddress: storeAddress.trim() })
     toast.success('Profil toko disimpan!')
+  }
+
+  const handleSaveReceipt = () => {
+    saveSettings({ receiptFooter: receiptFooter.trim() })
+    toast.success('Pengaturan struk disimpan!')
   }
 
   const handleSaveOnline = () => {
@@ -128,7 +139,7 @@ export default function PengaturanPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input type="email" defaultValue="toko@akapack.com" />
+                  <Input type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} placeholder="email@toko.com" />
                 </div>
                 <div className="space-y-2">
                   <Label>Website (opsional)</Label>
@@ -256,9 +267,9 @@ export default function PengaturanPage() {
                 ))}
                 <div className="space-y-2">
                   <Label>Pesan Bawah Struk</Label>
-                  <Input defaultValue="Terima kasih telah berbelanja!" />
+                  <Input value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)} placeholder="Pesan di bawah struk" />
                 </div>
-                <Button onClick={handleSave} className="gap-2 w-full" style={{ background: 'oklch(0.55 0.22 264)' }}>
+                <Button onClick={handleSaveReceipt} className="gap-2 w-full" style={{ background: 'oklch(0.55 0.22 264)' }}>
                   <Save size={15} /> Simpan
                 </Button>
               </CardContent>
@@ -269,17 +280,15 @@ export default function PengaturanPage() {
               <CardHeader><CardTitle className="text-base">Preview Struk</CardTitle></CardHeader>
               <CardContent>
                 <div className="bg-white border rounded-xl p-5 font-mono text-xs space-y-1 max-w-[220px] mx-auto shadow-sm">
-                  {showLogo && <div className="text-center font-bold text-sm mb-2">🏪 AKAPACK</div>}
-                  {showAddress && <div className="text-center text-gray-500 mb-2">Jl. Contoh No. 123</div>}
+                  {showLogo && <div className="text-center font-bold text-sm mb-2">{storeName || 'AKAPACK'}</div>}
+                  {showAddress && storeAddress && <div className="text-center text-gray-500 mb-2">{storeAddress}</div>}
                   <div className="border-t border-dashed my-2" />
-                  <div className="flex justify-between"><span>Kaos Polos x2</span><span>170.000</span></div>
-                  <div className="flex justify-between"><span>Celana Jeans x1</span><span>250.000</span></div>
+                  <div className="flex justify-between"><span>Contoh Produk A x2</span><span>20.000</span></div>
+                  <div className="flex justify-between"><span>Contoh Produk B x1</span><span>15.000</span></div>
                   <div className="border-t border-dashed my-2" />
-                  <div className="flex justify-between font-bold"><span>TOTAL</span><span>420.000</span></div>
-                  <div className="flex justify-between"><span>Tunai</span><span>500.000</span></div>
-                  <div className="flex justify-between"><span>Kembalian</span><span>80.000</span></div>
+                  <div className="flex justify-between font-bold"><span>TOTAL</span><span>35.000</span></div>
                   <div className="border-t border-dashed my-2" />
-                  <div className="text-center text-gray-500">Terima kasih!</div>
+                  <div className="text-center text-gray-500">{receiptFooter || 'Terima kasih!'}</div>
                 </div>
               </CardContent>
             </Card>
@@ -305,7 +314,7 @@ export default function PengaturanPage() {
               ))}
               <div className="space-y-2 pt-2">
                 <Label>Email Penerima Notifikasi</Label>
-                <Input type="email" defaultValue="andi@akapack.com" />
+                <Input type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} placeholder="email@toko.com" />
               </div>
               <Button onClick={handleSave} className="gap-2" style={{ background: 'oklch(0.55 0.22 264)' }}>
                 <Save size={15} /> Simpan

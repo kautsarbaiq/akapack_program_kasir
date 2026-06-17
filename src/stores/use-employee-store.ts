@@ -3,7 +3,7 @@ import type { Employee } from '@/types'
 import type { EmployeeFormValues } from '@/lib/validations'
 import { mockEmployees } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
 // Kode absensi 4-digit unik (untuk clock-in/out)
@@ -39,7 +39,7 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
   addEmployee: (values) => {
     const newEmployee: Employee = {
       id: generateId('emp'),
-      outlet_id: 'outlet-1',
+      outlet_id: DEFAULT_OUTLET_ID,
       name: values.name,
       role: values.role,
       pin: values.pin || undefined,

@@ -57,8 +57,14 @@ export function DataBootstrap() {
       ])
       // User login (nama/role di-resolve dari karyawan via email) — setelah employee fetch
       void useCurrentUserStore.getState().fetch()
+      // Pastikan outlet aktif benar-benar ada; kalau tidak (mis. id persist basi), pakai outlet pertama.
+      const allOutlets = useOutletStore.getState().outlets
+      let outlet = useActiveOutletStore.getState().activeOutletId
+      if (allOutlets.length > 0 && !allOutlets.some((o) => o.id === outlet)) {
+        outlet = allOutlets[0].id
+        useActiveOutletStore.getState().setActiveOutlet(outlet)
+      }
       // Proyeksikan stok produk/varian ke outlet aktif (setelah produk, varian, inventory termuat)
-      const outlet = useActiveOutletStore.getState().activeOutletId
       useProductStore.getState().projectStock(outlet)
       useVariantStore.getState().projectVariantStock(outlet)
       // transaksi, shift, pergerakan stok, jurnal, pembelian — butuh master data untuk resolusi

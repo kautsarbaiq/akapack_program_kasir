@@ -108,8 +108,10 @@ export function ImportStokDialog({ open, onOpenChange }: { open: boolean; onOpen
       if (matchedEntries.length) failed += await inv.bulkUpsert(outletId, matchedEntries)
 
       let createdN = 0
-      if (createNew && newRows.length) {
-        const defaultCat = categories[0]?.id ?? ''
+      if (createNew && newRows.length && !categories[0]?.id) {
+        toast.warning(`${newRows.length} produk baru dilewati — buat minimal 1 kategori dulu di menu Kategori.`)
+      } else if (createNew && newRows.length) {
+        const defaultCat = categories[0]!.id
         const stamp = Date.now().toString(36) // SKU unik per-baris (stamp + index) — cegah tabrakan
         const values: ProductFormValues[] = newRows.map((r, i) => ({
           category_id: defaultCat, name: r.name, sku: `IMP-${stamp}-${i}`, barcode: '', description: '',
