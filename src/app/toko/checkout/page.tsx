@@ -120,7 +120,7 @@ export default function CheckoutPage() {
       `*Total: ${formatRupiah(success.total)}*`,
       `Pembayaran: ${method === 'cod' ? 'COD (bayar di tempat)' : 'Transfer Bank'}`,
       '',
-      'Terima kasih 🙏',
+      'Terima kasih',
     ]
       .filter(Boolean)
       .join('\n')
@@ -165,7 +165,7 @@ export default function CheckoutPage() {
       <div className="text-center py-16 space-y-3">
         <ShoppingBag size={40} className="mx-auto text-muted-foreground" />
         <p className="text-muted-foreground">Keranjang masih kosong</p>
-        <Link href="/toko" className="text-primary text-sm">← Mulai belanja</Link>
+        <Link href="/toko" className="text-primary text-sm inline-flex items-center gap-1"><ArrowLeft size={14} /> Mulai belanja</Link>
       </div>
     )
   }

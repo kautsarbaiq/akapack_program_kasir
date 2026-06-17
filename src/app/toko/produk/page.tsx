@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Minus } from 'lucide-react'
+import { CategoryIcon } from '@/components/category-icon'
 import { Button } from '@/components/ui/button'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
@@ -25,7 +26,7 @@ function ProductDetail() {
     return (
       <div className="py-16 text-center text-muted-foreground space-y-2">
         <p>Produk tidak ditemukan atau sedang dimuat…</p>
-        <Link href="/toko" className="text-primary text-sm">← Kembali ke katalog</Link>
+        <Link href="/toko" className="text-primary text-sm inline-flex items-center gap-1"><ArrowLeft size={14} /> Kembali ke katalog</Link>
       </div>
     )
   }
@@ -52,8 +53,8 @@ function ProductDetail() {
     <div className="space-y-5">
       <Link href="/toko" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={15} /> Kembali</Link>
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="aspect-square bg-muted rounded-2xl flex items-center justify-center text-7xl overflow-hidden">
-          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : (product.category?.icon ?? '📦')}
+        <div className="aspect-square bg-muted rounded-2xl flex items-center justify-center overflow-hidden text-muted-foreground">
+          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <CategoryIcon name={product.category?.icon} size={72} />}
         </div>
         <div className="space-y-4">
           <div>

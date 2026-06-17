@@ -41,7 +41,7 @@ const DEFAULTS: SettingsValues = {
   serviceRate: 0,
   storeName: 'AKAPACK',
   storeEmail: '',
-  receiptFooter: 'Terima kasih telah berbelanja 🙏',
+  receiptFooter: 'Terima kasih telah berbelanja',
 }
 
 const ONLINE_DEFAULTS: OnlineSettings = {

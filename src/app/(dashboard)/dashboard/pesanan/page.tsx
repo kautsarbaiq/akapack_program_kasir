@@ -71,7 +71,7 @@ export default function PesananOnlinePage() {
   const waCustomer = (t: Transaction) => {
     const text = [
       `Halo ${t.customer?.name ?? 'Kak'}, terima kasih sudah pesan di *${storeName || 'AKAPACK'}*.`,
-      `Pesanan *${t.transaction_number}* (${formatRupiah(t.total)}) sedang kami proses. 🙏`,
+      `Pesanan *${t.transaction_number}* (${formatRupiah(t.total)}) sedang kami proses. Terima kasih.`,
     ].join('\n')
     window.open(waUrl(t.customer?.phone ?? '', text), '_blank')
   }

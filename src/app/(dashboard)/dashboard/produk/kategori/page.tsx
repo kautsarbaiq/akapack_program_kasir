@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { CategoryFormDialog } from '@/components/dashboard/category-form-dialog'
+import { CategoryIcon } from '@/components/category-icon'
 import type { Category } from '@/types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -69,9 +70,9 @@ export default function KategoriPage() {
             <Card key={cat.id} className="group overflow-hidden hover:shadow-md transition-all duration-200">
               <div className="h-1.5" style={{ background: cat.color ?? '#3B82F6' }} />
               <CardContent className="p-4 text-center space-y-2">
-                <div className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center text-2xl"
-                  style={{ background: `${cat.color ?? '#3B82F6'}20` }}>
-                  {cat.icon ?? '📦'}
+                <div className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center"
+                  style={{ background: `${cat.color ?? '#3B82F6'}20`, color: cat.color ?? '#3B82F6' }}>
+                  <CategoryIcon name={cat.icon} size={24} />
                 </div>
                 <p className="font-semibold text-sm">{cat.name}</p>
                 <Badge variant="secondary" className="text-xs">{cat.product_count ?? 0} produk</Badge>
@@ -117,7 +118,7 @@ export default function KategoriPage() {
               <tbody>
                 {filtered.map(cat => (
                   <tr key={cat.id} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="py-3 px-4 text-xl">{cat.icon ?? '📦'}</td>
+                    <td className="py-3 px-4" style={{ color: cat.color ?? '#3B82F6' }}><CategoryIcon name={cat.icon} size={20} /></td>
                     <td className="py-3 px-4 font-medium">{cat.name}</td>
                     <td className="py-3 px-4 text-muted-foreground">{cat.product_count ?? 0} produk</td>
                     <td className="py-3 px-4">

@@ -4,8 +4,9 @@ import { useState, useMemo, useCallback } from 'react'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CreditCard, Smartphone, ArrowLeftRight, CheckCircle2,
-  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split
+  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split, PartyPopper
 } from 'lucide-react'
+import { CategoryIcon } from '@/components/category-icon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -411,7 +412,7 @@ export default function POSPage() {
     clearCart()
   }
 
-  const categoryTabs = [{ id: 'all', name: 'Semua', icon: '🏪' }, ...categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? '📦' }))]
+  const categoryTabs = [{ id: 'all', name: 'Semua', icon: 'Store' }, ...categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? 'Package' }))]
 
   return (
     <div className="relative flex h-full overflow-hidden">
@@ -427,7 +428,7 @@ export default function POSPage() {
               selectedCategory === cat.id ? 'text-white' : 'opacity-60 hover:opacity-90'
             )}
             style={{ background: selectedCategory === cat.id ? 'oklch(0.55 0.22 264)' : undefined }}>
-            <span className="text-xl">{cat.icon}</span>
+            <CategoryIcon name={cat.icon} size={20} />
             <span className="text-xs font-medium leading-none w-full truncate text-center px-0.5" title={cat.name} style={{ color: selectedCategory === cat.id ? 'white' : 'oklch(0.7 0.02 250)' }}>
               {cat.name.split(' ')[0]}
             </span>
@@ -475,8 +476,8 @@ export default function POSPage() {
                   {hasVar && (
                     <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-700">VARIAN</div>
                   )}
-                  <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 text-2xl overflow-hidden">
-                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : (product.category?.icon ?? '📦')}
+                  <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 overflow-hidden text-muted-foreground">
+                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <CategoryIcon name={product.category?.icon} size={28} />}
                   </div>
                   <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1 flex-1">{product.name}</p>
                   <p className="text-sm font-bold text-primary">{hasVar ? `dari ${formatRupiah(minVarPrice)}` : formatRupiah(product.price)}</p>
@@ -547,7 +548,7 @@ export default function POSPage() {
                 const prod = products.find((p) => p.id === item.product_id)
                 return (
                 <div key={item.key} className="flex items-start gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 text-sm">📦</div>
+                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground"><CategoryIcon name={prod?.category?.icon} size={15} /></div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.product_name}</p>
                     <p className="text-xs text-muted-foreground">{formatRupiah(item.price)} / {item.unit}</p>
@@ -611,7 +612,7 @@ export default function POSPage() {
             </div>
             {appliedPromo ? (
               <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 h-8">
-                <span className="text-xs font-medium text-emerald-700 truncate">🎉 {appliedPromo.name} (-{formatRupiah(promoDiscount)})</span>
+                <span className="text-xs font-medium text-emerald-700 truncate flex items-center gap-1"><PartyPopper size={12} className="shrink-0" /> {appliedPromo.name} (-{formatRupiah(promoDiscount)})</span>
                 <button onClick={removePromo} className="text-emerald-700 hover:text-emerald-900 shrink-0"><X size={13} /></button>
               </div>
             ) : (

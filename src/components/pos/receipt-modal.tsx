@@ -39,6 +39,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
   const storeName = useSettingsStore((s) => s.storeName)
   const storeAddress = useSettingsStore((s) => s.storeAddress)
   const storePhone = useSettingsStore((s) => s.storePhone)
+  const receiptFooter = useSettingsStore((s) => s.receiptFooter)
   if (!transaction) return null
 
   const handlePrint = () => { if (typeof window !== 'undefined') window.print() }
@@ -60,7 +61,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
       `Bayar (${PAYMENT_LABELS[t.payment_method]}): ${formatRupiah(t.paid_amount)}`,
       t.payment_method === 'cash' ? `Kembalian: ${formatRupiah(t.change_amount)}` : null,
       '',
-      'Terima kasih telah berbelanja 🙏',
+      receiptFooter || 'Terima kasih telah berbelanja',
     ]
       .filter(Boolean)
       .join('\n')
@@ -118,7 +119,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
 
           <div className="text-center text-muted-foreground space-y-0.5">
             <p>{transaction.customer?.name ?? 'Pelanggan Umum'} · Kasir: {transaction.cashier?.full_name ?? '-'}</p>
-            <p>Terima kasih telah berbelanja 🙏</p>
+            <p>{receiptFooter || 'Terima kasih telah berbelanja'}</p>
           </div>
         </div>
 
@@ -168,7 +169,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{PAYMENT_LABELS[transaction.payment_method]}</span><span>{formatRupiah(transaction.paid_amount)}</span></div>
           {transaction.payment_method === 'cash' && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Kembali</span><span>{formatRupiah(transaction.change_amount)}</span></div>}
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
-          <div style={{ textAlign: 'center' }}>Terima kasih</div>
+          <div style={{ textAlign: 'center' }}>{receiptFooter || 'Terima kasih'}</div>
         </div>
       </DialogContent>
     </Dialog>

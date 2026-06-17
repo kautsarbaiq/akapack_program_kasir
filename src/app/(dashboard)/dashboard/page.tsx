@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, ShoppingCart, Package,
-  Users, DollarSign, AlertTriangle, Eye, Plus,
+  Users, DollarSign, AlertTriangle, Eye, Plus, Trophy,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{greeting}! 👋</h1>
+          <h1 className="text-2xl font-bold text-foreground">{greeting}!</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — {storeName || 'AKAPACK'}
           </p>
@@ -167,7 +167,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">🏆 Produk Terlaris</CardTitle>
+              <CardTitle className="text-base flex items-center gap-1.5"><Trophy size={16} className="text-amber-500" /> Produk Terlaris</CardTitle>
               <Link href="/dashboard/penjualan/laporan"><Button variant="ghost" size="sm" className="text-xs gap-1"><Eye size={13} /> Lihat Semua</Button></Link>
             </div>
           </CardHeader>
@@ -205,7 +205,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {r.low.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">Semua stok aman 👍</p>}
+            {r.low.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">Semua stok aman</p>}
             {r.low.map((item, i) => (
               <div key={item.id}>
                 <div className="flex items-center gap-3">

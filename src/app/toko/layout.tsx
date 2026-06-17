@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, Store, Plus, Minus, Trash2 } from 'lucide-react'
+import { ShoppingCart, Store, Plus, Minus, Trash2, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -52,7 +52,7 @@ export default function TokoLayout({ children }: { children: React.ReactNode }) 
               <div className="space-y-3">
                 {items.map((i) => (
                   <div key={i.key} className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 text-lg">📦</div>
+                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground"><Package size={18} /></div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{i.name}</p>
                       <p className="text-xs text-muted-foreground">{formatRupiah(i.price)}</p>

@@ -15,10 +15,10 @@ import { Switch } from '@/components/ui/switch'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { categorySchema, type CategoryFormValues } from '@/lib/validations'
 import { cn } from '@/lib/utils'
+import { CategoryIcon, CATEGORY_ICON_NAMES, CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/components/category-icon'
 import type { Category } from '@/types'
 
 const COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EF4444', '#06B6D4', '#EC4899', '#F97316', '#14B8A6', '#6366F1']
-const EMOJIS = ['📦', '👕', '👖', '👗', '👜', '🎒', '💻', '📱', '🎧', '⌚', '🍜', '🍱', '🍰', '☕', '🥤', '✏️', '📚', '🧴', '💊', '🧸', '⚽', '🏠', '🔧', '🎨']
 
 interface Props {
   open: boolean
@@ -34,7 +34,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
-    defaultValues: { name: '', color: COLORS[0], icon: EMOJIS[0], is_active: true },
+    defaultValues: { name: '', color: COLORS[0], icon: DEFAULT_CATEGORY_ICON, is_active: true },
   })
 
   const color = watch('color')
@@ -47,12 +47,12 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
         reset({
           name: category.name,
           color: category.color ?? COLORS[0],
-          // icon lama bisa berupa nama lucide ('Shirt'); pakai hanya jika sudah emoji
-          icon: category.icon && !/^[A-Za-z]/.test(category.icon) ? category.icon : EMOJIS[0],
+          // icon = nama ikon lucide; bila data lama berupa emoji/tak dikenal → default
+          icon: category.icon && CATEGORY_ICONS[category.icon] ? category.icon : DEFAULT_CATEGORY_ICON,
           is_active: category.is_active,
         })
       } else {
-        reset({ name: '', color: COLORS[0], icon: EMOJIS[0], is_active: true })
+        reset({ name: '', color: COLORS[0], icon: DEFAULT_CATEGORY_ICON, is_active: true })
       }
     }
   }, [open, category, reset])
@@ -83,8 +83,8 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* Live preview */}
           <div className="flex items-center justify-center">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: `${color}20` }}>
-              {icon}
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: `${color}20`, color }}>
+              <CategoryIcon name={icon} size={30} />
             </div>
           </div>
 
@@ -114,17 +114,17 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
           <div className="space-y-2">
             <Label>Ikon</Label>
             <div className="grid grid-cols-8 gap-1.5">
-              {EMOJIS.map((e) => (
+              {CATEGORY_ICON_NAMES.map((n) => (
                 <button
-                  key={e}
+                  key={n}
                   type="button"
-                  onClick={() => setValue('icon', e, { shouldValidate: true })}
+                  onClick={() => setValue('icon', n, { shouldValidate: true })}
                   className={cn(
-                    'aspect-square rounded-lg text-xl flex items-center justify-center transition-colors',
-                    icon === e ? 'bg-primary/15 ring-2 ring-primary' : 'hover:bg-muted'
+                    'aspect-square rounded-lg flex items-center justify-center transition-colors',
+                    icon === n ? 'bg-primary/15 ring-2 ring-primary text-primary' : 'hover:bg-muted text-muted-foreground'
                   )}
                 >
-                  {e}
+                  <CategoryIcon name={n} size={18} />
                 </button>
               ))}
             </div>

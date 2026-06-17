@@ -214,7 +214,7 @@ export default function JurnalPage() {
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${balanced ? 'bg-emerald-50 text-emerald-700' : 'bg-muted'}`}>
               <span>Total Debit: <strong className="tabular-nums">{formatRupiah(totalDebit)}</strong></span>
               <span>Total Kredit: <strong className="tabular-nums">{formatRupiah(totalCredit)}</strong></span>
-              <span className="font-semibold">{balanced ? 'Seimbang ✓' : `Selisih ${formatRupiah(Math.abs(totalDebit - totalCredit))}`}</span>
+              <span className="font-semibold">{balanced ? 'Seimbang' : `Selisih ${formatRupiah(Math.abs(totalDebit - totalCredit))}`}</span>
             </div>
           </div>
           <DialogFooter>

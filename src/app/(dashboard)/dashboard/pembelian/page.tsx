@@ -195,7 +195,7 @@ export default function PembelianPage() {
                       <td className="py-3 px-4">{p.supplier?.name ?? '-'}</td>
                       <td className="py-3 px-4 text-muted-foreground text-xs">{p.items.length} item</td>
                       <td className="py-3 px-4 font-bold">{formatRupiah(p.total)}</td>
-                      <td className="py-3 px-4 text-xs">{PAYMENT[p.payment]}{p.payment === 'credit' && p.status === 'received' && (p.paid ? ' ✓' : ' ·belum')}</td>
+                      <td className="py-3 px-4 text-xs">{PAYMENT[p.payment]}{p.payment === 'credit' && p.status === 'received' && (p.paid ? ' · lunas' : ' · belum')}</td>
                       <td className="py-3 px-4 text-xs text-muted-foreground">{formatDate(p.date)}</td>
                       <td className="py-3 px-4"><Badge variant="outline" className={`text-xs ${st.cls}`}>{st.label}</Badge></td>
                       <td className="py-3 px-4">

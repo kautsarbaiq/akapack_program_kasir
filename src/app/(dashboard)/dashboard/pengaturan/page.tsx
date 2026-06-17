@@ -117,7 +117,7 @@ export default function PengaturanPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="flex items-center gap-5 pb-5" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center text-3xl">🏪</div>
+                <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center text-muted-foreground"><Store size={32} /></div>
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Logo Toko</p>
                   <Button variant="outline" size="sm">Upload Logo</Button>

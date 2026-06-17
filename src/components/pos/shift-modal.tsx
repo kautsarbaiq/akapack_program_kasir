@@ -152,7 +152,7 @@ function CloseShiftForm({ onDone }: { onDone: () => void }) {
           {errors.closing_cash && <p className="text-xs text-destructive">{errors.closing_cash.message}</p>}
           {closingCash > 0 && (
             <p className={`text-xs font-medium ${diff === 0 ? 'text-emerald-600' : diff > 0 ? 'text-blue-600' : 'text-destructive'}`}>
-              {diff === 0 ? 'Kas sesuai ✓' : diff > 0 ? `Lebih ${formatRupiah(diff)}` : `Kurang ${formatRupiah(Math.abs(diff))}`}
+              {diff === 0 ? 'Kas sesuai' : diff > 0 ? `Lebih ${formatRupiah(diff)}` : `Kurang ${formatRupiah(Math.abs(diff))}`}
             </p>
           )}
         </div>
