@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
@@ -18,6 +18,12 @@ export const metadata: Metadata = {
   description:
     "Platform manajemen bisnis retail terpadu — kasir, inventori, laporan, dan pelanggan dalam satu sistem.",
   keywords: ["POS", "kasir", "inventori", "retail", "manajemen bisnis", "AKAPACK"],
+  icons: { icon: "/icon-512.png", apple: "/icon-256.png" },
+  appleWebApp: { capable: true, title: "AKAPACK", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({
