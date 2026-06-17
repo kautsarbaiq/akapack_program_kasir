@@ -5,6 +5,7 @@ import { generateId } from '@/lib/utils'
 import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { fetchAll, insertRow } from '@/lib/supabase/repo'
 import { useProductStore } from './use-product-store'
+import { useActiveOutletStore } from './use-active-outlet-store'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
@@ -18,6 +19,7 @@ interface AddMovementInput {
   notes?: string
   reference_id?: string
   created_by_name?: string
+  outlet_id?: string // default: outlet aktif
 }
 
 interface StockMovementStore {
@@ -48,9 +50,10 @@ export const useStockMovementStore = create<StockMovementStore>()((set) => ({
 
   addMovement: (input) => {
     const product = useProductStore.getState().products.find((p) => p.id === input.product_id)
+    const outletId = input.outlet_id ?? useActiveOutletStore.getState().activeOutletId
     const mv: StockMovement = {
       id: generateId('mov'),
-      outlet_id: 'outlet-1',
+      outlet_id: outletId,
       product_id: input.product_id,
       product,
       type: input.type,
@@ -66,6 +69,7 @@ export const useStockMovementStore = create<StockMovementStore>()((set) => ({
     set((s) => ({ movements: [mv, ...s.movements] }))
     void insertRow('stock_movements', {
       tenant_id: DEFAULT_TENANT_ID,
+      outlet_id: isUuid(outletId) ? outletId : null,
       product_id: isUuid(input.product_id) ? input.product_id : null,
       type: input.type,
       quantity: input.quantity,

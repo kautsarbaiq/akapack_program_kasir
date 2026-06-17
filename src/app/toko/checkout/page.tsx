@@ -11,21 +11,23 @@ import { useCustomerStore } from '@/stores/use-customer-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
+import { DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 import { formatRupiah, generateId, generateTransactionNumber, waUrl, cn } from '@/lib/utils'
 import type { Transaction, TransactionItem, PaymentMethod } from '@/types'
 import { toast } from 'sonner'
+
+// Channel online selalu dipenuhi dari outlet Pusat (tetap), bukan outlet aktif per-browser.
+const ONLINE_OUTLET = DEFAULT_OUTLET_ID
 
 export default function CheckoutPage() {
   const items = useStoreCart((s) => s.items)
   const clear = useStoreCart((s) => s.clear)
   const addCustomer = useCustomerStore((s) => s.addCustomer)
   const addTransaction = useTransactionStore((s) => s.addTransaction)
-  const products = useProductStore((s) => s.products)
-  const decrementStock = useProductStore((s) => s.decrementStock)
-  const variants = useVariantStore((s) => s.variants)
-  const decrementVariantStock = useVariantStore((s) => s.decrementVariantStock)
   const addMovement = useStockMovementStore((s) => s.addMovement)
   const storeName = useSettingsStore((s) => s.storeName)
   const waNumber = useSettingsStore((s) => s.waNumber)
@@ -66,7 +68,7 @@ export default function CheckoutPage() {
     const pm: PaymentMethod = method === 'cod' ? 'cash' : 'transfer'
     const txn: Transaction = {
       id: txnId,
-      outlet_id: 'outlet-1',
+      outlet_id: ONLINE_OUTLET,
       transaction_number: generateTransactionNumber(),
       customer_id: customer.id,
       customer,
@@ -88,21 +90,15 @@ export default function CheckoutPage() {
     }
     addTransaction(txn)
     // Stok dipotong saat order (reservasi); pesanan mulai berstatus "pending" sampai dikonfirmasi admin.
+    const inv = useInventoryStore.getState()
     items.forEach((i) => {
-      if (i.variant_id) {
-        const v = variants.find((x) => x.id === i.variant_id)
-        const before = v?.stock ?? 0
-        const after = Math.max(0, before - i.quantity)
-        decrementVariantStock(i.variant_id, i.quantity)
-        addMovement({ product_id: i.product_id, type: 'out', quantity: -i.quantity, before_stock: before, after_stock: after, notes: `Online (${i.name})`, reference_id: txnId, created_by_name: 'Online Store' })
-      } else {
-        const prod = products.find((p) => p.id === i.product_id)
-        const before = prod?.stock ?? 0
-        const after = Math.max(0, before - i.quantity)
-        decrementStock(i.product_id, i.quantity)
-        addMovement({ product_id: i.product_id, type: 'out', quantity: -i.quantity, before_stock: before, after_stock: after, notes: 'Pesanan Online', reference_id: txnId, created_by_name: 'Online Store' })
-      }
+      const { before, after } = inv.applyDelta(ONLINE_OUTLET, i.product_id, i.variant_id, -i.quantity)
+      addMovement({ product_id: i.product_id, type: 'out', quantity: -i.quantity, before_stock: before, after_stock: after, notes: i.variant_id ? `Online (${i.name})` : 'Pesanan Online', reference_id: txnId, outlet_id: ONLINE_OUTLET, created_by_name: 'Online Store' })
     })
+    // proyeksikan ulang stok yang ditampilkan ke outlet aktif visitor
+    const active = useActiveOutletStore.getState().activeOutletId
+    useProductStore.getState().projectStock(active)
+    useVariantStore.getState().projectVariantStock(active)
     clear()
     setSuccess(txn)
     setSubmitting(false)

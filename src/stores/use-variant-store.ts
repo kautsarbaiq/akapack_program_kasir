@@ -3,6 +3,8 @@ import type { ProductVariant } from '@/types'
 import { generateId } from '@/lib/utils'
 import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
+import { useInventoryStore } from './use-inventory-store'
+import { useActiveOutletStore } from './use-active-outlet-store'
 
 export interface VariantFormValues {
   name: string
@@ -24,6 +26,8 @@ interface VariantStore {
   decrementVariantStock: (id: string, qty: number) => void
   /** Kembalikan stok varian (mis. pesanan online dibatalkan) */
   incrementVariantStock: (id: string, qty: number) => void
+  /** Proyeksikan stok varian dari inventory outlet tsb (saat ganti outlet aktif) */
+  projectVariantStock: (outletId: string) => void
 }
 
 export const useVariantStore = create<VariantStore>()((set, get) => ({
@@ -51,6 +55,8 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       created_at: new Date().toISOString(),
     }
     set((s) => ({ variants: [...s.variants, v] }))
+    // Stok awal varian → inventory outlet aktif
+    useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, productId, v.id, data.stock)
     void insertRow<ProductVariant>('product_variants', {
       tenant_id: DEFAULT_TENANT_ID,
       product_id: productId,
@@ -61,7 +67,10 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       stock: data.stock,
       is_active: true,
     }).then((saved) => {
-      if (saved) set((s) => ({ variants: s.variants.map((x) => (x.id === v.id ? saved : x)) }))
+      if (saved) {
+        useInventoryStore.getState().remapVariant(v.id, saved.id)
+        set((s) => ({ variants: s.variants.map((x) => (x.id === v.id ? saved : x)) }))
+      }
     })
     return v
   },
@@ -72,6 +81,8 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
         v.id === id ? { ...v, name: data.name, sku: data.sku || undefined, price: data.price, cost_price: data.cost_price, stock: data.stock } : v
       ),
     }))
+    const pv = get().variants.find((x) => x.id === id)
+    if (pv) useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, pv.product_id, id, data.stock)
     void updateRow('product_variants', id, {
       name: data.name,
       sku: data.sku || null,
@@ -86,27 +97,30 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
     void deleteRow('product_variants', id)
   },
 
+  // Stok varian per-outlet: lewat inventory (outlet aktif), lalu proyeksi field `stock`.
   decrementVariantStock: (id, qty) => {
-    let newStock = 0
-    set((s) => ({
-      variants: s.variants.map((v) => {
-        if (v.id !== id) return v
-        newStock = Math.max(0, v.stock - qty)
-        return { ...v, stock: newStock }
-      }),
-    }))
-    void updateRow('product_variants', id, { stock: newStock })
+    const v = get().variants.find((x) => x.id === id)
+    if (!v) return
+    const outlet = useActiveOutletStore.getState().activeOutletId
+    const { after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, -qty)
+    set((s) => ({ variants: s.variants.map((x) => (x.id === id ? { ...x, stock: after } : x)) }))
   },
 
   incrementVariantStock: (id, qty) => {
-    let newStock = 0
+    const v = get().variants.find((x) => x.id === id)
+    if (!v) return
+    const outlet = useActiveOutletStore.getState().activeOutletId
+    const { after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, qty)
+    set((s) => ({ variants: s.variants.map((x) => (x.id === id ? { ...x, stock: after } : x)) }))
+  },
+
+  projectVariantStock: (outletId) => {
+    const inv = useInventoryStore.getState()
     set((s) => ({
       variants: s.variants.map((v) => {
-        if (v.id !== id) return v
-        newStock = v.stock + qty
-        return { ...v, stock: newStock }
+        const st = inv.stockAt(outletId, v.product_id, v.id)
+        return st === null ? v : { ...v, stock: st }
       }),
     }))
-    void updateRow('product_variants', id, { stock: newStock })
   },
 }))

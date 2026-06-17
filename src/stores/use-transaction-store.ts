@@ -57,6 +57,7 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
       .from('transactions')
       .insert({
         tenant_id: DEFAULT_TENANT_ID,
+        outlet_id: isUuid(txn.outlet_id) ? txn.outlet_id : null,
         transaction_number: txn.transaction_number,
         customer_id: isUuid(txn.customer_id) ? txn.customer_id : null,
         cashier_id: isUuid(txn.cashier_id) ? txn.cashier_id : null,

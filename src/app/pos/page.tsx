@@ -27,6 +27,7 @@ import { useSettingsStore } from '@/stores/use-settings-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn } from '@/lib/utils'
 import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, Promotion, ProductVariant } from '@/types'
 import { toast } from 'sonner'
@@ -331,7 +332,7 @@ export default function POSPage() {
     const emp = currentShift.employee
     const txn: Transaction = {
       id: txnId,
-      outlet_id: 'outlet-1',
+      outlet_id: useActiveOutletStore.getState().activeOutletId,
       transaction_number: generateTransactionNumber(),
       customer_id: selectedCustomer?.id,
       customer: selectedCustomer ?? undefined,

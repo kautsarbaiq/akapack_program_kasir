@@ -18,6 +18,9 @@ import { useAssetStore } from '@/stores/use-asset-store'
 import { useClosingStore } from '@/stores/use-closing-store'
 import { useSupplierStore } from '@/stores/use-supplier-store'
 import { usePurchaseStore } from '@/stores/use-purchase-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 
 /**
  * Memuat data dari Supabase sekali saat aplikasi (area login) mount.
@@ -32,6 +35,7 @@ export function DataBootstrap() {
     void useSettingsStore.persist.rehydrate()
     void useAssetStore.persist.rehydrate()
     void useClosingStore.persist.rehydrate()
+    void useActiveOutletStore.persist.rehydrate()
 
     const run = async () => {
       // kategori dulu — produk butuh kategori untuk resolusi nama
@@ -45,7 +49,13 @@ export function DataBootstrap() {
         useVariantStore.getState().fetch(),
         useAccountStore.getState().fetch(),
         useSupplierStore.getState().fetch(),
+        useOutletStore.getState().fetch(),
+        useInventoryStore.getState().fetch(),
       ])
+      // Proyeksikan stok produk/varian ke outlet aktif (setelah produk, varian, inventory termuat)
+      const outlet = useActiveOutletStore.getState().activeOutletId
+      useProductStore.getState().projectStock(outlet)
+      useVariantStore.getState().projectVariantStock(outlet)
       // transaksi, shift, pergerakan stok, jurnal, pembelian — butuh master data untuk resolusi
       await Promise.all([
         useTransactionStore.getState().fetch(),

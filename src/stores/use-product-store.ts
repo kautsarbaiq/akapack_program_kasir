@@ -6,6 +6,8 @@ import { generateId, getStockStatus } from '@/lib/utils'
 import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 import { useCategoryStore } from './use-category-store'
+import { useInventoryStore } from './use-inventory-store'
+import { useActiveOutletStore } from './use-active-outlet-store'
 
 interface ProductStore {
   products: Product[]
@@ -22,6 +24,8 @@ interface ProductStore {
   setStock: (id: string, newStock: number) => void
   /** Set harga modal (mis. moving-average saat terima pembelian) */
   setCostPrice: (id: string, newCost: number) => void
+  /** Proyeksikan field `stock` produk dari inventory outlet tsb (dipanggil saat ganti outlet aktif) */
+  projectStock: (outletId: string) => void
   /** Tandai produk punya varian */
   setHasVariants: (id: string, value: boolean) => void
   /** Set URL foto produk */
@@ -76,6 +80,8 @@ export const useProductStore = create<ProductStore>()((set) => ({
       updated_at: now,
     }
     set((s) => ({ products: [newProduct, ...s.products] }))
+    // Stok awal masuk ke inventory outlet aktif (per-outlet)
+    useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, newProduct.id, undefined, values.stock)
     void insertRow<Product>('products', {
       tenant_id: DEFAULT_TENANT_ID,
       category_id: values.category_id,
@@ -93,11 +99,16 @@ export const useProductStore = create<ProductStore>()((set) => ({
       price_online: priceOnline ?? 0,
       is_active: values.is_active,
     }).then((saved) => {
-      if (saved) set((s) => ({
-        products: s.products.map((p) => (p.id === newProduct.id
-          ? { ...saved, category: resolveCategory(saved.category_id), stock_status: getStockStatus(saved.stock, saved.min_stock) }
-          : p)),
-      }))
+      if (saved) {
+        useInventoryStore.getState().remapProduct(newProduct.id, saved.id)
+        // Pertahankan stok terproyeksi outlet aktif (mutasi selama insert tidak ter-undo)
+        const projected = useInventoryStore.getState().stockAt(useActiveOutletStore.getState().activeOutletId, saved.id) ?? saved.stock
+        set((s) => ({
+          products: s.products.map((p) => (p.id === newProduct.id
+            ? { ...saved, stock: projected, category: resolveCategory(saved.category_id), stock_status: getStockStatus(projected, saved.min_stock) }
+            : p)),
+        }))
+      }
     })
     return newProduct
   },
@@ -121,6 +132,8 @@ export const useProductStore = create<ProductStore>()((set) => ({
           : p
       ),
     }))
+    // Stok adalah sumber-kebenaran inventory (per outlet aktif), bukan kolom products
+    useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, id, undefined, values.stock)
     void updateRow('products', id, {
       category_id: values.category_id,
       name: values.name,
@@ -141,40 +154,37 @@ export const useProductStore = create<ProductStore>()((set) => ({
 
   deleteProduct: (id) => {
     set((s) => ({ products: s.products.filter((p) => p.id !== id) }))
+    useInventoryStore.getState().removeProduct(id)
     void deleteRow('products', id)
   },
 
+  // Stok kini per-outlet: mutasi diterapkan ke inventory outlet AKTIF, lalu proyeksi field `stock`.
   decrementStock: (id, qty) => {
-    let newStock = 0
-    set((s) => ({
-      products: s.products.map((p) => {
-        if (p.id !== id) return p
-        newStock = Math.max(0, p.stock - qty)
-        return { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) }
-      }),
-    }))
-    void updateRow('products', id, { stock: newStock })
+    const outlet = useActiveOutletStore.getState().activeOutletId
+    const { after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, -qty)
+    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
   },
 
   incrementStock: (id, qty) => {
-    let newStock = 0
-    set((s) => ({
-      products: s.products.map((p) => {
-        if (p.id !== id) return p
-        newStock = p.stock + qty
-        return { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) }
-      }),
-    }))
-    void updateRow('products', id, { stock: newStock })
+    const outlet = useActiveOutletStore.getState().activeOutletId
+    const { after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, qty)
+    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
   },
 
   setStock: (id, newStock) => {
+    const outlet = useActiveOutletStore.getState().activeOutletId
+    const { after } = useInventoryStore.getState().setStockAt(outlet, id, undefined, newStock)
+    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
+  },
+
+  projectStock: (outletId) => {
+    const inv = useInventoryStore.getState()
     set((s) => ({
-      products: s.products.map((p) =>
-        p.id === id ? { ...p, stock: newStock, stock_status: getStockStatus(newStock, p.min_stock) } : p
-      ),
+      products: s.products.map((p) => {
+        const st = inv.stockAt(outletId, p.id)
+        return st === null ? p : { ...p, stock: st, stock_status: getStockStatus(st, p.min_stock) }
+      }),
     }))
-    void updateRow('products', id, { stock: newStock })
   },
 
   setCostPrice: (id, newCost) => {

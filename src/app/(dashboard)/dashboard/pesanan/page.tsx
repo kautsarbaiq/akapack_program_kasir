@@ -10,12 +10,17 @@ import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
+import { DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 import { formatRupiah, formatDateTime, waUrl } from '@/lib/utils'
 import type { Transaction, TransactionStatus } from '@/types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   pending: { label: 'Baru', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -34,10 +39,6 @@ const FILTERS: { value: 'all' | TransactionStatus; label: string }[] = [
 export default function PesananOnlinePage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const setStatus = useTransactionStore((s) => s.setStatus)
-  const products = useProductStore((s) => s.products)
-  const incrementStock = useProductStore((s) => s.incrementStock)
-  const variants = useVariantStore((s) => s.variants)
-  const incrementVariantStock = useVariantStore((s) => s.incrementVariantStock)
   const addMovement = useStockMovementStore((s) => s.addMovement)
   const storeName = useSettingsStore((s) => s.storeName)
   const [filter, setFilter] = useState<'all' | TransactionStatus>('all')
@@ -51,20 +52,17 @@ export default function PesananOnlinePage() {
 
   const cancel = (t: Transaction) => {
     if (!confirm('Batalkan pesanan ini? Stok yang sempat dipotong akan dikembalikan otomatis.')) return
-    // Kembalikan stok yang dipotong saat pesanan dibuat (reservasi).
+    // Kembalikan stok ke OUTLET pemenuhan order (yang dipotong saat order), bukan outlet aktif admin.
+    const outlet = UUID_RE.test(t.outlet_id) ? t.outlet_id : DEFAULT_OUTLET_ID
+    const inv = useInventoryStore.getState()
     t.items.forEach((it) => {
-      if (it.variant_id) {
-        const v = variants.find((x) => x.id === it.variant_id)
-        const before = v?.stock ?? 0
-        incrementVariantStock(it.variant_id, it.quantity)
-        addMovement({ product_id: it.product_id, type: 'in', quantity: it.quantity, before_stock: before, after_stock: before + it.quantity, notes: `Pembatalan pesanan ${t.transaction_number} (${it.product_name})`, reference_id: t.id, created_by_name: 'Admin' })
-      } else {
-        const p = products.find((x) => x.id === it.product_id)
-        const before = p?.stock ?? 0
-        incrementStock(it.product_id, it.quantity)
-        addMovement({ product_id: it.product_id, type: 'in', quantity: it.quantity, before_stock: before, after_stock: before + it.quantity, notes: `Pembatalan pesanan ${t.transaction_number}`, reference_id: t.id, created_by_name: 'Admin' })
-      }
+      const { before, after } = inv.applyDelta(outlet, it.product_id, it.variant_id, it.quantity)
+      addMovement({ product_id: it.product_id, type: 'in', quantity: it.quantity, before_stock: before, after_stock: after, notes: `Pembatalan pesanan ${t.transaction_number}`, reference_id: t.id, outlet_id: outlet, created_by_name: 'Admin' })
     })
+    // proyeksikan ulang stok yang ditampilkan ke outlet aktif
+    const active = useActiveOutletStore.getState().activeOutletId
+    useProductStore.getState().projectStock(active)
+    useVariantStore.getState().projectVariantStock(active)
     setStatus(t.id, 'void')
     toast.success('Pesanan dibatalkan, stok dikembalikan')
     setDetail(null)

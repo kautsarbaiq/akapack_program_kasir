@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Menu, Bell, Search, ChevronDown } from 'lucide-react'
+import { Menu, Bell, Search, ChevronDown, Store, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,10 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
+import { useOutletStore } from '@/stores/use-outlet-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useProductStore } from '@/stores/use-product-store'
+import { useVariantStore } from '@/stores/use-variant-store'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -41,6 +45,19 @@ export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
   const pageTitle = breadcrumbMap[pathname] ?? 'Dashboard'
 
+  const outlets = useOutletStore((s) => s.outlets)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const setActiveOutlet = useActiveOutletStore((s) => s.setActiveOutlet)
+  const activeOutlet = outlets.find((o) => o.id === activeOutletId) ?? outlets[0]
+
+  const switchOutlet = (id: string) => {
+    setActiveOutlet(id)
+    // Proyeksikan ulang stok produk/varian ke outlet yang dipilih
+    useProductStore.getState().projectStock(id)
+    useVariantStore.getState().projectVariantStock(id)
+    toast.success(`Outlet aktif: ${outlets.find((o) => o.id === id)?.name ?? ''}`)
+  }
+
   const handleLogout = async () => {
     if (isSupabaseConfigured()) {
       await getSupabaseBrowser().auth.signOut()
@@ -66,9 +83,30 @@ export function Header({ onMenuClick }: HeaderProps) {
       </Button>
 
       {/* Page title / breadcrumb */}
-      <div className="hidden sm:block">
+      <div className="hidden lg:block">
         <p className="text-sm font-semibold text-foreground">{pageTitle}</p>
       </div>
+
+      {/* Outlet switcher */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0">
+            <Store size={15} className="text-primary" />
+            <span className="max-w-[120px] truncate">{activeOutlet?.name ?? 'Outlet'}</span>
+            <ChevronDown size={13} className="text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuLabel>Pilih Outlet</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {outlets.map((o) => (
+            <DropdownMenuItem key={o.id} className="flex items-center justify-between cursor-pointer" onClick={() => switchOutlet(o.id)}>
+              <span>{o.name}</span>
+              {o.id === activeOutletId && <Check size={14} className="text-primary" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Search */}
       <div className="flex-1 max-w-md hidden md:block">

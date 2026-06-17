@@ -45,6 +45,7 @@ const navItems: NavItem[] = [
       { title: 'Stok Saat Ini', href: '/dashboard/inventori' },
       { title: 'Pergerakan Stok', href: '/dashboard/inventori/pergerakan' },
       { title: 'Stock Opname', href: '/dashboard/inventori/opname' },
+      { title: 'Transfer Stok', href: '/dashboard/inventori/transfer' },
     ],
   },
   {
@@ -86,6 +87,7 @@ const navItems: NavItem[] = [
     ],
   },
   { title: 'Karyawan', href: '/dashboard/karyawan', icon: UserCheck },
+  { title: 'Outlet', href: '/dashboard/outlet', icon: Store },
   { title: 'Laporan', href: '/dashboard/laporan', icon: BarChart3 },
 ]
 
