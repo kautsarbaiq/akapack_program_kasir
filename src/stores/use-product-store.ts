@@ -62,7 +62,7 @@ function resolveCategory(categoryId: string) {
 }
 
 export const useProductStore = create<ProductStore>()((set) => ({
-  products: mockProducts,
+  products: isSupabaseConfigured() ? [] : mockProducts,
   loaded: false,
 
   fetch: async () => {

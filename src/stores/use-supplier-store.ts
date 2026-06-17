@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Supplier } from '@/types'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 import { mockSuppliers } from '@/lib/mock-data'
 
@@ -33,7 +33,7 @@ interface SupplierStore {
 }
 
 export const useSupplierStore = create<SupplierStore>()((set) => ({
-  suppliers: mockSuppliers,
+  suppliers: isSupabaseConfigured() ? [] : mockSuppliers,
   loaded: false,
 
   fetch: async () => {

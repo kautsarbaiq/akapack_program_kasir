@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { StockMovement, MovementType } from '@/types'
 import { mockStockMovements } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow } from '@/lib/supabase/repo'
 import { useProductStore } from './use-product-store'
 import { useActiveOutletStore } from './use-active-outlet-store'
@@ -33,7 +33,7 @@ interface StockMovementStore {
 }
 
 export const useStockMovementStore = create<StockMovementStore>()((set) => ({
-  movements: mockStockMovements,
+  movements: isSupabaseConfigured() ? [] : mockStockMovements,
   loaded: false,
 
   fetch: async () => {

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Account, AccountType } from '@/types'
 import { mockAccounts } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
 interface AccountRow {
@@ -35,7 +35,7 @@ interface AccountStore {
 }
 
 export const useAccountStore = create<AccountStore>()((set) => ({
-  accounts: mockAccounts,
+  accounts: isSupabaseConfigured() ? [] : mockAccounts,
   loaded: false,
 
   fetch: async () => {

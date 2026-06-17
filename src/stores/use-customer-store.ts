@@ -3,7 +3,7 @@ import type { Customer } from '@/types'
 import type { CustomerFormValues } from '@/lib/validations'
 import { mockCustomers } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
 /** Poin diperoleh: 1 poin per Rp1.000 belanja */
@@ -24,7 +24,7 @@ interface CustomerStore {
 }
 
 export const useCustomerStore = create<CustomerStore>()((set, get) => ({
-  customers: mockCustomers,
+  customers: isSupabaseConfigured() ? [] : mockCustomers,
   loaded: false,
 
   fetch: async () => {

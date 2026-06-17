@@ -103,7 +103,7 @@ function persistRow(row: InventoryRow) {
 }
 
 export const useInventoryStore = create<InventoryStore>()((set, get) => ({
-  items: seedRows,
+  items: isSupabaseConfigured() ? [] : seedRows,
   loaded: false,
 
   fetch: async () => {

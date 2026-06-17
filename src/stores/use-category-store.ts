@@ -21,7 +21,7 @@ interface CategoryStore {
 }
 
 export const useCategoryStore = create<CategoryStore>()((set, get) => ({
-  categories: mockCategories,
+  categories: isSupabaseConfigured() ? [] : mockCategories,
   loaded: false,
 
   fetch: async () => {

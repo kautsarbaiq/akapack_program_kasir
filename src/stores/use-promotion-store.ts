@@ -3,7 +3,7 @@ import type { Promotion } from '@/types'
 import type { PromotionFormValues } from '@/lib/validations'
 import { mockPromotions } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
 interface PromotionStore {
@@ -19,7 +19,7 @@ interface PromotionStore {
 }
 
 export const usePromotionStore = create<PromotionStore>()((set, get) => ({
-  promotions: mockPromotions,
+  promotions: isSupabaseConfigured() ? [] : mockPromotions,
   loaded: false,
 
   fetch: async () => {

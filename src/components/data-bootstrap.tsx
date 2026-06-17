@@ -23,6 +23,7 @@ import { useOutletStore } from '@/stores/use-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
+import { useCurrentUserStore } from '@/stores/use-current-user-store'
 
 /**
  * Memuat data dari Supabase sekali saat aplikasi (area login) mount.
@@ -54,6 +55,8 @@ export function DataBootstrap() {
         useOutletStore.getState().fetch(),
         useInventoryStore.getState().fetch(),
       ])
+      // User login (nama/role di-resolve dari karyawan via email) — setelah employee fetch
+      void useCurrentUserStore.getState().fetch()
       // Proyeksikan stok produk/varian ke outlet aktif (setelah produk, varian, inventory termuat)
       const outlet = useActiveOutletStore.getState().activeOutletId
       useProductStore.getState().projectStock(outlet)

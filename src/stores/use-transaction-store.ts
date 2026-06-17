@@ -113,7 +113,7 @@ interface TransactionStore {
 }
 
 export const useTransactionStore = create<TransactionStore>()((set) => ({
-  transactions: mockTransactions,
+  transactions: isSupabaseConfigured() ? [] : mockTransactions,
   lastTransaction: null,
   loaded: false,
 

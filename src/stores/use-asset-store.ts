@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Asset } from '@/types'
 import { mockAssets } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 
 export interface AssetInput {
   name: string
@@ -25,7 +26,7 @@ interface AssetStore {
 export const useAssetStore = create<AssetStore>()(
   persist(
     (set) => ({
-      assets: mockAssets,
+      assets: isSupabaseConfigured() ? [] : mockAssets,
       addAsset: (d) =>
         set((s) => ({
           assets: [

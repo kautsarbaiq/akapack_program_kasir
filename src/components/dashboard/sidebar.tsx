@@ -8,8 +8,13 @@ import {
   Receipt, Users, Tag, UserCheck, BarChart3, Settings,
   ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, getInitials, getAvatarColor } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useOutletStore } from '@/stores/use-outlet-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useCurrentUserStore } from '@/stores/use-current-user-store'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 
 interface NavChild {
   title: string
@@ -113,6 +118,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [expandedItems, setExpandedItems] = useState<string[]>(['Produk', 'Penjualan'])
+  const outlets = useOutletStore((s) => s.outlets)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const activeOutlet = outlets.find((o) => o.id === activeOutletId) ?? outlets[0]
+  const currentUser = useCurrentUserStore((s) => s.user)
+  const userName = currentUser?.name ?? 'Pengguna'
+  const userRole = currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : ''
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) =>
@@ -125,9 +136,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     return pathname.startsWith(href)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured()) await getSupabaseBrowser().auth.signOut()
     toast.success('Berhasil keluar')
     router.push('/login')
+    router.refresh()
   }
 
   return (
@@ -174,8 +187,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <Store size={14} style={{ color: 'oklch(0.65 0.2 264)' }} />
             </div>
             <div className="overflow-hidden">
-              <p className="text-xs font-semibold truncate" style={{ color: 'oklch(0.88 0.01 250)' }}>Toko AKAPACK</p>
-              <p className="text-xs truncate" style={{ color: 'oklch(0.5 0.02 250)' }}>Outlet Utama</p>
+              <p className="text-xs font-semibold truncate" style={{ color: 'oklch(0.88 0.01 250)' }}>{activeOutlet?.name ?? 'AKAPACK'}</p>
+              <p className="text-xs truncate" style={{ color: 'oklch(0.5 0.02 250)' }}>{activeOutlet?.address || 'Outlet aktif'}</p>
             </div>
           </div>
         </div>
@@ -308,12 +321,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className={cn('px-3 py-2 transition-all duration-300', open ? 'opacity-100' : 'opacity-0 lg:opacity-0 h-0 overflow-hidden p-0')}>
             <div className="flex items-center gap-2 py-2">
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white"
-                style={{ background: 'oklch(0.55 0.22 264)' }}>
-                A
+                style={{ background: getAvatarColor(userName) }}>
+                {getInitials(userName)}
               </div>
               <div className="flex-1 overflow-hidden">
-                <p className="text-xs font-semibold truncate" style={{ color: 'oklch(0.88 0.01 250)' }}>Andi Wijaya</p>
-                <p className="text-xs truncate" style={{ color: 'oklch(0.5 0.02 250)' }}>Owner</p>
+                <p className="text-xs font-semibold truncate" style={{ color: 'oklch(0.88 0.01 250)' }}>{userName}</p>
+                <p className="text-xs truncate" style={{ color: 'oklch(0.5 0.02 250)' }}>{userRole}</p>
               </div>
               <button onClick={handleLogout} className="shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors"
                 style={{ color: 'oklch(0.5 0.02 250)' }} title="Logout">

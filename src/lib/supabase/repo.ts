@@ -13,15 +13,26 @@ export async function fetchAll<T>(
 ): Promise<T[] | null> {
   if (!isSupabaseConfigured()) return null
   try {
-    const { data, error } = await getSupabaseBrowser()
-      .from(table)
-      .select('*')
-      .order(orderBy, { ascending })
-    if (error) {
-      console.warn(`[akapack] gagal load ${table}:`, error.message)
-      return null
+    const sb = getSupabaseBrowser()
+    const PAGE = 1000 // Supabase/PostgREST membatasi 1000 baris/permintaan — paginasi agar SEMUA terbaca
+    const out: T[] = []
+    let from = 0
+    for (;;) {
+      const { data, error } = await sb
+        .from(table)
+        .select('*')
+        .order(orderBy, { ascending })
+        .range(from, from + PAGE - 1)
+      if (error) {
+        console.warn(`[akapack] gagal load ${table}:`, error.message)
+        return from === 0 ? null : out // halaman pertama gagal → null; sebagian sudah termuat → kembalikan itu
+      }
+      const rows = (data ?? []) as T[]
+      out.push(...rows)
+      if (rows.length < PAGE) break
+      from += PAGE
     }
-    return (data ?? []) as T[]
+    return out
   } catch (e) {
     console.warn(`[akapack] error load ${table}:`, e)
     return null

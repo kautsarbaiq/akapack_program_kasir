@@ -10,11 +10,12 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { cn, getInitials, getAvatarColor } from '@/lib/utils'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 
@@ -49,6 +50,11 @@ export function Header({ onMenuClick }: HeaderProps) {
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const setActiveOutlet = useActiveOutletStore((s) => s.setActiveOutlet)
   const activeOutlet = outlets.find((o) => o.id === activeOutletId) ?? outlets[0]
+  const products = useProductStore((s) => s.products)
+  const currentUser = useCurrentUserStore((s) => s.user)
+  const displayName = currentUser?.name ?? 'Pengguna'
+  const displayEmail = currentUser?.email ?? ''
+  const roleLabel = currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : 'Pengguna'
 
   const switchOutlet = (id: string) => {
     setActiveOutlet(id)
@@ -67,11 +73,13 @@ export function Header({ onMenuClick }: HeaderProps) {
     router.refresh()
   }
 
-  const notifications = [
-    { id: 1, text: 'Stok Powerbank 10000mAh habis', time: '5 mnt', urgent: true },
-    { id: 2, text: 'Kopi Sachet Premium hampir habis (3 sisa)', time: '1 jam', urgent: true },
-    { id: 3, text: 'Laporan harian siap diunduh', time: '2 jam', urgent: false },
-  ]
+  // Notifikasi nyata: produk aktif yang stoknya habis/menipis (≤ min stok)
+  const lowStock = products.filter((p) => p.is_active && p.stock <= p.min_stock)
+  const notifications = lowStock.slice(0, 12).map((p) => ({
+    id: p.id,
+    text: p.stock <= 0 ? `Stok habis: ${p.name}` : `Stok menipis: ${p.name} (${p.stock} ${p.unit})`,
+    urgent: p.stock <= 0,
+  }))
 
   return (
     <header className="flex h-16 items-center gap-4 px-4 lg:px-6 shrink-0 bg-background"
@@ -137,9 +145,11 @@ export function Header({ onMenuClick }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">
               <Bell size={19} />
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-xs font-bold rounded-full bg-destructive text-white flex items-center justify-center">
-                {notifications.filter(n => n.urgent).length}
-              </span>
+              {notifications.filter((n) => n.urgent).length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-xs font-bold rounded-full bg-destructive text-white flex items-center justify-center">
+                  {notifications.filter((n) => n.urgent).length}
+                </span>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
@@ -148,13 +158,12 @@ export function Header({ onMenuClick }: HeaderProps) {
               <Badge variant="secondary" className="text-xs">{notifications.length}</Badge>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {notifications.map((n) => (
-              <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 py-3 cursor-pointer">
-                <div className="flex items-start gap-2 w-full">
-                  {n.urgent && <span className="mt-0.5 w-2 h-2 rounded-full bg-destructive shrink-0" />}
-                  <p className={cn('text-sm flex-1', n.urgent ? 'font-medium' : 'text-muted-foreground')}>{n.text}</p>
-                </div>
-                <span className="text-xs text-muted-foreground ml-4">{n.time} yang lalu</span>
+            {notifications.length === 0 ? (
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">Tidak ada notifikasi</div>
+            ) : notifications.map((n) => (
+              <DropdownMenuItem key={n.id} className="flex items-start gap-2 py-2.5 cursor-pointer">
+                <span className={cn('mt-1 w-2 h-2 rounded-full shrink-0', n.urgent ? 'bg-destructive' : 'bg-amber-400')} />
+                <p className={cn('text-sm flex-1', n.urgent ? 'font-medium' : 'text-muted-foreground')}>{n.text}</p>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -165,20 +174,20 @@ export function Header({ onMenuClick }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 h-9 px-3">
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                style={{ background: 'oklch(0.55 0.22 264)' }}>
-                A
+                style={{ background: getAvatarColor(displayName) }}>
+                {getInitials(displayName)}
               </div>
               <div className="hidden sm:block text-left">
-                <p className="text-xs font-semibold leading-none">Andi Wijaya</p>
-                <p className="text-xs text-muted-foreground leading-none mt-0.5">Owner</p>
+                <p className="text-xs font-semibold leading-none">{displayName}</p>
+                <p className="text-xs text-muted-foreground leading-none mt-0.5">{roleLabel}</p>
               </div>
               <ChevronDown size={14} className="text-muted-foreground hidden sm:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>
-              <p className="font-semibold">Andi Wijaya</p>
-              <p className="text-xs text-muted-foreground font-normal">andi@akapack.com</p>
+              <p className="font-semibold">{displayName}</p>
+              <p className="text-xs text-muted-foreground font-normal">{displayEmail || roleLabel}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>Profil Saya</DropdownMenuItem>
