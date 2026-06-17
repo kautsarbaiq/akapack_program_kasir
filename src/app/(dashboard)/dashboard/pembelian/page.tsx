@@ -286,8 +286,8 @@ export default function PembelianPage() {
                     <option value="">— pilih produk —</option>
                     {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                  <Input type="number" min={1} className="w-20 text-right" value={it.qty || ''} onChange={(e) => setItem(i, { qty: Math.max(0, Number(e.target.value)) })} />
-                  <Input type="number" min={0} className="w-28 text-right" value={it.cost || ''} onChange={(e) => setItem(i, { cost: Math.max(0, Number(e.target.value)) })} />
+                  <Input type="number" min={1} className="w-20 text-right" value={it.qty || ''} onChange={(e) => setItem(i, { qty: Math.max(0, Number(e.target.value) || 0) })} />
+                  <Input type="number" min={0} className="w-28 text-right" value={it.cost || ''} onChange={(e) => setItem(i, { cost: Math.max(0, Number(e.target.value) || 0) })} />
                   <span className="w-24 text-right text-sm tabular-nums">{formatRupiah((it.qty || 0) * (it.cost || 0))}</span>
                   <button type="button" onClick={() => removeItem(i)} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30" disabled={items.length <= 1}><X size={14} /></button>
                 </div>

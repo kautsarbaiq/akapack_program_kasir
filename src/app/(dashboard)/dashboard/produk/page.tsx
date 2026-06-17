@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import {
   Package, Plus, Search, LayoutGrid, List,
   Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle,
-  Download, Upload
+  Download, Upload, Loader2
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useProductStore } from '@/stores/use-product-store'
 import { useCategoryStore } from '@/stores/use-category-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useVariantStore } from '@/stores/use-variant-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { ProductFormDialog } from '@/components/dashboard/product-form-dialog'
 import { ImportProdukDialog } from '@/components/dashboard/import-produk-dialog'
 import { formatRupiah, getStockStatus } from '@/lib/utils'
@@ -33,6 +36,7 @@ type FilterStock = 'all' | 'safe' | 'low' | 'out'
 export default function ProdukPage() {
   const products = useProductStore((s) => s.products)
   const removeProduct = useProductStore((s) => s.deleteProduct)
+  const deleteAllProducts = useProductStore((s) => s.deleteAllProducts)
   const categories = useCategoryStore((s) => s.categories)
 
   const [view, setView] = useState<ViewMode>('table')
@@ -44,6 +48,34 @@ export default function ProdukPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [wipeOpen, setWipeOpen] = useState(false)
+  const [wipeConfirm, setWipeConfirm] = useState('')
+  const [wiping, setWiping] = useState(false)
+
+  const handleWipeAll = async () => {
+    setWiping(true)
+    try {
+      const res = await deleteAllProducts()
+      if (!res.ok) {
+        const fk = res.error?.toLowerCase().includes('foreign key') || res.error?.toLowerCase().includes('violates')
+        toast.error(fk
+          ? 'Tidak bisa hapus: sebagian produk dipakai di dokumen Pembelian/Stok Keluar. Hapus dokumen itu dulu.'
+          : `Gagal menghapus: ${res.error ?? 'kesalahan server'}`)
+        return
+      }
+      // DB sudah cascade hapus inventory/varian/pergerakan; sinkronkan memori
+      useInventoryStore.getState().clearAll()
+      useVariantStore.getState().clearAll()
+      useStockMovementStore.getState().clearAll()
+      toast.success('Semua produk berhasil dihapus')
+      setWipeOpen(false)
+      setWipeConfirm('')
+    } catch {
+      toast.error('Gagal menghapus semua produk')
+    } finally {
+      setWiping(false)
+    }
+  }
 
   const handleExport = async () => {
     if (products.length === 0) { toast.error('Belum ada produk untuk diekspor'); return }
@@ -115,6 +147,10 @@ export default function ProdukPage() {
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handleExport}>
             <Download size={14} /> Export
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs text-destructive hover:text-destructive border-destructive/30"
+            onClick={() => { setWipeConfirm(''); setWipeOpen(true) }} disabled={products.length === 0}>
+            <Trash2 size={14} /> Hapus Semua
           </Button>
           <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() => { setEditTarget(null); setFormOpen(true) }}>
@@ -295,6 +331,27 @@ export default function ProdukPage() {
             <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
               Hapus
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Hapus SEMUA produk — ketik HAPUS untuk konfirmasi */}
+      <AlertDialog open={wipeOpen} onOpenChange={(o) => { if (!wiping) { setWipeOpen(o); if (!o) setWipeConfirm('') } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive"><AlertTriangle size={18} /> Hapus Semua Produk?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Menghapus {products.length} produk beserta stok per-outlet, varian, dan riwayat pergerakan stoknya. Riwayat penjualan tetap aman.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-sm text-destructive font-medium">Tidak bisa dibatalkan. Ketik <span className="font-mono bg-destructive/10 px-1.5 py-0.5 rounded">HAPUS</span> untuk melanjutkan.</p>
+          <Input autoFocus value={wipeConfirm} onChange={(e) => setWipeConfirm(e.target.value)} placeholder="Ketik HAPUS" className="font-mono" disabled={wiping} />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={wiping}>Batal</AlertDialogCancel>
+            <Button onClick={handleWipeAll} disabled={wipeConfirm.trim().toUpperCase() !== 'HAPUS' || wiping}
+              className="bg-destructive text-white hover:bg-destructive/90 gap-1.5">
+              {wiping ? <><Loader2 size={15} className="animate-spin" /> Menghapus…</> : <><Trash2 size={15} /> Hapus Semua</>}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

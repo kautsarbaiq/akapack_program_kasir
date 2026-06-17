@@ -62,6 +62,8 @@ interface InventoryStore {
   removeProduct: (productId: string) => void
   /** Hapus baris inventory milik outlet (saat outlet dihapus). */
   removeByOutlet: (outletId: string) => void
+  /** Kosongkan semua baris inventory di memori (saat hapus semua produk; DB ikut via cascade FK). */
+  clearAll: () => void
   /** Set stok massal (absolut) untuk banyak produk di satu outlet — 1x update memori + batch ke DB. Mengembalikan jumlah baris yang GAGAL ke DB. */
   bulkUpsert: (outletId: string, entries: { productId: string; stock: number }[]) => Promise<number>
 }
@@ -193,6 +195,8 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => ({
   removeProduct: (productId) => set((s) => ({ items: s.items.filter((r) => r.product_id !== productId) })),
 
   removeByOutlet: (outletId) => set((s) => ({ items: s.items.filter((r) => r.outlet_id !== outletId) })),
+
+  clearAll: () => set({ items: [] }),
 
   bulkUpsert: async (outletId, entries) => {
     const items = get().items

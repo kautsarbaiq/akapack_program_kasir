@@ -205,6 +205,16 @@ export default function POSPage() {
         .map((i) => {
           if (i.key !== key) return i
           const q = i.quantity + delta
+          // Cegah oversell saat menambah qty (hormati faktor satuan & stok varian)
+          if (delta > 0) {
+            if (i.variant_id) {
+              const v = variants.find((x) => x.id === i.variant_id)
+              if (v && q > v.stock) { toast.error(`Stok ${i.product_name} hanya ${v.stock}`); return i }
+            } else {
+              const product = products.find((p) => p.id === i.product_id)
+              if (product && q * (i.factor || 1) > product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return i }
+            }
+          }
           let pr = i.price
           if (!i.variant_id) {
             const product = products.find((p) => p.id === i.product_id)
@@ -232,6 +242,7 @@ export default function POSPage() {
   const setItemUnit = (key: string, unitName: string) => {
     setCart((prev) => prev.map((i) => {
       if (i.key !== key) return i
+      if (i.variant_id) return i // varian tidak punya multi-satuan
       const product = products.find((p) => p.id === i.product_id)
       if (!product) return i
       const factor = unitName === product.unit ? 1 : (product.units?.find((x) => x.name === unitName)?.factor ?? 1)
@@ -417,7 +428,7 @@ export default function POSPage() {
             )}
             style={{ background: selectedCategory === cat.id ? 'oklch(0.55 0.22 264)' : undefined }}>
             <span className="text-xl">{cat.icon}</span>
-            <span className="text-xs font-medium leading-none" style={{ color: selectedCategory === cat.id ? 'white' : 'oklch(0.7 0.02 250)' }}>
+            <span className="text-xs font-medium leading-none w-full truncate text-center px-0.5" title={cat.name} style={{ color: selectedCategory === cat.id ? 'white' : 'oklch(0.7 0.02 250)' }}>
               {cat.name.split(' ')[0]}
             </span>
           </button>
@@ -595,7 +606,7 @@ export default function POSPage() {
                 placeholder="Diskon manual (Rp)"
                 className="h-8 text-sm flex-1"
                 value={discount || ''}
-                onChange={(e) => setDiscount(Number(e.target.value))}
+                onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
               />
             </div>
             {appliedPromo ? (
@@ -676,7 +687,7 @@ export default function POSPage() {
                 placeholder="Jumlah bayar"
                 className="h-9"
                 value={paidAmount || ''}
-                onChange={(e) => setPaidAmount(Number(e.target.value))}
+                onChange={(e) => setPaidAmount(Math.max(0, Number(e.target.value) || 0))}
               />
               <div className="flex gap-1.5">
                 {QUICK_AMOUNTS.map((amt) => (
@@ -736,17 +747,17 @@ export default function POSPage() {
 
       {/* ── Payment Confirm Dialog ── */}
       <Dialog open={showPayment} onOpenChange={setShowPayment}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt size={18} /> Konfirmasi Pembayaran
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <ScrollArea className="max-h-48">
+            <ScrollArea className="max-h-[35vh]">
               <div className="space-y-2 pr-2">
                 {cart.map((item) => (
-                  <div key={item.product_id} className="flex justify-between text-sm">
+                  <div key={item.key} className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{item.product_name} × {item.quantity}</span>
                     <span className="font-medium">{formatRupiah(item.subtotal)}</span>
                   </div>

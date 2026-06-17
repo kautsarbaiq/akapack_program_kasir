@@ -23,6 +23,7 @@ interface VariantStore {
   updateVariant: (id: string, data: VariantFormValues) => void
   deleteVariant: (id: string) => void
   /** Kurangi stok varian saat transaksi POS */
+  clearAll: () => void
   decrementVariantStock: (id: string, qty: number) => void
   /** Kembalikan stok varian (mis. pesanan online dibatalkan) */
   incrementVariantStock: (id: string, qty: number) => void
@@ -96,6 +97,8 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
     set((s) => ({ variants: s.variants.filter((v) => v.id !== id) }))
     void deleteRow('product_variants', id)
   },
+
+  clearAll: () => set({ variants: [] }),
 
   // Stok varian per-outlet: lewat inventory (outlet aktif), lalu proyeksi field `stock`.
   decrementVariantStock: (id, qty) => {

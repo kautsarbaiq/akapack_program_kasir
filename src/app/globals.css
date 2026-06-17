@@ -192,6 +192,7 @@
 }
 /* ── Print: isolasi #print-area (dokumen Stok Masuk/Keluar) ── */
 @media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   body * { visibility: hidden !important; }
   #print-area, #print-area * { visibility: visible !important; }
   /* Netralkan dialog (fixed + translate) jadi containing-block normal,

@@ -28,6 +28,8 @@ interface StockMovementStore {
   loaded: boolean
   fetch: () => Promise<void>
   addMovement: (input: AddMovementInput) => void
+  /** Kosongkan semua pergerakan stok di memori (saat hapus semua produk; DB ikut via cascade FK). */
+  clearAll: () => void
 }
 
 export const useStockMovementStore = create<StockMovementStore>()((set) => ({
@@ -82,4 +84,6 @@ export const useStockMovementStore = create<StockMovementStore>()((set) => ({
       created_at: createdAt,
     })
   },
+
+  clearAll: () => set({ movements: [] }),
 }))

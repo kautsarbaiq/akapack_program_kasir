@@ -36,6 +36,9 @@ interface ProductStore {
   bulkPatch: (patches: ProductPatch[]) => Promise<number>
   updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => void
   deleteProduct: (id: string) => void
+  /** Hapus SEMUA produk (katalog) — DB dulu, baru memori. Cascade: inventory, varian, pergerakan stok.
+   *  Gagal bila ada produk dipakai di dokumen Pembelian/Stok Keluar (FK RESTRICT). Kembalikan status jujur. */
+  deleteAllProducts: () => Promise<{ ok: boolean; error?: string }>
   /** Kurangi stok saat transaksi POS */
   decrementStock: (id: string, qty: number) => void
   /** Kembalikan stok (mis. pesanan online dibatalkan) */
@@ -264,6 +267,26 @@ export const useProductStore = create<ProductStore>()((set) => ({
     set((s) => ({ products: s.products.filter((p) => p.id !== id) }))
     useInventoryStore.getState().removeProduct(id)
     void deleteRow('products', id)
+  },
+
+  deleteAllProducts: async () => {
+    // DB dulu: kalau gagal (mis. produk dipakai di dokumen Pembelian/Stok Keluar),
+    // memori TIDAK dikosongkan supaya tidak ada mismatch (data balik saat reload).
+    if (isSupabaseConfigured()) {
+      try {
+        const sb = getSupabaseBrowser()
+        const { error } = await sb.from('products').delete().eq('tenant_id', DEFAULT_TENANT_ID)
+        if (error) {
+          console.warn('[akapack] deleteAllProducts:', error.message)
+          return { ok: false, error: error.message }
+        }
+      } catch (e) {
+        console.warn('[akapack] deleteAllProducts:', e)
+        return { ok: false, error: e instanceof Error ? e.message : 'Gagal hapus' }
+      }
+    }
+    set({ products: [] })
+    return { ok: true }
   },
 
   // Stok kini per-outlet: mutasi diterapkan ke inventory outlet AKTIF, lalu proyeksi field `stock`.

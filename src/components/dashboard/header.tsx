@@ -90,7 +90,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       {/* Outlet switcher */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0">
+          <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0" title={activeOutlet?.name ?? 'Outlet'}>
             <Store size={15} className="text-primary" />
             <span className="max-w-[120px] truncate">{activeOutlet?.name ?? 'Outlet'}</span>
             <ChevronDown size={13} className="text-muted-foreground" />

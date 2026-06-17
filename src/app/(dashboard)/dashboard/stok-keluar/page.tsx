@@ -284,7 +284,7 @@ export default function StokKeluarPage() {
                   <div key={i} className="flex items-center gap-2">
                     <div className="flex-1"><ProductCombobox products={products} value={it.product_id} onChange={(pid) => setItem(i, { product_id: pid })} /></div>
                     <span className={`w-24 text-right text-xs tabular-nums ${over ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>{avail === null ? '—' : avail}</span>
-                    <Input type="number" min={1} className={`w-20 text-right ${over ? 'border-red-400' : ''}`} value={it.qty || ''} onChange={(e) => setItem(i, { qty: Math.max(0, Number(e.target.value)) })} />
+                    <Input type="number" min={1} className={`w-20 text-right ${over ? 'border-red-400' : ''}`} value={it.qty || ''} onChange={(e) => setItem(i, { qty: Math.max(0, Number(e.target.value) || 0) })} />
                     <span className="w-28 text-right text-sm tabular-nums">{formatRupiah((it.qty || 0) * costOf(it.product_id))}</span>
                     <button type="button" onClick={() => removeItem(i)} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30" disabled={items.length <= 1}><X size={14} /></button>
                   </div>
