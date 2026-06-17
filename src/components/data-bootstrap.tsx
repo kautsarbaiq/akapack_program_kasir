@@ -16,6 +16,8 @@ import { useAccountStore } from '@/stores/use-account-store'
 import { useJournalStore } from '@/stores/use-journal-store'
 import { useAssetStore } from '@/stores/use-asset-store'
 import { useClosingStore } from '@/stores/use-closing-store'
+import { useSupplierStore } from '@/stores/use-supplier-store'
+import { usePurchaseStore } from '@/stores/use-purchase-store'
 
 /**
  * Memuat data dari Supabase sekali saat aplikasi (area login) mount.
@@ -42,13 +44,15 @@ export function DataBootstrap() {
         useSettingsStore.getState().fetch(),
         useVariantStore.getState().fetch(),
         useAccountStore.getState().fetch(),
+        useSupplierStore.getState().fetch(),
       ])
-      // transaksi, shift, pergerakan stok, jurnal — butuh master data untuk resolusi
+      // transaksi, shift, pergerakan stok, jurnal, pembelian — butuh master data untuk resolusi
       await Promise.all([
         useTransactionStore.getState().fetch(),
         useShiftStore.getState().fetch(),
         useStockMovementStore.getState().fetch(),
         useJournalStore.getState().fetch(),
+        usePurchaseStore.getState().fetch(),
       ])
     }
     void run()

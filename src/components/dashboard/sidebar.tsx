@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShoppingCart, Package, Warehouse,
   Receipt, Users, Tag, UserCheck, BarChart3, Settings,
-  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator,
+  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -45,6 +45,13 @@ const navItems: NavItem[] = [
       { title: 'Stok Saat Ini', href: '/dashboard/inventori' },
       { title: 'Pergerakan Stok', href: '/dashboard/inventori/pergerakan' },
       { title: 'Stock Opname', href: '/dashboard/inventori/opname' },
+    ],
+  },
+  {
+    title: 'Pembelian', href: '/dashboard/pembelian', icon: Truck,
+    children: [
+      { title: 'Purchase Order', href: '/dashboard/pembelian' },
+      { title: 'Supplier', href: '/dashboard/pembelian/supplier' },
     ],
   },
   {

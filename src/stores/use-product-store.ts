@@ -20,6 +20,8 @@ interface ProductStore {
   incrementStock: (id: string, qty: number) => void
   /** Set stok absolut (stok masuk / opname) */
   setStock: (id: string, newStock: number) => void
+  /** Set harga modal (mis. moving-average saat terima pembelian) */
+  setCostPrice: (id: string, newCost: number) => void
   /** Tandai produk punya varian */
   setHasVariants: (id: string, value: boolean) => void
   /** Set URL foto produk */
@@ -173,6 +175,11 @@ export const useProductStore = create<ProductStore>()((set) => ({
       ),
     }))
     void updateRow('products', id, { stock: newStock })
+  },
+
+  setCostPrice: (id, newCost) => {
+    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, cost_price: newCost } : p)) }))
+    void updateRow('products', id, { cost_price: newCost })
   },
 
   setHasVariants: (id, value) => {

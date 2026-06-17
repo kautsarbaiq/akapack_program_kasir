@@ -2,7 +2,7 @@
 // Jurnal POS/Online diturunkan OTOMATIS dari transaksi (tidak disimpan ganda);
 // jurnal manual & saldo awal digabung untuk membentuk buku besar & laporan.
 
-import type { Account, AccountType, Asset, JournalEntry, JournalLine, Transaction } from '@/types'
+import type { Account, AccountType, Asset, JournalEntry, JournalLine, PurchaseOrder, Transaction } from '@/types'
 
 // Kode akun baku yang dirujuk mesin jurnal otomatis (lihat mockAccounts / migration 0009).
 export const ACC = {
@@ -10,6 +10,7 @@ export const ACC = {
   BANK: '1-110',
   AR: '1-120',
   INVENTORY: '1-130',
+  AP: '2-100',
   VAT_PAYABLE: '2-200',
   SALES: '4-100',
   SHIPPING_REV: '4-110',
@@ -95,10 +96,52 @@ export function openingBalanceEntry(accounts: Account[]): JournalEntry | null {
   return { id: 'opening', number: 'SALDO-AWAL', date, description: 'Saldo Awal', source: 'opening', lines, created_at: date }
 }
 
-/** Gabung semua jurnal: saldo awal + turunan transaksi + manual. Diurut tanggal naik. */
+/** Jurnal dari Purchase Order yang sudah DITERIMA (0–2 entri: terima barang + pelunasan tempo). */
+export function purchaseToJournalEntries(po: PurchaseOrder, accountByCode: Map<string, Account>): JournalEntry[] {
+  if (po.status !== 'received') return []
+  const total = r(po.total)
+  if (total <= 0) return []
+  const mkLine = (code: string, debit: number, credit: number): JournalLine => {
+    const a = accountByCode.get(code)
+    return { account_id: a?.id ?? code, account_code: code, account_name: a?.name ?? code, debit, credit }
+  }
+  const when = po.received_at ?? po.date
+  const desc = `Pembelian ${po.number}${po.supplier ? ' · ' + po.supplier.name : ''}`
+  const credCode = po.payment === 'cash' ? ACC.CASH : po.payment === 'transfer' ? ACC.BANK : ACC.AP
+
+  const out: JournalEntry[] = [{
+    id: `auto-po-${po.id}`,
+    number: `JV-${po.number}`,
+    date: when,
+    description: desc,
+    source: 'purchase',
+    reference_id: po.id,
+    lines: [mkLine(ACC.INVENTORY, total, 0), mkLine(credCode, 0, total)],
+    created_at: when,
+  }]
+
+  // Pelunasan hutang tempo → Debit Hutang Usaha / Kredit Bank, bertanggal PELUNASAN
+  if (po.payment === 'credit' && po.paid) {
+    const paidWhen = po.paid_at ?? when
+    out.push({
+      id: `auto-po-pay-${po.id}`,
+      number: `JV-${po.number}-LUNAS`,
+      date: paidWhen,
+      description: `Pelunasan ${desc}`,
+      source: 'purchase',
+      reference_id: po.id,
+      lines: [mkLine(ACC.AP, total, 0), mkLine(ACC.BANK, 0, total)],
+      created_at: paidWhen,
+    })
+  }
+  return out
+}
+
+/** Gabung semua jurnal: saldo awal + transaksi + pembelian + manual. Diurut tanggal naik. */
 export function buildJournalEntries(opts: {
   accounts: Account[]
   transactions: Transaction[]
+  purchases?: PurchaseOrder[]
   manualEntries: JournalEntry[]
   costByProductId: Map<string, number>
 }): JournalEntry[] {
@@ -109,6 +152,9 @@ export function buildJournalEntries(opts: {
   for (const t of opts.transactions) {
     const j = transactionToJournalEntry(t, byCode, opts.costByProductId)
     if (j) out.push(j)
+  }
+  for (const po of opts.purchases ?? []) {
+    out.push(...purchaseToJournalEntries(po, byCode))
   }
   out.push(...opts.manualEntries)
   return out.sort((a, b) => a.date.localeCompare(b.date))

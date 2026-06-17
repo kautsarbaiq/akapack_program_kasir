@@ -21,6 +21,7 @@ const SOURCE_BADGE: Record<JournalSource, { label: string; cls: string }> = {
   opening: { label: 'Saldo Awal', cls: 'bg-gray-100 text-gray-700 border-gray-200' },
   pos: { label: 'POS', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
   online: { label: 'Online', cls: 'bg-violet-100 text-violet-700 border-violet-200' },
+  purchase: { label: 'Pembelian', cls: 'bg-orange-100 text-orange-700 border-orange-200' },
   manual: { label: 'Manual', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
 }
 
@@ -95,7 +96,7 @@ export default function JurnalPage() {
   }
 
   const FILTERS: { value: 'all' | JournalSource; label: string }[] = [
-    { value: 'all', label: 'Semua' }, { value: 'pos', label: 'POS' }, { value: 'online', label: 'Online' }, { value: 'manual', label: 'Manual' }, { value: 'opening', label: 'Saldo Awal' },
+    { value: 'all', label: 'Semua' }, { value: 'pos', label: 'POS' }, { value: 'online', label: 'Online' }, { value: 'purchase', label: 'Pembelian' }, { value: 'manual', label: 'Manual' }, { value: 'opening', label: 'Saldo Awal' },
   ]
 
   return (

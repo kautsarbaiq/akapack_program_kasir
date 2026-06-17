@@ -13,6 +13,7 @@ import type {
   User,
   Account,
   Asset,
+  Supplier,
 } from '@/types'
 
 // Helper: cast Employee to User shape for cashier field
@@ -413,4 +414,11 @@ export const mockAssets: Asset[] = [
   { id: 'aset-1', name: 'Mesin Cetak Plastik', category: 'Mesin', acquired_at: '2025-01-15', cost: 28000000, salvage: 4000000, useful_life_months: 60, is_active: true, created_at: '2025-01-15' },
   { id: 'aset-2', name: 'Mesin Sealer', category: 'Mesin', acquired_at: '2025-06-01', cost: 7000000, salvage: 1000000, useful_life_months: 48, is_active: true, created_at: '2025-06-01' },
   { id: 'aset-3', name: 'Komputer Kasir', category: 'Elektronik', acquired_at: '2025-09-01', cost: 5000000, salvage: 500000, useful_life_months: 36, is_active: true, created_at: '2025-09-01' },
+]
+
+// ─── Supplier ──────────────────────────
+export const mockSuppliers: Supplier[] = [
+  { id: 'sup-1', name: 'CV Plastik Jaya', phone: '081298765432', email: 'sales@plastikjaya.co.id', address: 'Kawasan Industri Pulogadung, Jakarta', is_active: true, created_at: '2025-01-01' },
+  { id: 'sup-2', name: 'PT Mesin Sentosa', phone: '082134567890', email: 'order@mesinsentosa.com', address: 'Jl. Industri Raya No. 8, Bekasi', is_active: true, created_at: '2025-01-01' },
+  { id: 'sup-3', name: 'Toko Bahan Kemasan', phone: '085711223344', address: 'Pasar Pagi, Jakarta', is_active: true, created_at: '2025-01-01' },
 ]

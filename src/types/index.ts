@@ -271,7 +271,7 @@ export interface Account {
   created_at: string
 }
 
-export type JournalSource = 'manual' | 'pos' | 'online' | 'opening'
+export type JournalSource = 'manual' | 'pos' | 'online' | 'opening' | 'purchase'
 
 export interface JournalLine {
   account_id: string
@@ -302,6 +302,48 @@ export interface Asset {
   salvage: number            // nilai residu/sisa
   useful_life_months: number // umur manfaat (bulan)
   is_active: boolean
+  created_at: string
+}
+
+// ─── Pembelian & Supplier ──────────────
+export interface Supplier {
+  id: string
+  name: string
+  phone?: string
+  email?: string
+  address?: string
+  is_active: boolean
+  created_at: string
+}
+
+export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'cancelled'
+// credit = tempo (masuk Hutang Usaha); cash/transfer = langsung bayar
+export type PurchasePayment = 'cash' | 'transfer' | 'credit'
+
+export interface PurchaseItem {
+  id: string
+  purchase_id: string
+  product_id: string
+  product_name: string
+  qty: number
+  cost: number       // harga beli per unit
+  subtotal: number
+}
+
+export interface PurchaseOrder {
+  id: string
+  number: string     // PO-YYYYMMDD-xxx
+  supplier_id?: string
+  supplier?: Supplier
+  items: PurchaseItem[]
+  total: number
+  status: PurchaseStatus
+  payment: PurchasePayment
+  paid: boolean      // untuk tempo: sudah dilunasi?
+  paid_at?: string   // tanggal pelunasan (untuk jurnal & aging yang benar)
+  notes?: string
+  date: string
+  received_at?: string
   created_at: string
 }
 

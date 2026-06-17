@@ -5,6 +5,7 @@ import { useAccountStore } from '@/stores/use-account-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useJournalStore } from '@/stores/use-journal-store'
 import { useProductStore } from '@/stores/use-product-store'
+import { usePurchaseStore } from '@/stores/use-purchase-store'
 import { buildJournalEntries, computeLedger, computeProfitLoss, computeBalanceSheet } from './accounting'
 
 /**
@@ -16,14 +17,15 @@ export function useBooks() {
   const transactions = useTransactionStore((s) => s.transactions)
   const manualEntries = useJournalStore((s) => s.manualEntries)
   const products = useProductStore((s) => s.products)
+  const purchases = usePurchaseStore((s) => s.purchases)
 
   return useMemo(() => {
     const completed = transactions.filter((t) => t.status === 'completed')
     const costByProductId = new Map(products.map((p) => [p.id, p.cost_price]))
-    const entries = buildJournalEntries({ accounts, transactions: completed, manualEntries, costByProductId })
+    const entries = buildJournalEntries({ accounts, transactions: completed, purchases, manualEntries, costByProductId })
     const ledger = computeLedger(accounts, entries)
     const profitLoss = computeProfitLoss(ledger)
     const balanceSheet = computeBalanceSheet(ledger, profitLoss.netProfit)
-    return { accounts, completed, manualEntries, costByProductId, entries, ledger, profitLoss, balanceSheet }
-  }, [accounts, transactions, manualEntries, products])
+    return { accounts, completed, purchases, manualEntries, costByProductId, entries, ledger, profitLoss, balanceSheet }
+  }, [accounts, transactions, purchases, manualEntries, products])
 }
