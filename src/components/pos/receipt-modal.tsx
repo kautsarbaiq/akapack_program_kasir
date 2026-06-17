@@ -1,13 +1,13 @@
 'use client'
 
 import { CheckCircle2, Printer, Plus, MessageCircle } from 'lucide-react'
-import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogTitle
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatRupiah, formatDateTime } from '@/lib/utils'
+import { useSettingsStore } from '@/stores/use-settings-store'
 import type { Transaction, PaymentMethod } from '@/types'
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
@@ -36,12 +36,17 @@ interface Props {
 }
 
 export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
+  const storeName = useSettingsStore((s) => s.storeName)
+  const storeAddress = useSettingsStore((s) => s.storeAddress)
+  const storePhone = useSettingsStore((s) => s.storePhone)
   if (!transaction) return null
+
+  const handlePrint = () => { if (typeof window !== 'undefined') window.print() }
 
   const sendWhatsApp = () => {
     const t = transaction
     const lines = [
-      '*AKAPACK* — Struk Pembelian',
+      `*${storeName || 'AKAPACK'}* — Struk Pembelian`,
       t.transaction_number,
       formatDateTime(t.created_at),
       '--------------------------------',
@@ -79,7 +84,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
 
         <div className="rounded-xl border bg-muted/20 p-4 font-mono text-xs space-y-2">
           <div className="text-center space-y-0.5">
-            <p className="font-bold text-sm">AKAPACK</p>
+            <p className="font-bold text-sm">{storeName || 'AKAPACK'}</p>
             <p className="text-muted-foreground">Struk Pembelian</p>
             <p className="text-muted-foreground">{formatDateTime(transaction.created_at)}</p>
           </div>
@@ -122,8 +127,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
             <MessageCircle size={15} /> Kirim Struk via WhatsApp
           </Button>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 gap-1.5"
-              onClick={() => toast.info('Cetak struk thermal tersedia di POS Desktop (Tauri)')}>
+            <Button variant="outline" className="flex-1 gap-1.5" onClick={handlePrint}>
               <Printer size={15} /> Cetak
             </Button>
             <Button className="flex-1 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
@@ -131,6 +135,40 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
               <Plus size={15} /> Transaksi Baru
             </Button>
           </div>
+        </div>
+
+        {/* Versi cetak — bersih untuk printer struk Epson TM-U220D (dot-matrix, 76mm). Tersembunyi di layar. */}
+        <div id="receipt-print" className="hidden print:block" style={{ fontFamily: 'ui-monospace, monospace', color: '#000', fontSize: 12, lineHeight: 1.45 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{storeName || 'AKAPACK'}</div>
+            {storeAddress && <div>{storeAddress}</div>}
+            {storePhone && <div>{storePhone}</div>}
+          </div>
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
+          <div>No: {transaction.transaction_number}</div>
+          <div>{formatDateTime(transaction.created_at)}</div>
+          <div>Kasir: {transaction.cashier?.full_name ?? '-'}</div>
+          <div>Pelanggan: {transaction.customer?.name ?? 'Umum'}</div>
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
+          {transaction.items.map((it) => (
+            <div key={it.id} style={{ marginBottom: 3 }}>
+              <div>{it.product_name}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>{it.quantity} x {formatRupiah(it.product_price)}</span>
+                <span>{formatRupiah(it.subtotal)}</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{formatRupiah(transaction.subtotal)}</span></div>
+          {transaction.discount_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Diskon</span><span>-{formatRupiah(transaction.discount_amount)}</span></div>}
+          {transaction.tax_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>PPN</span><span>+{formatRupiah(transaction.tax_amount)}</span></div>}
+          {transaction.service_charge_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Service</span><span>+{formatRupiah(transaction.service_charge_amount)}</span></div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 13, marginTop: 3 }}><span>TOTAL</span><span>{formatRupiah(transaction.total)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{PAYMENT_LABELS[transaction.payment_method]}</span><span>{formatRupiah(transaction.paid_amount)}</span></div>
+          {transaction.payment_method === 'cash' && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Kembali</span><span>{formatRupiah(transaction.change_amount)}</span></div>}
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
+          <div style={{ textAlign: 'center' }}>Terima kasih</div>
         </div>
       </DialogContent>
     </Dialog>
