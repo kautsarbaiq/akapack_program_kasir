@@ -16,6 +16,7 @@ import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 
@@ -140,6 +141,9 @@ export function Header({ onMenuClick }: HeaderProps) {
           {isSupabaseConfigured() ? 'Online' : 'Demo'}
         </span>
 
+        {/* Toggle mode terang/gelap */}
+        <ThemeToggle />
+
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -171,17 +175,15 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         {/* User menu */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 h-9 px-3">
-              <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0', getAvatarColor(displayName))}>
-                {getInitials(displayName)}
-              </div>
-              <div className="hidden sm:block text-left">
-                <p className="text-xs font-semibold leading-none">{displayName}</p>
-                <p className="text-xs text-muted-foreground leading-none mt-0.5">{roleLabel}</p>
-              </div>
-              <ChevronDown size={14} className="text-muted-foreground hidden sm:block" />
-            </Button>
+          <DropdownMenuTrigger className="flex items-center gap-2 h-9 px-3 rounded-lg hover:bg-muted transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted">
+            <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0', getAvatarColor(displayName))}>
+              {getInitials(displayName)}
+            </div>
+            <div className="hidden sm:block text-left">
+              <p className="text-xs font-semibold leading-none">{displayName}</p>
+              <p className="text-xs text-muted-foreground leading-none mt-0.5">{roleLabel}</p>
+            </div>
+            <ChevronDown size={14} className="text-muted-foreground hidden sm:block" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>
@@ -189,10 +191,10 @@ export function Header({ onMenuClick }: HeaderProps) {
               <p className="text-xs text-muted-foreground font-normal">{displayEmail || roleLabel}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profil Saya</DropdownMenuItem>
-            <DropdownMenuItem>Pengaturan</DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push('/dashboard/pengaturan')}>Profil Saya</DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push('/dashboard/pengaturan')}>Pengaturan</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleLogout}>
+            <DropdownMenuItem className="text-destructive focus:text-destructive cursor-pointer" onClick={handleLogout}>
               Keluar
             </DropdownMenuItem>
           </DropdownMenuContent>

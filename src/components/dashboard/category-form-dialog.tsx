@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2, Tag, Check } from 'lucide-react'
+import { Loader2, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -37,7 +37,6 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
     defaultValues: { name: '', color: COLORS[0], icon: DEFAULT_CATEGORY_ICON, is_active: true },
   })
 
-  const color = watch('color')
   const icon = watch('icon')
   const isActive = watch('is_active')
 
@@ -83,7 +82,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* Live preview */}
           <div className="flex items-center justify-center">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: `${color}20`, color }}>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-muted text-muted-foreground">
               <CategoryIcon name={icon} size={30} />
             </div>
           </div>
@@ -92,23 +91,6 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSuccess }: 
             <Label>Nama Kategori *</Label>
             <Input placeholder="Contoh: Pakaian" {...register('name')} />
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Warna</Label>
-            <div className="flex flex-wrap gap-2">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setValue('color', c, { shouldValidate: true })}
-                  className="w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 flex items-center justify-center"
-                  style={{ background: c, borderColor: color === c ? 'var(--foreground)' : 'transparent' }}
-                >
-                  {color === c && <Check size={14} className="text-white" />}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="space-y-2">

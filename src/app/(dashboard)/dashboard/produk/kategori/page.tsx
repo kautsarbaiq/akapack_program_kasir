@@ -68,10 +68,8 @@ export default function KategoriPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {filtered.map(cat => (
             <Card key={cat.id} className="group overflow-hidden hover:shadow-md transition-all duration-200">
-              <div className="h-1.5" style={{ background: cat.color ?? '#3B82F6' }} />
-              <CardContent className="p-4 text-center space-y-2">
-                <div className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center"
-                  style={{ background: `${cat.color ?? '#3B82F6'}20`, color: cat.color ?? '#3B82F6' }}>
+              <CardContent className="p-4 pt-5 text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center bg-muted text-muted-foreground">
                   <CategoryIcon name={cat.icon} size={24} />
                 </div>
                 <p className="font-semibold text-sm">{cat.name}</p>
@@ -110,7 +108,7 @@ export default function KategoriPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['', 'Nama Kategori', 'Jumlah Produk', 'Status', 'Warna', 'Aksi'].map(h => (
+                  {['', 'Nama Kategori', 'Jumlah Produk', 'Status', 'Aksi'].map(h => (
                     <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -118,16 +116,13 @@ export default function KategoriPage() {
               <tbody>
                 {filtered.map(cat => (
                   <tr key={cat.id} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="py-3 px-4" style={{ color: cat.color ?? '#3B82F6' }}><CategoryIcon name={cat.icon} size={20} /></td>
+                    <td className="py-3 px-4 text-muted-foreground"><CategoryIcon name={cat.icon} size={20} /></td>
                     <td className="py-3 px-4 font-medium">{cat.name}</td>
                     <td className="py-3 px-4 text-muted-foreground">{cat.product_count ?? 0} produk</td>
                     <td className="py-3 px-4">
                       <Badge variant="outline" className={cat.is_active ? 'border-emerald-400 text-emerald-600 text-xs' : 'text-xs'}>
                         {cat.is_active ? 'Aktif' : 'Nonaktif'}
                       </Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="w-6 h-6 rounded-full border" style={{ background: cat.color ?? '#3B82F6' }} />
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex gap-1">
