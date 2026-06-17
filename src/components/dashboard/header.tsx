@@ -173,8 +173,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 h-9 px-3">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                style={{ background: getAvatarColor(displayName) }}>
+              <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0', getAvatarColor(displayName))}>
                 {getInitials(displayName)}
               </div>
               <div className="hidden sm:block text-left">

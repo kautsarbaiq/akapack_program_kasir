@@ -320,8 +320,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {/* User + logout */}
           <div className={cn('px-3 py-2 transition-all duration-300', open ? 'opacity-100' : 'opacity-0 lg:opacity-0 h-0 overflow-hidden p-0')}>
             <div className="flex items-center gap-2 py-2">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white"
-                style={{ background: getAvatarColor(userName) }}>
+              <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white', getAvatarColor(userName))}>
                 {getInitials(userName)}
               </div>
               <div className="flex-1 overflow-hidden">

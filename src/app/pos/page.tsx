@@ -701,9 +701,15 @@ export default function POSPage() {
                   Pas
                 </button>
               </div>
-              {paidAmount > 0 && <div className="flex justify-between text-sm font-semibold text-emerald-600">
-                <span>Kembalian</span><span>{formatRupiah(change)}</span>
-              </div>}
+              {paidAmount > 0 && (paidAmount < total ? (
+                <div className="flex justify-between text-sm font-semibold text-destructive">
+                  <span>Kurang</span><span>{formatRupiah(total - paidAmount)}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between text-sm font-semibold text-emerald-600">
+                  <span>Kembalian</span><span>{formatRupiah(change)}</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -775,7 +781,11 @@ export default function POSPage() {
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Metode Bayar</span><span className="font-semibold capitalize">{paymentMethod === 'cash' ? 'Tunai' : paymentMethod.toUpperCase()}</span></div>
               {paymentMethod === 'cash' && <>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dibayar</span><span className="font-semibold">{formatRupiah(paidAmount)}</span></div>
-                <div className="flex justify-between text-sm text-emerald-600 font-semibold"><span>Kembalian</span><span>{formatRupiah(change)}</span></div>
+                {paidAmount < total ? (
+                  <div className="flex justify-between text-sm text-destructive font-semibold"><span>Kurang</span><span>{formatRupiah(total - paidAmount)}</span></div>
+                ) : (
+                  <div className="flex justify-between text-sm text-emerald-600 font-semibold"><span>Kembalian</span><span>{formatRupiah(change)}</span></div>
+                )}
               </>}
               {paymentMethod === 'split' && <>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">{PAYMENT_METHODS.find((m) => m.value === splitMethod1)?.label ?? splitMethod1}</span><span className="font-semibold">{formatRupiah(Math.min(splitAmount1, total))}</span></div>
