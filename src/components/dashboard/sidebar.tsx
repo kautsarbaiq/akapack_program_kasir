@@ -86,7 +86,13 @@ const navItems: NavItem[] = [
       { title: 'Voucher', href: '/dashboard/promosi/voucher' },
     ],
   },
-  { title: 'Karyawan', href: '/dashboard/karyawan', icon: UserCheck },
+  {
+    title: 'Karyawan', href: '/dashboard/karyawan', icon: UserCheck,
+    children: [
+      { title: 'Daftar Karyawan', href: '/dashboard/karyawan' },
+      { title: 'Absensi', href: '/dashboard/karyawan/absensi' },
+    ],
+  },
   { title: 'Outlet', href: '/dashboard/outlet', icon: Store },
   { title: 'Laporan', href: '/dashboard/laporan', icon: BarChart3 },
 ]

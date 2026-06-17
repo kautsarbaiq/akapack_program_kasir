@@ -44,6 +44,11 @@ export function formatDateTime(date: Date | string): string {
   }).format(new Date(date))
 }
 
+/** Tanggal hari LOKAL sebagai 'YYYY-MM-DD' (zona waktu runtime, mis. WIB) — untuk bucketing absensi. */
+export function localDay(date: Date | string): string {
+  return new Date(date).toLocaleDateString('sv-SE')
+}
+
 export function formatTime(date: Date | string): string {
   return new Intl.DateTimeFormat('id-ID', {
     hour: '2-digit',

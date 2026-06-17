@@ -6,6 +6,16 @@ import { generateId } from '@/lib/utils'
 import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 
+// Kode absensi 4-digit unik (untuk clock-in/out)
+function genCode(existing: Employee[]): string {
+  const used = new Set(existing.map((e) => e.code).filter(Boolean))
+  for (let i = 0; i < 9999; i++) {
+    const c = String(1001 + Math.floor(Math.random() * 8999))
+    if (!used.has(c)) return c
+  }
+  return String(Date.now()).slice(-4)
+}
+
 interface EmployeeStore {
   employees: Employee[]
   loaded: boolean
@@ -33,6 +43,7 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
       name: values.name,
       role: values.role,
       pin: values.pin || undefined,
+      code: genCode(get().employees),
       phone: values.phone || undefined,
       email: values.email || undefined,
       is_active: values.is_active,
@@ -44,11 +55,13 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
       name: newEmployee.name,
       role: newEmployee.role,
       pin: newEmployee.pin || null,
+      code: newEmployee.code || null,
       phone: newEmployee.phone || null,
       email: newEmployee.email || null,
       is_active: newEmployee.is_active,
     }).then((saved) => {
-      if (saved) set((s) => ({ employees: s.employees.map((e) => (e.id === newEmployee.id ? saved : e)) }))
+      // Pertahankan kode lokal bila DB tak mengembalikannya (kolom mungkin belum ada)
+      if (saved) set((s) => ({ employees: s.employees.map((e) => (e.id === newEmployee.id ? { ...saved, code: saved.code ?? newEmployee.code } : e)) }))
     })
     return newEmployee
   },

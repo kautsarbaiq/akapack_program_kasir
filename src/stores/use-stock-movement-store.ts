@@ -20,6 +20,7 @@ interface AddMovementInput {
   reference_id?: string
   created_by_name?: string
   outlet_id?: string // default: outlet aktif
+  date?: string      // tanggal pergerakan (default: sekarang)
 }
 
 interface StockMovementStore {
@@ -51,6 +52,7 @@ export const useStockMovementStore = create<StockMovementStore>()((set) => ({
   addMovement: (input) => {
     const product = useProductStore.getState().products.find((p) => p.id === input.product_id)
     const outletId = input.outlet_id ?? useActiveOutletStore.getState().activeOutletId
+    const createdAt = input.date ? new Date(input.date).toISOString() : new Date().toISOString()
     const mv: StockMovement = {
       id: generateId('mov'),
       outlet_id: outletId,
@@ -64,7 +66,7 @@ export const useStockMovementStore = create<StockMovementStore>()((set) => ({
       reference_id: input.reference_id,
       created_by: 'system',
       created_by_name: input.created_by_name ?? 'Sistem',
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
     }
     set((s) => ({ movements: [mv, ...s.movements] }))
     void insertRow('stock_movements', {
@@ -77,6 +79,7 @@ export const useStockMovementStore = create<StockMovementStore>()((set) => ({
       after_stock: input.after_stock,
       notes: input.notes ?? null,
       reference_id: isUuid(input.reference_id) ? input.reference_id : null,
+      created_at: createdAt,
     })
   },
 }))

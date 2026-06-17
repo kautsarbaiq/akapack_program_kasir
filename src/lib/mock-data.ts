@@ -195,27 +195,27 @@ export const mockCustomers: Customer[] = [
 // ─── Employees ────────────────────────
 export const mockEmployees: Employee[] = [
   {
-    id: 'emp-1', outlet_id: 'outlet-1', name: 'Andi Wijaya',
+    id: 'emp-1', outlet_id: 'outlet-1', name: 'Andi Wijaya', code: '1001',
     role: 'owner', phone: '081111111111', email: 'andi@akapack.com',
     is_active: true, created_at: '2024-01-01',
   },
   {
-    id: 'emp-2', outlet_id: 'outlet-1', name: 'Dewi Sartika',
+    id: 'emp-2', outlet_id: 'outlet-1', name: 'Dewi Sartika', code: '1002',
     role: 'manager', phone: '082222222222', email: 'dewi@akapack.com',
     is_active: true, created_at: '2024-01-15',
   },
   {
-    id: 'emp-3', outlet_id: 'outlet-1', name: 'Riko Andrian',
+    id: 'emp-3', outlet_id: 'outlet-1', name: 'Riko Andrian', code: '1003',
     role: 'cashier', phone: '083333333333', email: undefined,
     pin: '1234', is_active: true, created_at: '2024-02-01',
   },
   {
-    id: 'emp-4', outlet_id: 'outlet-1', name: 'Fitri Rahayu',
+    id: 'emp-4', outlet_id: 'outlet-1', name: 'Fitri Rahayu', code: '1004',
     role: 'cashier', phone: '084444444444', email: undefined,
     pin: '5678', is_active: true, created_at: '2024-02-15',
   },
   {
-    id: 'emp-5', outlet_id: 'outlet-1', name: 'Hendra Gunawan',
+    id: 'emp-5', outlet_id: 'outlet-1', name: 'Hendra Gunawan', code: '1005',
     role: 'cashier', phone: '085555555555', email: undefined,
     pin: '9012', is_active: false, created_at: '2024-03-01',
   },

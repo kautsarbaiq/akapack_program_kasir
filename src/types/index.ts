@@ -210,10 +210,22 @@ export interface Employee {
   name: string
   role: UserRole
   pin?: string
+  code?: string        // kode unik untuk absensi (clock-in/out)
   phone?: string
   email?: string
   avatar_url?: string
   is_active: boolean
+  created_at: string
+}
+
+// ─── Absensi / Kehadiran ───────────────
+export interface Attendance {
+  id: string
+  employee_id: string
+  employee?: Employee
+  outlet_id?: string
+  type: 'in' | 'out'
+  timestamp: string    // waktu clock-in/out
   created_at: string
 }
 

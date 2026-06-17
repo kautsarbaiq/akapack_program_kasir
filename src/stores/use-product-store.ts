@@ -30,6 +30,8 @@ interface ProductStore {
   setHasVariants: (id: string, value: boolean) => void
   /** Set URL foto produk */
   setProductImage: (id: string, url: string) => void
+  /** Ubah ketersediaan (aktif/nonaktif) produk */
+  setActive: (id: string, value: boolean) => void
 }
 
 function resolveCategory(categoryId: string) {
@@ -204,5 +206,10 @@ export const useProductStore = create<ProductStore>()((set) => ({
       products: s.products.map((p) => (p.id === id ? { ...p, image_url: url } : p)),
     }))
     void updateRow('products', id, { image_url: url })
+  },
+
+  setActive: (id, value) => {
+    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, is_active: value } : p)) }))
+    void updateRow('products', id, { is_active: value })
   },
 }))

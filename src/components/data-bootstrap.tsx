@@ -21,6 +21,7 @@ import { usePurchaseStore } from '@/stores/use-purchase-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useAttendanceStore } from '@/stores/use-attendance-store'
 
 /**
  * Memuat data dari Supabase sekali saat aplikasi (area login) mount.
@@ -63,6 +64,7 @@ export function DataBootstrap() {
         useStockMovementStore.getState().fetch(),
         useJournalStore.getState().fetch(),
         usePurchaseStore.getState().fetch(),
+        useAttendanceStore.getState().fetch(),
       ])
     }
     void run()
