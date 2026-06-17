@@ -23,9 +23,11 @@ jobs:
 
       - name: Setup pnpm
         # npm 10/11 punya bug arborist pada dependency tree ini; pnpm me-resolve dengan bersih.
+        # v11 menyamai pnpm lokal — pnpm-workspace.yaml memakai setting (ignoredBuiltDependencies/
+        # allowBuilds) format pnpm 10+; pnpm 9 salah menganggapnya workspace & minta field `packages`.
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11
 
       - name: Setup Node
         uses: actions/setup-node@v4
