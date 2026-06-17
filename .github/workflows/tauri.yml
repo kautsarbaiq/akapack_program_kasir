@@ -1,6 +1,7 @@
 name: Build AKAPACK (Tauri)
 
 # Jalankan manual (Actions → Run workflow) atau saat push tag v* (mis. v0.1.0).
+# Hanya membangun installer Windows (.exe/.msi) — target: PC karyawan.
 on:
   workflow_dispatch:
   push:
@@ -10,29 +11,22 @@ jobs:
   build:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'windows-latest' # → .msi / .exe
-          - platform: 'macos-latest'   # → .dmg / .app (Apple Silicon + Intel)
-          - platform: 'ubuntu-22.04'   # → .deb / .AppImage
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup pnpm
         # npm 10/11 punya bug arborist pada dependency tree ini; pnpm me-resolve dengan bersih.
-        # v11 menyamai pnpm lokal — pnpm-workspace.yaml memakai setting (ignoredBuiltDependencies/
-        # allowBuilds) format pnpm 10+; pnpm 9 salah menganggapnya workspace & minta field `packages`.
+        # Disamakan dengan pnpm lokal (11.1.2) agar pnpm-workspace.yaml & lockfile terbaca identik.
         uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: 11.1.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        # pnpm 11 butuh Node >= 22.13 (pakai node:sqlite). Node 20 → crash ERR_UNKNOWN_BUILTIN_MODULE.
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
 
       - name: Setup Rust
@@ -42,12 +36,6 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-
-      - name: Dependensi Linux (webkit)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential libssl-dev libgtk-3-dev
 
       - name: Install deps JS
         run: pnpm install --no-frozen-lockfile
@@ -64,7 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'app-latest' }}
-          releaseName: 'AKAPACK ${{ github.ref_name }}'
-          releaseBody: 'Installer AKAPACK untuk Windows, macOS, dan Linux. Lihat aset di bawah.'
+          releaseName: 'AKAPACK Windows'
+          releaseBody: 'Installer AKAPACK untuk Windows. Unduh file .exe atau .msi di bawah, lalu install di PC karyawan.'
           releaseDraft: true
           prerelease: false
