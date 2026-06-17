@@ -3,9 +3,16 @@ import type { Product, ProductUnit, PriceTier } from '@/types'
 import type { ProductFormValues } from '@/lib/validations'
 import { mockProducts } from '@/lib/mock-data'
 import { generateId, getStockStatus } from '@/lib/utils'
-import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
 import { useCategoryStore } from './use-category-store'
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
 import { useInventoryStore } from './use-inventory-store'
 import { useActiveOutletStore } from './use-active-outlet-store'
 
@@ -14,6 +21,8 @@ interface ProductStore {
   loaded: boolean
   fetch: () => Promise<void>
   addProduct: (values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => Product
+  /** Buat banyak produk sekaligus (import). 1x update memori + batch insert DB. Korelasi by SKU; kembalikan produk (urut input) + jumlah gagal. */
+  bulkAdd: (rows: ProductFormValues[]) => Promise<{ products: Product[]; failed: number }>
   updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => void
   deleteProduct: (id: string) => void
   /** Kurangi stok saat transaksi POS */
@@ -113,6 +122,50 @@ export const useProductStore = create<ProductStore>()((set) => ({
       }
     })
     return newProduct
+  },
+
+  bulkAdd: async (rows) => {
+    const now = new Date().toISOString()
+    const created: Product[] = rows.map((v) => ({
+      id: generateId('prod'), outlet_id: 'outlet-1', category_id: v.category_id, category: resolveCategory(v.category_id),
+      name: v.name, sku: v.sku, barcode: v.barcode || undefined, description: v.description || undefined, image_url: undefined,
+      price: v.price, cost_price: v.cost_price, stock: v.stock, min_stock: v.min_stock, unit: v.unit,
+      units: [], price_tiers: [], price_online: 0, is_active: v.is_active,
+      stock_status: getStockStatus(v.stock, v.min_stock), created_at: now, updated_at: now,
+    }))
+    set((s) => ({ products: [...created, ...s.products] }))
+    if (!isSupabaseConfigured()) return { products: created, failed: 0 }
+    const sb = getSupabaseBrowser()
+    const finals = created.slice()
+    let offset = 0
+    let failed = 0
+    for (const c of chunk(created, 500)) {
+      const payload = c.map((p) => ({
+        tenant_id: DEFAULT_TENANT_ID, category_id: p.category_id, name: p.name, sku: p.sku, barcode: p.barcode ?? null,
+        description: p.description ?? null, price: p.price, cost_price: p.cost_price, stock: p.stock, min_stock: p.min_stock,
+        unit: p.unit, units: [], price_tiers: [], price_online: 0, is_active: p.is_active,
+      }))
+      try {
+        const { data, error } = await sb.from('products').insert(payload).select()
+        if (error || !data) { failed += c.length; if (error) console.warn('[akapack] bulk add products:', error.message) }
+        else {
+          // Korelasi baris tersimpan ke input by SKU (jangan andalkan urutan Supabase)
+          const bySku = new Map((data as Product[]).map((s) => [s.sku, s]))
+          const remap = new Map<string, Product>()
+          c.forEach((temp, i) => {
+            const srow = bySku.get(temp.sku)
+            if (srow) {
+              const f = { ...srow, category: resolveCategory(srow.category_id), stock_status: getStockStatus(srow.stock, srow.min_stock) }
+              finals[offset + i] = f
+              remap.set(temp.id, f)
+            } else { failed++ }
+          })
+          set((s) => ({ products: s.products.map((p) => remap.get(p.id) ?? p) }))
+        }
+      } catch (e) { failed += c.length; console.warn('[akapack] bulk add products:', e) }
+      offset += c.length
+    }
+    return { products: finals, failed }
   },
 
   updateProduct: (id, values, units, priceTiers, priceOnline) => {

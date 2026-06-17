@@ -1,8 +1,15 @@
 import { create } from 'zustand'
 import { mockProducts } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
+import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { fetchAll, insertRow, updateRow } from '@/lib/supabase/repo'
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
@@ -55,6 +62,8 @@ interface InventoryStore {
   removeProduct: (productId: string) => void
   /** Hapus baris inventory milik outlet (saat outlet dihapus). */
   removeByOutlet: (outletId: string) => void
+  /** Set stok massal (absolut) untuk banyak produk di satu outlet — 1x update memori + batch ke DB. Mengembalikan jumlah baris yang GAGAL ke DB. */
+  bulkUpsert: (outletId: string, entries: { productId: string; stock: number }[]) => Promise<number>
 }
 
 // Baris sementara yang insert-nya sedang berjalan — cegah double-insert (race) sebelum id ditukar.
@@ -184,4 +193,48 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => ({
   removeProduct: (productId) => set((s) => ({ items: s.items.filter((r) => r.product_id !== productId) })),
 
   removeByOutlet: (outletId) => set((s) => ({ items: s.items.filter((r) => r.outlet_id !== outletId) })),
+
+  bulkUpsert: async (outletId, entries) => {
+    const items = get().items
+    const idxByKey = new Map<string, number>()
+    items.forEach((r, i) => { if (!r.variant_id) idxByKey.set(`${r.outlet_id}|${r.product_id}`, i) })
+    const next = items.slice()
+    const updates: { id: string; stock: number; min_stock: number }[] = []
+    const inserts: InventoryRow[] = []
+    for (const e of entries) {
+      const stock = Math.max(0, Math.round(e.stock))
+      const k = `${outletId}|${e.productId}`
+      const idx = idxByKey.get(k)
+      if (idx !== undefined) {
+        next[idx] = { ...next[idx], stock }
+        if (isUuid(next[idx].id)) updates.push({ id: next[idx].id, stock, min_stock: next[idx].min_stock })
+      } else {
+        const nr: InventoryRow = { id: generateId('inv'), outlet_id: outletId, product_id: e.productId, stock, min_stock: 0 }
+        next.push(nr); idxByKey.set(k, next.length - 1)
+        if (isUuid(e.productId)) inserts.push(nr)
+      }
+    }
+    set({ items: next })
+    if (!isSupabaseConfigured()) return 0
+    const sb = getSupabaseBrowser()
+    let failed = 0
+    for (const c of chunk(updates, 500)) {
+      try {
+        const { error } = await sb.from('inventory').upsert(c)
+        if (error) { failed += c.length; console.warn('[akapack] bulk update inventory:', error.message) }
+      } catch (e) { failed += c.length; console.warn('[akapack] bulk update inventory:', e) }
+    }
+    for (const c of chunk(inserts, 500)) {
+      try {
+        const rows = c.map((r) => ({ tenant_id: DEFAULT_TENANT_ID, outlet_id: r.outlet_id, product_id: r.product_id, variant_id: null, stock: r.stock, min_stock: r.min_stock }))
+        const { data, error } = await sb.from('inventory').insert(rows).select('id, product_id')
+        if (error || !data) { failed += c.length; if (error) console.warn('[akapack] bulk insert inventory:', error.message) }
+        else {
+          const idByProduct = new Map((data as { id: string; product_id: string }[]).map((d) => [d.product_id, d.id]))
+          set((s) => ({ items: s.items.map((r) => (r.outlet_id === outletId && !r.variant_id && !isUuid(r.id) && idByProduct.has(r.product_id) ? { ...r, id: idByProduct.get(r.product_id) as string } : r)) }))
+        }
+      } catch (e) { failed += c.length; console.warn('[akapack] bulk insert inventory:', e) }
+    }
+    return failed
+  },
 }))

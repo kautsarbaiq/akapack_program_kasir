@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle, XCircle, CheckCircle2, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
-  Search, ClipboardList, Copy, Eye, Layers, Power, ScrollText, Trash2,
+  Search, ClipboardList, Copy, Eye, Layers, Power, ScrollText, Trash2, FileSpreadsheet,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,8 @@ import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { ImportStokDialog } from '@/components/dashboard/import-stok-dialog'
+import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { formatRupiah, formatDateTime, getStockStatus } from '@/lib/utils'
 import type { Product } from '@/types'
 import type { ProductFormValues } from '@/lib/validations'
@@ -56,6 +58,7 @@ export default function InventoriPage() {
   const [detail, setDetail] = useState<Product | null>(null)
   const [stockOf, setStockOf] = useState<Product | null>(null)
   const [logOf, setLogOf] = useState<Product | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   useEffect(() => {
     if (!menu) return
@@ -142,6 +145,7 @@ export default function InventoriPage() {
           <Button size="sm" variant="outline" className="gap-1.5 text-amber-700" onClick={() => openFlow('out')}><ArrowUpFromLine size={15} /> Stok Keluar</Button>
           <Link href="/dashboard/inventori/transfer"><Button size="sm" variant="outline" className="gap-1.5"><ArrowLeftRight size={15} /> Transfer</Button></Link>
           <Link href="/dashboard/inventori/opname"><Button size="sm" variant="outline" className="gap-1.5"><ClipboardList size={15} /> Opname</Button></Link>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportOpen(true)}><FileSpreadsheet size={15} /> Import Excel</Button>
         </div>
       </div>
 
@@ -235,10 +239,7 @@ export default function InventoriPage() {
           <div className="space-y-4 py-1">
             <div className="space-y-2">
               <Label>Produk</Label>
-              <Select value={flow?.productId ?? ''} onValueChange={(v) => v && setFlow((f) => (f ? { ...f, productId: v } : f))}>
-                <SelectTrigger><SelectValue placeholder="Pilih produk..." /></SelectTrigger>
-                <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} (stok: {p.stock})</SelectItem>)}</SelectContent>
-              </Select>
+              <ProductCombobox products={products} value={flow?.productId ?? ''} onChange={(id) => setFlow((f) => (f ? { ...f, productId: id } : f))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Jumlah *</Label><Input type="number" min={1} placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
@@ -322,6 +323,8 @@ export default function InventoriPage() {
           </>)}
         </SheetContent>
       </Sheet>
+
+      <ImportStokDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   )
 }
