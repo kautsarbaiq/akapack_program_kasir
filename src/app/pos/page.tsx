@@ -425,7 +425,7 @@ export default function POSPage() {
       </div>
 
       {/* ── MIDDLE: Product Grid ── */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-muted/30">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-muted/30">
         <div className="p-3 shrink-0">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -438,7 +438,7 @@ export default function POSPage() {
           </div>
         </div>
 
-        <ScrollArea className="flex-1 px-3 pb-3">
+        <ScrollArea className="flex-1 min-h-0 px-3 pb-3">
           <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
             {filteredProducts.map((product) => {
               const vlist = product.has_variants ? productVariants(product.id) : []
@@ -488,7 +488,7 @@ export default function POSPage() {
       </div>
 
       {/* ── RIGHT: Cart ── */}
-      <div className="w-96 flex flex-col shrink-0 bg-card border-l">
+      <div className="w-96 flex flex-col shrink-0 min-h-0 overflow-hidden bg-card border-l">
         {/* Shift bar */}
         <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/30 shrink-0">
           <div className="flex items-center gap-2 text-xs">
@@ -521,7 +521,7 @@ export default function POSPage() {
         </div>
 
         {/* Cart Items */}
-        <ScrollArea className="flex-1 px-4 py-3">
+        <ScrollArea className="flex-1 min-h-0 px-4 py-3">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full py-12 gap-3">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">

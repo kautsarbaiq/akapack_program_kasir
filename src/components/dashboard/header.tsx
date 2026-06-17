@@ -120,6 +120,18 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        {/* Status koneksi backend — hijau = terhubung Supabase (data online & tersinkron antar perangkat),
+            kuning = mode demo lokal (build tanpa kredензial). */}
+        <span
+          title={isSupabaseConfigured() ? 'Terhubung ke server — data online & tersinkron' : 'Mode demo: tidak terhubung server (data lokal saja)'}
+          className={cn(
+            'hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium border',
+            isSupabaseConfigured() ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+          )}>
+          <span className={cn('w-1.5 h-1.5 rounded-full', isSupabaseConfigured() ? 'bg-emerald-500' : 'bg-amber-500')} />
+          {isSupabaseConfigured() ? 'Online' : 'Demo'}
+        </span>
+
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
