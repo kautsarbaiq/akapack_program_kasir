@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Search, Save, ClipboardCheck } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProductStore } from '@/stores/use-product-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { rankedSearch } from '@/lib/utils'
 import { toast } from 'sonner'
 
 export default function StockOpnamePage() {
@@ -18,12 +19,14 @@ export default function StockOpnamePage() {
   const [actual, setActual] = useState<Record<string, string>>({})
 
   const filtered = useMemo(
-    () =>
-      products.filter(
-        (p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
-      ),
+    () => rankedSearch(products, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name),
     [products, search]
   )
+
+  // Batasi baris yang dirender (katalog bisa ribuan). Input opname tetap tersimpan di state `actual`.
+  const [shown, setShown] = useState(100)
+  useEffect(() => { setShown(100) }, [search])
+  const visible = filtered.slice(0, shown)
 
   const changes = products.filter((p) => {
     const v = actual[p.id]
@@ -101,7 +104,7 @@ export default function StockOpnamePage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => {
+                {visible.map((p) => {
                   const v = actual[p.id]
                   const filled = v !== undefined && v !== ''
                   const diff = filled ? Number(v) - p.stock : null
@@ -141,6 +144,13 @@ export default function StockOpnamePage() {
           </div>
         </CardContent>
       </Card>
+
+      {filtered.length > shown && (
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-xs text-muted-foreground">Menampilkan {shown} dari {filtered.length} produk — persempit dengan pencarian.</span>
+          <Button variant="outline" size="sm" onClick={() => setShown((s) => s + 100)}>Muat lebih banyak</Button>
+        </div>
+      )}
     </div>
   )
 }

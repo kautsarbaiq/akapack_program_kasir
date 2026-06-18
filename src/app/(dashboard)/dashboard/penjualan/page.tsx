@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
-import { formatRupiah, formatDateTime } from '@/lib/utils'
+import { formatRupiah, formatDateTime, rankedSearch } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
 import { toast } from 'sonner'
@@ -24,10 +24,7 @@ export default function PenjualanPage() {
   const totalOmzet = transactions.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
   const totalTrx = transactions.filter(t => t.status === 'completed').length
 
-  const filtered = transactions.filter((t) => {
-    const q = search.toLowerCase()
-    return !search || t.transaction_number.toLowerCase().includes(q) || (t.customer?.name ?? '').toLowerCase().includes(q)
-  })
+  const filtered = rankedSearch(transactions, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
 
   return (
     <div className="space-y-6">

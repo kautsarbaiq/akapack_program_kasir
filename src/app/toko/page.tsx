@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
@@ -10,7 +10,7 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useStoreCart } from '@/stores/use-store-cart'
-import { formatRupiah, cn } from '@/lib/utils'
+import { formatRupiah, cn, rankedSearch } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { Product } from '@/types'
 
@@ -26,16 +26,15 @@ export default function TokoCatalog() {
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('all')
 
-  const list = useMemo(
-    () =>
-      products.filter(
-        (p) =>
-          p.is_active &&
-          (cat === 'all' || p.category_id === cat) &&
-          (!search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()))
-      ),
-    [products, cat, search]
-  )
+  const list = useMemo(() => {
+    const base = products.filter((p) => p.is_active && (cat === 'all' || p.category_id === cat))
+    return rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
+  }, [products, cat, search])
+
+  // Batasi jumlah kartu yang dirender (katalog bisa ribuan). Reset saat filter berubah.
+  const [shown, setShown] = useState(60)
+  useEffect(() => { setShown(60) }, [search, cat])
+  const visible = list.slice(0, shown)
 
   return (
     <div className="space-y-5">
@@ -59,7 +58,7 @@ export default function TokoCatalog() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {list.map((p) => {
+        {visible.map((p) => {
           const vlist = p.has_variants ? variants.filter((v) => v.product_id === p.id) : []
           const hasVar = vlist.length > 0
           const stock = hasVar ? vlist.reduce((s, v) => s + v.stock, 0) : p.stock
@@ -91,6 +90,13 @@ export default function TokoCatalog() {
         })}
         {list.length === 0 && <p className="col-span-full text-center text-muted-foreground py-12">Tidak ada produk</p>}
       </div>
+
+      {list.length > shown && (
+        <div className="flex flex-col items-center gap-2 pt-1">
+          <p className="text-xs text-muted-foreground">Menampilkan {shown} dari {list.length} produk</p>
+          <Button variant="outline" size="sm" onClick={() => setShown((s) => s + 60)}>Muat lebih banyak</Button>
+        </div>
+      )}
     </div>
   )
 }

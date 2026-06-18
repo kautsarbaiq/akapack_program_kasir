@@ -22,7 +22,7 @@ import { useOutletStore } from '@/stores/use-outlet-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { ImportStokDialog } from '@/components/dashboard/import-stok-dialog'
 import { ProductCombobox } from '@/components/dashboard/product-combobox'
-import { formatRupiah, formatDateTime, getStockStatus } from '@/lib/utils'
+import { formatRupiah, formatDateTime, getStockStatus, rankedSearch } from '@/lib/utils'
 import type { Product } from '@/types'
 import type { ProductFormValues } from '@/lib/validations'
 import { toast } from 'sonner'
@@ -68,11 +68,15 @@ export default function InventoriPage() {
     return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true) }
   }, [menu])
 
-  const filtered = useMemo(() => products.filter((p) => {
-    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
-    const matchStock = stockFilter === 'all' || stockFilter === getStockStatus(p.stock, p.min_stock)
-    return matchSearch && matchStock
-  }), [products, search, stockFilter])
+  const filtered = useMemo(() => {
+    const base = products.filter((p) => stockFilter === 'all' || stockFilter === getStockStatus(p.stock, p.min_stock))
+    return rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
+  }, [products, search, stockFilter])
+
+  // Batasi baris yang dirender (katalog bisa ribuan). Reset saat filter berubah.
+  const [shown, setShown] = useState(100)
+  useEffect(() => { setShown(100) }, [search, stockFilter])
+  const visible = filtered.slice(0, shown)
 
   const totalValue = products.reduce((s, p) => s + p.stock * p.cost_price, 0)
   const lowCount = products.filter((p) => getStockStatus(p.stock, p.min_stock) === 'low').length
@@ -187,7 +191,7 @@ export default function InventoriPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {visible.map((p) => (
                   <tr key={p.id} className="hover:bg-muted/30 transition-colors cursor-context-menu" style={{ borderBottom: '1px solid var(--border)' }}
                     onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, product: p }) }}>
                     <td className="py-3 px-4 font-medium">{p.name}{!p.is_active && <span className="ml-1.5 text-xs text-muted-foreground">(nonaktif)</span>}</td>
@@ -211,6 +215,13 @@ export default function InventoriPage() {
           </div>
         </CardContent>
       </Card>
+
+      {filtered.length > shown && (
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-xs text-muted-foreground">Menampilkan {shown} dari {filtered.length} produk</span>
+          <Button variant="outline" size="sm" onClick={() => setShown((s) => s + 100)}>Muat lebih banyak</Button>
+        </div>
+      )}
 
       {/* Menu klik-kanan */}
       {menu && (

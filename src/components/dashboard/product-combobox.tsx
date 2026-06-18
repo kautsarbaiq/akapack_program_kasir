@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Search, ChevronDown, Check } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import type { Product } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, rankedSearch } from '@/lib/utils'
 
 interface Props {
   products: Product[]
@@ -27,10 +27,7 @@ export function ProductCombobox({ products, value, onChange, placeholder = 'Pili
     return () => window.removeEventListener('mousedown', close)
   }, [open])
 
-  const filtered = (q
-    ? products.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()) || p.sku.toLowerCase().includes(q.toLowerCase()))
-    : products
-  ).slice(0, 60)
+  const filtered = rankedSearch(products, q, (p) => [p.name, p.sku, p.barcode], (p) => p.name).slice(0, 60)
 
   return (
     <div className="relative" ref={ref}>

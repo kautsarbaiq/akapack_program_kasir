@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { CustomerFormDialog } from '@/components/dashboard/customer-form-dialog'
-import { getInitials, getAvatarColor } from '@/lib/utils'
+import { getInitials, getAvatarColor, rankedSearch } from '@/lib/utils'
 import type { Customer } from '@/types'
 
 interface Props {
@@ -27,10 +27,7 @@ export function CustomerSelector({ open, onOpenChange, selectedId, onSelect }: P
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
 
-  const filtered = customers.filter((c) => {
-    const q = search.toLowerCase()
-    return !search || c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q)
-  })
+  const filtered = rankedSearch(customers, search, (c) => [c.name, c.phone], (c) => c.name)
 
   const pick = (c: Customer | null) => {
     onSelect(c)

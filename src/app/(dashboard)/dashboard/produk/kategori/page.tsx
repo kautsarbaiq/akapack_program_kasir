@@ -12,7 +12,7 @@ import { CategoryFormDialog } from '@/components/dashboard/category-form-dialog'
 import { CategoryIcon } from '@/components/category-icon'
 import type { Category } from '@/types'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { cn, rankedSearch } from '@/lib/utils'
 
 export default function KategoriPage() {
   const categories = useCategoryStore((s) => s.categories)
@@ -24,7 +24,7 @@ export default function KategoriPage() {
   const [editTarget, setEditTarget] = useState<Category | null>(null)
 
   const filtered = useMemo(() =>
-    categories.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()))
+    rankedSearch(categories, search, (c) => [c.name], (c) => c.name)
   , [categories, search])
 
   const handleDelete = () => {

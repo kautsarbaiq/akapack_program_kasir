@@ -5,6 +5,46 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Skor relevansi `query` terhadap beberapa field (nama, sku, barcode, dll).
+ * 0 = tidak cocok. Makin besar makin relevan:
+ *   100 = sama persis · 80 = diawali query · 60 = ada kata yang diawali query · 40 = mengandung query.
+ * Dipakai untuk MENGURUTKAN hasil pencarian agar yang paling cocok muncul di ATAS.
+ */
+export function matchScore(query: string, ...fields: Array<string | null | undefined>): number {
+  const q = query.trim().toLowerCase()
+  if (!q) return 1
+  let best = 0
+  for (const raw of fields) {
+    const s = (raw ?? '').toString().toLowerCase()
+    if (!s) continue
+    if (s === q) return 100
+    if (s.startsWith(q)) { best = Math.max(best, 80); continue }
+    if (s.split(/[\s\-/.,()|]+/).some((w) => w.startsWith(q))) { best = Math.max(best, 60); continue }
+    if (s.includes(q)) best = Math.max(best, 40)
+  }
+  return best
+}
+
+/**
+ * Filter + urutkan daftar berdasar relevansi pencarian.
+ * Item dengan skor 0 dibuang; sisanya diurutkan skor (desc), lalu tiebreak alfabetis via `getName`.
+ * Saat `query` kosong, daftar dikembalikan apa adanya (urutan asli, tanpa filter).
+ */
+export function rankedSearch<T>(
+  items: T[],
+  query: string,
+  getFields: (item: T) => Array<string | null | undefined>,
+  getName?: (item: T) => string,
+): T[] {
+  if (!query.trim()) return items
+  return items
+    .map((item) => ({ item, s: matchScore(query, ...getFields(item)) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s || (getName ? getName(a.item).localeCompare(getName(b.item)) : 0))
+    .map((x) => x.item)
+}
+
 export function formatRupiah(amount: number): string {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',

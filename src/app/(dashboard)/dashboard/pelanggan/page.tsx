@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { CustomerFormDialog } from '@/components/dashboard/customer-form-dialog'
-import { formatRupiah, formatDate, getInitials, getAvatarColor } from '@/lib/utils'
+import { formatRupiah, formatDate, getInitials, getAvatarColor, rankedSearch } from '@/lib/utils'
 import type { Customer } from '@/types'
 import { toast } from 'sonner'
 
@@ -23,10 +23,7 @@ export default function PelangganPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Customer | null>(null)
 
-  const filtered = customers.filter((c) => {
-    const q = search.toLowerCase()
-    return !search || c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q) || (c.email ?? '').toLowerCase().includes(q)
-  })
+  const filtered = rankedSearch(customers, search, (c) => [c.name, c.phone, c.email], (c) => c.name)
 
   const totalCustomers = customers.length
   const totalPoints = customers.reduce((s, c) => s + c.points, 0)

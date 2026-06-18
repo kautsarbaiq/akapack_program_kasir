@@ -33,7 +33,7 @@ import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
-import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn } from '@/lib/utils'
+import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn, rankedSearch } from '@/lib/utils'
 import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, ProductVariant } from '@/types'
 import { toast } from 'sonner'
 
@@ -112,13 +112,8 @@ export default function POSPage() {
   const [receiptTxn, setReceiptTxn] = useState<Transaction | null>(null)
 
   const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return products.filter((p) => {
-      if (!p.is_active) return false
-      const matchSearch = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.barcode ?? '').toLowerCase().includes(q)
-      const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory
-      return matchSearch && matchCat
-    })
+    const base = products.filter((p) => p.is_active && (selectedCategory === 'all' || p.category_id === selectedCategory))
+    return rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
   }, [products, search, selectedCategory])
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)

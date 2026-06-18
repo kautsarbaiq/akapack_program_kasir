@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Package, Plus, Search, LayoutGrid, List,
   Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle,
@@ -25,7 +25,7 @@ import { useVariantStore } from '@/stores/use-variant-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { ProductFormDialog } from '@/components/dashboard/product-form-dialog'
 import { ImportProdukDialog } from '@/components/dashboard/import-produk-dialog'
-import { formatRupiah, getStockStatus } from '@/lib/utils'
+import { formatRupiah, getStockStatus, rankedSearch } from '@/lib/utils'
 import type { Product } from '@/types'
 import { toast } from 'sonner'
 
@@ -102,15 +102,19 @@ export default function ProdukPage() {
   }
 
   const filtered = useMemo(() => {
-    return products.filter((p) => {
-      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
+    const base = products.filter((p) => {
       const matchCategory = categoryFilter === 'all' || p.category_id === categoryFilter
       const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? p.is_active : !p.is_active)
-      const stockStatus = getStockStatus(p.stock, p.min_stock)
-      const matchStock = stockFilter === 'all' || stockFilter === stockStatus
-      return matchSearch && matchCategory && matchStatus && matchStock
+      const matchStock = stockFilter === 'all' || stockFilter === getStockStatus(p.stock, p.min_stock)
+      return matchCategory && matchStatus && matchStock
     })
+    return rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
   }, [products, search, categoryFilter, statusFilter, stockFilter])
+
+  // Batasi baris/kartu yang dirender (katalog bisa ribuan). Reset saat filter berubah.
+  const [shown, setShown] = useState(100)
+  useEffect(() => { setShown(100) }, [search, categoryFilter, statusFilter, stockFilter])
+  const visible = filtered.slice(0, shown)
 
   const stats = {
     total: products.length,
@@ -237,7 +241,7 @@ export default function ProdukPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p) => (
+                  {visible.map((p) => (
                     <tr key={p.id} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -293,7 +297,7 @@ export default function ProdukPage() {
       {/* Grid View */}
       {view === 'grid' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {filtered.map((p) => {
+          {visible.map((p) => {
             return (
               <Card key={p.id} className="overflow-hidden group cursor-pointer hover:shadow-md transition-all duration-200">
                 <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
@@ -314,6 +318,13 @@ export default function ProdukPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {filtered.length > shown && (
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-xs text-muted-foreground">Menampilkan {shown} dari {filtered.length} produk</span>
+          <Button variant="outline" size="sm" onClick={() => setShown((s) => s + 100)}>Muat lebih banyak</Button>
         </div>
       )}
 

@@ -18,7 +18,7 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
-import { formatRupiah, formatDate, generateId, localDay } from '@/lib/utils'
+import { formatRupiah, formatDate, generateId, localDay, rankedSearch } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem, PurchaseStatus } from '@/types'
 import { toast } from 'sonner'
 
@@ -78,14 +78,13 @@ export default function StokMasukPage() {
   const [items, setItems] = useState<DraftItem[]>([{ product_id: '', qty: 1, cost: 0 }])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return purchases.filter((p) => {
+    const base = purchases.filter((p) => {
       const day = (p.date || '').slice(0, 10)
       if (dateFrom && day < dateFrom) return false
       if (dateTo && day > dateTo) return false
-      if (q && !p.number.toLowerCase().includes(q)) return false
       return true
     })
+    return rankedSearch(base, search, (p) => [p.number, p.received_from], (p) => p.number)
   }, [purchases, dateFrom, dateTo, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
