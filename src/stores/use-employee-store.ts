@@ -39,7 +39,7 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
   addEmployee: (values) => {
     const newEmployee: Employee = {
       id: generateId('emp'),
-      outlet_id: DEFAULT_OUTLET_ID,
+      outlet_id: values.outlet_id || '',
       name: values.name,
       role: values.role,
       pin: values.pin || undefined,
@@ -52,6 +52,7 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
     set((s) => ({ employees: [newEmployee, ...s.employees] }))
     void insertRow<Employee>('employees', {
       tenant_id: DEFAULT_TENANT_ID,
+      outlet_id: newEmployee.outlet_id || null,
       name: newEmployee.name,
       role: newEmployee.role,
       pin: newEmployee.pin || null,
@@ -74,6 +75,7 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
               ...e,
               name: values.name,
               role: values.role,
+              outlet_id: values.outlet_id || '',
               pin: values.pin || undefined,
               phone: values.phone || undefined,
               email: values.email || undefined,
@@ -85,6 +87,7 @@ export const useEmployeeStore = create<EmployeeStore>()((set, get) => ({
     void updateRow('employees', id, {
       name: values.name,
       role: values.role,
+      outlet_id: values.outlet_id || null,
       pin: values.pin || null,
       phone: values.phone || null,
       email: values.email || null,

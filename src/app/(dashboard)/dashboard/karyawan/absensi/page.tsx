@@ -10,6 +10,7 @@ import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { formatTime, formatDateTime, getAvatarColor, getInitials, localDay } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -21,9 +22,18 @@ export default function AbsensiPage() {
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const outlets = useOutletStore((s) => s.outlets)
   const outletName = (id?: string) => outlets.find((o) => o.id === id)?.name ?? '-'
+  const me = useCurrentUserStore((s) => s.user)
+  // Karyawan login → absen 1-klik untuk dirinya. Cocokkan id (atau nama) ke data.
+  const meEmp = me?.viaStaff ? employees.find((e) => e.id === me.employeeId || e.name === me.name) : undefined
 
   const [code, setCode] = useState('')
   const [result, setResult] = useState<{ name: string; type: 'in' | 'out'; time: string } | null>(null)
+
+  const doClock = (emp: { id: string; name: string }) => {
+    const r = clock(emp as never, activeOutletId)
+    setResult({ name: emp.name, type: r.type, time: r.time })
+    toast.success(`${emp.name} ${r.type === 'in' ? 'masuk' : 'pulang'} ${formatTime(r.time)}`)
+  }
 
   const press = (d: string) => setCode((c) => (c.length >= 8 ? c : c + d))
   const backspace = () => setCode((c) => c.slice(0, -1))
@@ -31,7 +41,7 @@ export default function AbsensiPage() {
   const submit = () => {
     const c = code.trim()
     if (!c) return
-    const matches = employees.filter((e) => e.is_active && e.code === c)
+    const matches = employees.filter((e) => e.is_active && e.code === c && e.outlet_id === activeOutletId)
     if (matches.length === 0) { toast.error('Kode tidak ditemukan / karyawan nonaktif'); setCode(''); return }
     if (matches.length > 1) { toast.error('Kode dipakai >1 karyawan — hubungi admin'); setCode(''); return }
     const emp = matches[0]
@@ -43,8 +53,8 @@ export default function AbsensiPage() {
 
   const todayRecords = useMemo(() => {
     const t = localDay(new Date())
-    return records.filter((r) => localDay(r.timestamp) === t)
-  }, [records])
+    return records.filter((r) => localDay(r.timestamp) === t && r.outlet_id === activeOutletId)
+  }, [records, activeOutletId])
 
   const statusOf = (empId: string) => {
     const last = lastToday(empId)
@@ -52,7 +62,7 @@ export default function AbsensiPage() {
     return last.type === 'in' ? { label: `Masuk ${formatTime(last.timestamp)}`, cls: 'text-emerald-600' } : { label: `Pulang ${formatTime(last.timestamp)}`, cls: 'text-amber-600' }
   }
 
-  const activeEmployees = employees.filter((e) => e.is_active)
+  const activeEmployees = employees.filter((e) => e.is_active && e.outlet_id === activeOutletId)
   const hadirCount = activeEmployees.filter((e) => { const l = lastToday(e.id); return l && l.type === 'in' }).length
 
   return (
@@ -62,6 +72,22 @@ export default function AbsensiPage() {
         <h1 className="text-2xl font-bold flex items-center gap-2"><Fingerprint size={22} /> Absensi</h1>
         <p className="text-muted-foreground text-sm mt-1">Masukkan kode karyawan untuk clock-in / clock-out · {hadirCount}/{activeEmployees.length} sedang hadir · {outletName(activeOutletId)}</p>
       </div>
+
+      {/* Absen 1-klik untuk karyawan yang sedang login */}
+      {meEmp && (
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3 flex-wrap">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${getAvatarColor(meEmp.name)}`}>{getInitials(meEmp.name)}</div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate">{meEmp.name}</p>
+              <p className="text-xs text-muted-foreground">{statusOf(meEmp.id).label}</p>
+            </div>
+            <Button onClick={() => doClock(meEmp)} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+              <Fingerprint size={16} /> Absen Saya
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Keypad */}

@@ -25,8 +25,10 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
   const isProtected = path.startsWith('/dashboard') || path.startsWith('/pos')
+  // Karyawan login via nama+PIN (sesi klien) menaruh cookie penanda — izinkan masuk.
+  const hasStaff = request.cookies.get('akapack-staff')?.value === '1'
 
-  if (!user && isProtected) {
+  if (!user && !hasStaff && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

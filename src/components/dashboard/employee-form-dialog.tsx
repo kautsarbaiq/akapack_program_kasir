@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select'
 import { useEmployeeStore } from '@/stores/use-employee-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import { employeeSchema, type EmployeeFormValues } from '@/lib/validations'
 import type { Employee, UserRole } from '@/types'
 
@@ -36,14 +37,17 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
   const isEdit = !!employee
   const addEmployee = useEmployeeStore((s) => s.addEmployee)
   const updateEmployee = useEmployeeStore((s) => s.updateEmployee)
+  const outlets = useOutletStore((s) => s.outlets)
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema),
-    defaultValues: { name: '', role: 'cashier', phone: '', email: '', pin: '', is_active: true },
+    defaultValues: { name: '', role: 'cashier', outlet_id: '', phone: '', email: '', pin: '', is_active: true },
   })
 
   const role = watch('role')
   const isActive = watch('is_active')
+  const outletId = watch('outlet_id')
+  const outletLabel = outletId ? (outlets.find((o) => o.id === outletId)?.name ?? 'Pilih cabang') : 'Semua cabang (owner)'
 
   useEffect(() => {
     if (open) {
@@ -51,13 +55,14 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
         reset({
           name: employee.name,
           role: employee.role,
+          outlet_id: employee.outlet_id ?? '',
           phone: employee.phone ?? '',
           email: employee.email ?? '',
           pin: employee.pin ?? '',
           is_active: employee.is_active,
         })
       } else {
-        reset({ name: '', role: 'cashier', phone: '', email: '', pin: '', is_active: true })
+        reset({ name: '', role: 'cashier', outlet_id: '', phone: '', email: '', pin: '', is_active: true })
       }
     }
   }, [open, employee, reset])
@@ -110,6 +115,20 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
               </SelectContent>
             </Select>
             {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cabang *</Label>
+            <Select value={outletId || 'ALL'} onValueChange={(v) => setValue('outlet_id', !v || v === 'ALL' ? '' : v, { shouldValidate: true })}>
+              <SelectTrigger>
+                <span className="flex-1 text-left">{outletLabel}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Semua cabang (owner)</SelectItem>
+                {outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Kasir wajib pilih cabang (Bandung / Garut). Owner pilih &quot;Semua cabang&quot;.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

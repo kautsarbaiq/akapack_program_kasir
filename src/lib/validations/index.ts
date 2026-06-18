@@ -58,6 +58,7 @@ export type CustomerFormValues = z.infer<typeof customerSchema>
 export const employeeSchema = z.object({
   name: z.string().min(2, 'Nama minimal 2 karakter'),
   role: z.enum(['owner', 'manager', 'cashier']),
+  outlet_id: z.string().optional(), // cabang tempat karyawan bekerja (kosong = semua, utk owner)
   phone: optionalPhone,
   email: optionalEmail,
   pin: z

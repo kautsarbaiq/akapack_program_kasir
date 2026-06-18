@@ -23,7 +23,16 @@ function readStaff(): StaffSaved | null {
 }
 function writeStaff(s: StaffSaved | null) {
   if (typeof window === 'undefined') return
-  try { if (s) localStorage.setItem(STAFF_KEY, JSON.stringify(s)); else localStorage.removeItem(STAFF_KEY) } catch { /* noop */ }
+  try {
+    if (s) {
+      localStorage.setItem(STAFF_KEY, JSON.stringify(s))
+      // Cookie penanda agar middleware (proxy.ts) mengizinkan akses (sesi karyawan, bukan Supabase).
+      document.cookie = `${STAFF_KEY}=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`
+    } else {
+      localStorage.removeItem(STAFF_KEY)
+      document.cookie = `${STAFF_KEY}=; path=/; max-age=0; samesite=lax`
+    }
+  } catch { /* noop */ }
 }
 
 /** Hapus sesi karyawan (dipanggil saat owner login via email atau saat logout). */
