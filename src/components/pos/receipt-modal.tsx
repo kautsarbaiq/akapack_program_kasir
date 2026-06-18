@@ -33,7 +33,35 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
   const receiptFooter = useSettingsStore((s) => s.receiptFooter)
   if (!transaction) return null
 
-  const handlePrint = () => { if (typeof window !== 'undefined') window.print() }
+  // Cetak struk lewat iframe terisolasi: HANYA isi #receipt-print yang ikut,
+  // jadi tak ada gangguan posisi dialog / elemen lain, dan ukuran kertas pasti 76mm.
+  const handlePrint = () => {
+    if (typeof window === 'undefined') return
+    const src = document.getElementById('receipt-print')
+    if (!src) { window.print(); return }
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' })
+    document.body.appendChild(iframe)
+    const doc = iframe.contentWindow?.document
+    if (!doc) { iframe.remove(); window.print(); return }
+    doc.open()
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Struk</title><style>
+      @page { size: 76mm 297mm; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { width: 76mm; padding: 4mm 3mm; color: #000; background: #fff;
+        font-family: ui-monospace, "Courier New", monospace; font-size: 12px; line-height: 1.45;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    </style></head><body>${src.innerHTML}</body></html>`)
+    doc.close()
+    const run = () => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() }
+      finally { setTimeout(() => iframe.remove(), 800) }
+    }
+    if (doc.readyState === 'complete') run()
+    else iframe.onload = run
+  }
 
   const sendWhatsApp = () => {
     const t = transaction
