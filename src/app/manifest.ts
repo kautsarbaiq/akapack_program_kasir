@@ -1,5 +1,8 @@
 import type { MetadataRoute } from 'next'
 
+// Wajib untuk `output: export` (build Tauri): hasilkan /manifest.webmanifest sebagai file statis.
+export const dynamic = 'force-static'
+
 // Web App Manifest — agar "Add to Home Screen" di HP tampil seperti app (fullscreen + ikon + nama).
 export default function manifest(): MetadataRoute.Manifest {
   return {
