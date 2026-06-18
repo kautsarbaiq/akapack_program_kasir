@@ -135,11 +135,13 @@ export interface CartItem {
 // ─── Transaksi ─────────────────────────
 export type PaymentMethod =
   | 'cash'
+  | 'transfer_bca'
+  | 'transfer_mandiri'
   | 'qris'
-  | 'debit'
-  | 'credit'
-  | 'transfer'
-  | 'ewallet'
+  | 'shopee'
+  | 'tiktok'
+  | 'lazada'
+  | 'blibli'
   | 'split'
 
 export type TransactionStatus = 'completed' | 'void' | 'refunded' | 'pending'

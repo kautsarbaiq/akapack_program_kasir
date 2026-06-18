@@ -12,7 +12,7 @@ import { TrendingUp, TrendingDown, Download } from 'lucide-react'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { formatRupiah, formatNumber } from '@/lib/utils'
-import type { PaymentMethod } from '@/types'
+import { PAYMENT_LABELS } from '@/lib/constants'
 
 const PERIODS = [
   { value: '7', label: '7 Hari' },
@@ -28,10 +28,6 @@ const PIE_COLORS = [
   'oklch(0.65 0.18 30)',
   'oklch(0.65 0.18 220)',
 ]
-
-const METHOD_LABELS: Record<PaymentMethod, string> = {
-  cash: 'Tunai', qris: 'QRIS', debit: 'Debit', credit: 'Kredit', transfer: 'Transfer', ewallet: 'E-Wallet', split: 'Split',
-}
 
 function KPICard({ title, value, subtitle, accent }: { title: string; value: string; subtitle?: string; accent?: boolean }) {
   return (
@@ -108,7 +104,7 @@ export default function LaporanPenjualanPage() {
       methodAgg[k].total += t.total
     })
     const paymentData = Object.entries(methodAgg).map(([method, d]) => ({
-      name: METHOD_LABELS[method as PaymentMethod] ?? method,
+      name: PAYMENT_LABELS[method] ?? method,
       value: d.total,
       count: d.count,
     }))

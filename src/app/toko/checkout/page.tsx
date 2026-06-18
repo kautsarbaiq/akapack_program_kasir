@@ -65,7 +65,7 @@ export default function CheckoutPage() {
       discount: 0,
       subtotal: i.price * i.quantity,
     }))
-    const pm: PaymentMethod = method === 'cod' ? 'cash' : 'transfer'
+    const pm: PaymentMethod = method === 'cod' ? 'cash' : 'transfer_bca'
     const txn: Transaction = {
       id: txnId,
       outlet_id: ONLINE_OUTLET,

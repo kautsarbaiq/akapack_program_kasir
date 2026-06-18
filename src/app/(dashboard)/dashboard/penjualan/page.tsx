@@ -12,15 +12,8 @@ import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { formatRupiah, formatDateTime } from '@/lib/utils'
 import type { Transaction } from '@/types'
+import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
 import { toast } from 'sonner'
-
-const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Tunai', qris: 'QRIS', debit: 'Debit', credit: 'Kredit', transfer: 'Transfer', ewallet: 'E-Wallet', split: 'Split'
-}
-const PAYMENT_COLORS: Record<string, string> = {
-  cash: 'bg-emerald-100 text-emerald-700', qris: 'bg-blue-100 text-blue-700', debit: 'bg-purple-100 text-purple-700',
-  credit: 'bg-orange-100 text-orange-700', transfer: 'bg-cyan-100 text-cyan-700', ewallet: 'bg-pink-100 text-pink-700',
-}
 
 export default function PenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
@@ -74,9 +67,7 @@ export default function PenjualanPage() {
           <SelectTrigger className="w-36 h-9 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Metode</SelectItem>
-            <SelectItem value="cash">Tunai</SelectItem>
-            <SelectItem value="qris">QRIS</SelectItem>
-            <SelectItem value="debit">Debit</SelectItem>
+            {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select defaultValue="all">

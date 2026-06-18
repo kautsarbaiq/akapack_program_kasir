@@ -8,17 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatRupiah, formatDateTime } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/use-settings-store'
-import type { Transaction, PaymentMethod } from '@/types'
-
-const PAYMENT_LABELS: Record<PaymentMethod, string> = {
-  cash: 'Tunai',
-  qris: 'QRIS',
-  debit: 'Kartu Debit',
-  credit: 'Kartu Kredit',
-  transfer: 'Transfer Bank',
-  ewallet: 'E-Wallet',
-  split: 'Split Payment',
-}
+import { PAYMENT_LABELS } from '@/lib/constants'
+import type { Transaction } from '@/types'
 
 function Row({ label, value }: { label: string; value: string }) {
   return (

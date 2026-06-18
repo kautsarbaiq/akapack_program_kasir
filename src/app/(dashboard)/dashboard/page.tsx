@@ -19,6 +19,7 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { formatRupiah, formatNumber, formatDateTime } from '@/lib/utils'
+import { PAYMENT_LABELS } from '@/lib/constants'
 
 export default function DashboardPage() {
   const transactions = useTransactionStore((s) => s.transactions)
@@ -254,7 +255,7 @@ export default function DashboardPage() {
                     <td className="py-3 px-3 font-mono text-xs font-medium">{t.transaction_number}</td>
                     <td className="py-3 px-3 text-sm">{t.customer?.name ?? 'Pelanggan Umum'}</td>
                     <td className="py-3 px-3 font-semibold">{formatRupiah(t.total)}</td>
-                    <td className="py-3 px-3"><Badge variant="secondary" className="text-xs capitalize">{t.payment_method}</Badge></td>
+                    <td className="py-3 px-3"><Badge variant="secondary" className="text-xs">{PAYMENT_LABELS[t.payment_method] ?? t.payment_method}</Badge></td>
                     <td className="py-3 px-3 text-xs text-muted-foreground">{formatDateTime(t.created_at)}</td>
                     <td className="py-3 px-3">
                       <Badge variant="outline" className={`text-xs ${t.status === 'completed' ? 'border-emerald-500 text-emerald-600' : t.status === 'pending' ? 'border-amber-400 text-amber-600' : 'border-destructive text-destructive'}`}>

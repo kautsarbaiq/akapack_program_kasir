@@ -3,11 +3,13 @@
 import { useState, useMemo, useCallback } from 'react'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
-  QrCode, CreditCard, Smartphone, ArrowLeftRight, CheckCircle2,
-  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split
+  QrCode, CheckCircle2,
+  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split,
+  Landmark, ShoppingBag, Music2, Store
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { OutletSwitcher } from '@/components/dashboard/outlet-switcher'
+import { PAYMENT_METHODS as PAYMENT_METHOD_DEFS } from '@/lib/constants'
 
 const MAX_SHOWN = 120 // batas kartu produk yang dirender sekaligus (performa katalog besar)
 import { Button } from '@/components/ui/button'
@@ -50,14 +52,11 @@ interface CartItem {
   image_url?: string
 }
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { value: 'cash', label: 'Tunai', icon: Banknote },
-  { value: 'qris', label: 'QRIS', icon: QrCode },
-  { value: 'debit', label: 'Debit', icon: CreditCard },
-  { value: 'credit', label: 'Kredit', icon: CreditCard },
-  { value: 'transfer', label: 'Transfer', icon: ArrowLeftRight },
-  { value: 'ewallet', label: 'E-Wallet', icon: Smartphone },
-]
+const PAY_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+  Banknote, Landmark, QrCode, ShoppingBag, Music2, ShoppingCart, Store,
+}
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ComponentType<{ size?: number }> }[] =
+  PAYMENT_METHOD_DEFS.map((m) => ({ value: m.value as PaymentMethod, label: m.label, icon: PAY_ICONS[m.icon] ?? Banknote }))
 
 const QUICK_AMOUNTS = [50000, 100000, 200000, 500000]
 
@@ -642,7 +641,7 @@ export default function POSPage() {
             <div className="flex justify-between font-bold"><span>Total</span><span className="text-lg">{formatRupiah(total)}</span></div>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {PAYMENT_METHODS.map((m) => {
               const Icon = m.icon
               return (

@@ -279,7 +279,7 @@ export const mockTransactions: Transaction[] = [
     subtotal: 525000, discount_amount: 25000, tax_amount: 0,
     service_charge_amount: 0, total: 500000,
     paid_amount: 500000, change_amount: 0,
-    payment_method: 'debit', status: 'completed',
+    payment_method: 'transfer_bca', status: 'completed',
     created_at: new Date(Date.now() - 1000 * 60 * 200).toISOString(),
   },
   {

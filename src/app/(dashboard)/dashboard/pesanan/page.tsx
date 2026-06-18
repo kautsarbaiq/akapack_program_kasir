@@ -15,6 +15,7 @@ import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
+import { PAYMENT_LABELS } from '@/lib/constants'
 import { formatRupiah, formatDateTime, waUrl } from '@/lib/utils'
 import type { Transaction, TransactionStatus } from '@/types'
 import { toast } from 'sonner'
@@ -166,7 +167,7 @@ export default function PesananOnlinePage() {
                   {(detail.shipping_cost ?? 0) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Ongkir</span><span>{formatRupiah(detail.shipping_cost ?? 0)}</span></div>}
                   <Separator />
                   <div className="flex justify-between font-bold text-lg"><span>Total</span><span>{formatRupiah(detail.total)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Pembayaran</span><span className="capitalize">{detail.payment_method === 'cash' ? 'COD/Tunai' : detail.payment_method}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Pembayaran</span><span>{detail.payment_method === 'cash' ? 'COD/Tunai' : (PAYMENT_LABELS[detail.payment_method] ?? detail.payment_method)}</span></div>
                 </div>
                 {detail.status === 'pending' && (
                   <div className="flex gap-2 pt-2">

@@ -2,14 +2,34 @@ export const APP_NAME = 'AKAPACK'
 export const APP_DESCRIPTION = 'Platform POS & Manajemen Retail'
 
 export const PAYMENT_METHODS = [
-  { value: 'cash', label: 'Tunai', icon: 'Banknote' },
+  { value: 'cash', label: 'Cash', icon: 'Banknote' },
+  { value: 'transfer_bca', label: 'Transfer BCA', icon: 'Landmark' },
+  { value: 'transfer_mandiri', label: 'Transfer Mandiri', icon: 'Landmark' },
   { value: 'qris', label: 'QRIS', icon: 'QrCode' },
-  { value: 'debit', label: 'Kartu Debit', icon: 'CreditCard' },
-  { value: 'credit', label: 'Kartu Kredit', icon: 'CreditCard' },
-  { value: 'transfer', label: 'Transfer Bank', icon: 'ArrowLeftRight' },
-  { value: 'ewallet', label: 'E-Wallet', icon: 'Smartphone' },
-  { value: 'split', label: 'Split Payment', icon: 'Split' },
+  { value: 'shopee', label: 'Shopee', icon: 'ShoppingBag' },
+  { value: 'tiktok', label: 'Tiktok-Tokped', icon: 'Music2' },
+  { value: 'lazada', label: 'Lazada', icon: 'ShoppingCart' },
+  { value: 'blibli', label: 'Beli Bli', icon: 'Store' },
 ] as const
+
+/** Label tampilan per metode bayar (termasuk 'split' untuk pembayaran gabungan). */
+export const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Cash', transfer_bca: 'Transfer BCA', transfer_mandiri: 'Transfer Mandiri', qris: 'QRIS',
+  shopee: 'Shopee', tiktok: 'Tiktok-Tokped', lazada: 'Lazada', blibli: 'Beli Bli', split: 'Split',
+}
+
+/** Warna badge metode bayar (daftar & laporan penjualan). */
+export const PAYMENT_COLORS: Record<string, string> = {
+  cash: 'bg-emerald-100 text-emerald-700',
+  transfer_bca: 'bg-blue-100 text-blue-700',
+  transfer_mandiri: 'bg-amber-100 text-amber-700',
+  qris: 'bg-cyan-100 text-cyan-700',
+  shopee: 'bg-orange-100 text-orange-700',
+  tiktok: 'bg-neutral-200 text-neutral-700',
+  lazada: 'bg-indigo-100 text-indigo-700',
+  blibli: 'bg-sky-100 text-sky-700',
+  split: 'bg-purple-100 text-purple-700',
+}
 
 export const PRODUCT_UNITS = [
   'pcs',
