@@ -7,6 +7,9 @@ import {
   ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
+import { OutletSwitcher } from '@/components/dashboard/outlet-switcher'
+
+const MAX_SHOWN = 120 // batas kartu produk yang dirender sekaligus (performa katalog besar)
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -110,9 +113,10 @@ export default function POSPage() {
   const [receiptTxn, setReceiptTxn] = useState<Transaction | null>(null)
 
   const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase()
     return products.filter((p) => {
       if (!p.is_active) return false
-      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
+      const matchSearch = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.barcode ?? '').toLowerCase().includes(q)
       const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory
       return matchSearch && matchCat
     })
@@ -406,13 +410,21 @@ export default function POSPage() {
 
       {/* ── MIDDLE: Product Grid ── */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-muted/30">
-        <div className="p-3 shrink-0">
-          <div className="relative">
+        <div className="p-3 shrink-0 flex items-center gap-2 flex-wrap">
+          <OutletSwitcher className="bg-background h-10" />
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring max-w-[160px]">
+            <option value="all">Semua Kategori</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <div className="relative flex-1 min-w-[180px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari produk, scan barcode..."
+              placeholder="Cari nama, SKU, atau barcode..."
               className="pl-9 h-10 bg-background"
             />
           </div>
@@ -420,7 +432,7 @@ export default function POSPage() {
 
         <ScrollArea className="flex-1 min-h-0 px-3 pb-3">
           <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
-            {filteredProducts.map((product) => {
+            {filteredProducts.slice(0, MAX_SHOWN).map((product) => {
               const vlist = product.has_variants ? productVariants(product.id) : []
               const hasVar = vlist.length > 0
               const effectiveStock = hasVar ? vlist.reduce((s, v) => s + v.stock, 0) : product.stock
@@ -464,6 +476,11 @@ export default function POSPage() {
               </div>
             )}
           </div>
+          {filteredProducts.length > MAX_SHOWN && (
+            <p className="text-center text-xs text-muted-foreground py-3">
+              Menampilkan {MAX_SHOWN} dari {filteredProducts.length} produk — persempit dengan pencarian atau kategori.
+            </p>
+          )}
         </ScrollArea>
       </div>
 
