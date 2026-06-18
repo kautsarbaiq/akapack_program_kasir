@@ -198,6 +198,7 @@
   /* Struk nota POS (Epson TM-U220D / kertas 76mm) — pakai named page biar tak bentrok A4 */
   #receipt-print, #receipt-print * { visibility: visible !important; }
   #receipt-print {
+    display: block !important; /* override Tailwind .hidden (display:none) saat cetak */
     position: absolute !important;
     left: 0; top: 0;
     width: 76mm !important;
