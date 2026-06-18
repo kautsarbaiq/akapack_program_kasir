@@ -535,8 +535,9 @@ export default function POSPage() {
           </button>
         </div>
 
-        {/* Cart Items */}
-        <ScrollArea className="flex-1 min-h-0 px-4 py-3">
+        {/* Keranjang + Ringkasan & Pembayaran — scroll bersama, tombol Bayar dipatok di bawah */}
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-4 py-3">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full py-12 gap-3">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
@@ -606,10 +607,10 @@ export default function POSPage() {
               })}
             </div>
           )}
-        </ScrollArea>
+          </div>
 
-        {/* Summary & Payment */}
-        <div className="p-4 space-y-4 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+          {/* Ringkasan & Pembayaran */}
+          <div className="p-4 space-y-4" style={{ borderTop: '1px solid var(--border)' }}>
           <div className="space-y-2">
             {selectedCustomer && selectedCustomer.points > 0 && (
               <div className="flex items-center gap-2">
@@ -727,6 +728,11 @@ export default function POSPage() {
               <Pause size={14} /> Tahan
             </Button>
           </div>
+          </div>
+        </ScrollArea>
+
+        {/* Tombol Bayar dipatok di bawah — selalu terlihat walau panel di-scroll */}
+        <div className="p-4 shrink-0 bg-card" style={{ borderTop: '1px solid var(--border)' }}>
           <Button size="sm" className="w-full h-11 text-sm font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
             onClick={handlePaymentOpen}
             disabled={cart.length === 0}>

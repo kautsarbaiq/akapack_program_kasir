@@ -1,7 +1,7 @@
 'use client'
 
 import { Store } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { useOutletStore } from '@/stores/use-outlet-store'
 
 /**
@@ -12,11 +12,13 @@ import { useOutletStore } from '@/stores/use-outlet-store'
  */
 export function OutletFilter({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
   const outlets = useOutletStore((s) => s.outlets)
+  // base-ui SelectValue menampilkan value mentah (UUID), jadi label cabang dirender manual di trigger.
+  const label = value === 'all' ? 'Semua Cabang' : (outlets.find((o) => o.id === value)?.name ?? 'Pilih cabang')
   return (
     <Select value={value} onValueChange={(v) => { if (v) onChange(v) }}>
       <SelectTrigger className={className ?? 'w-48 h-9 text-sm'}>
         <Store size={14} className="text-muted-foreground shrink-0" />
-        <SelectValue />
+        <span className="line-clamp-1 flex-1 text-left">{label}</span>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">Semua Cabang</SelectItem>
