@@ -56,3 +56,15 @@ jobs:
           releaseBody: 'Installer AKAPACK untuk Windows. Unduh file .exe atau .msi di bawah, lalu install di PC karyawan.'
           releaseDraft: true
           prerelease: false
+
+      # Unggah installer juga ke tab "Artifacts" run ini — paling gampang diunduh
+      # (langsung dari halaman Actions, tak perlu buka Releases).
+      - name: Unggah installer ke Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AKAPACK-Windows-Installer
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
