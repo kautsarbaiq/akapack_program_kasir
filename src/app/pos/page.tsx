@@ -220,6 +220,30 @@ export default function POSPage() {
     })
   }
 
+  // Set qty langsung (ketik di keranjang). Minimal 1, dibatasi stok (hormati faktor satuan & varian).
+  const setQty = (key: string, raw: number) => {
+    setCart((prev) => prev.map((i) => {
+      if (i.key !== key) return i
+      let q = Math.max(1, Math.floor(Number.isFinite(raw) ? raw : 1))
+      if (i.variant_id) {
+        const v = variants.find((x) => x.id === i.variant_id)
+        if (v && q > v.stock) { toast.error(`Stok ${i.product_name} hanya ${v.stock}`); q = Math.max(1, v.stock) }
+      } else {
+        const product = products.find((p) => p.id === i.product_id)
+        if (product && q * (i.factor || 1) > product.stock) {
+          const maxQ = Math.max(1, Math.floor(product.stock / (i.factor || 1)))
+          toast.error(`Stok ${product.name} hanya ${product.stock}`); q = maxQ
+        }
+      }
+      let pr = i.price
+      if (!i.variant_id) {
+        const product = products.find((p) => p.id === i.product_id)
+        if (product) pr = linePriceFor(product, i.unit, q)
+      }
+      return { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) }
+    }))
+  }
+
   const removeFromCart = (key: string) => {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
@@ -551,7 +575,15 @@ export default function POSPage() {
                         className="w-6 h-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors">
                         <Minus size={11} />
                       </button>
-                      <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        value={item.quantity}
+                        onChange={(e) => setQty(item.key, Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        className="w-12 h-6 text-sm font-bold text-center rounded-md border bg-background focus:outline-none focus:ring-1 focus:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+
                       <button onClick={() => updateQty(item.key, 1)}
                         className="w-6 h-6 rounded-md flex items-center justify-center text-white transition-colors bg-primary">
                         <Plus size={11} />
