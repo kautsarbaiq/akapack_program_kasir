@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import { formatRupiah, formatDateTime, rankedSearch } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
@@ -18,20 +20,25 @@ import { toast } from 'sonner'
 export default function PenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const voidTransaction = useTransactionStore((s) => s.voidTransaction)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const outlets = useOutletStore((s) => s.outlets)
+  const activeOutlet = outlets.find((o) => o.id === activeOutletId)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
 
-  const totalOmzet = transactions.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
-  const totalTrx = transactions.filter(t => t.status === 'completed').length
+  // Pisahkan per-cabang: hanya transaksi outlet yang sedang dipilih (Bandung / Garut).
+  const outletTx = transactions.filter((t) => t.outlet_id === activeOutletId)
+  const totalOmzet = outletTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
+  const totalTrx = outletTx.filter(t => t.status === 'completed').length
 
-  const filtered = rankedSearch(transactions, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
+  const filtered = rankedSearch(outletTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">Riwayat Transaksi</h1>
-          <p className="text-muted-foreground text-sm mt-1">Semua transaksi penjualan hari ini</p>
+          <p className="text-muted-foreground text-sm mt-1">Cabang: <span className="font-medium text-foreground">{activeOutlet?.name ?? 'Semua'}</span> · ganti cabang di kanan atas</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5 text-xs">
           <Download size={14} /> Export Excel
