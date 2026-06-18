@@ -144,10 +144,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     )
   }
 
-  const isActive = (href: string) => {
-    if (href === '/dashboard') return pathname === '/dashboard'
-    return pathname.startsWith(href)
+  // Hanya satu menu aktif: yang href-nya cocok paling spesifik (terpanjang).
+  // Mencegah "Absensi" ikut menyala saat berada di "Analisis Absensi".
+  const matchLen = (href: string) =>
+    href === '/dashboard'
+      ? (pathname === '/dashboard' ? href.length : -1)
+      : (pathname === href || pathname.startsWith(href + '/') ? href.length : -1)
+  let activeHref = ''
+  let bestLen = 0
+  for (const item of [...visibleNav, ...visibleBottom]) {
+    const l = matchLen(item.href)
+    if (l > bestLen) { bestLen = l; activeHref = item.href }
   }
+  const isActive = (href: string) => bestLen > 0 && href === activeHref
 
   const logout = useCurrentUserStore((s) => s.logout)
   const handleLogout = async () => {

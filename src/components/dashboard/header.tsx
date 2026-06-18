@@ -77,7 +77,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   // Notifikasi nyata: produk aktif yang stoknya habis/menipis (≤ min stok)
   const lowStock = products.filter((p) => p.is_active && p.stock <= p.min_stock)
-  const notifications = lowStock.slice(0, 12).map((p) => ({
+  const notifications = lowStock.slice(0, 50).map((p) => ({
     id: p.id,
     text: p.stock <= 0 ? `Stok habis: ${p.name}` : `Stok menipis: ${p.name} (${p.stock} ${p.unit})`,
     urgent: p.stock <= 0,
@@ -172,12 +172,16 @@ export function Header({ onMenuClick }: HeaderProps) {
             <DropdownMenuSeparator />
             {notifications.length === 0 ? (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">Tidak ada notifikasi</div>
-            ) : notifications.map((n) => (
-              <DropdownMenuItem key={n.id} className="flex items-start gap-2 py-2.5 cursor-pointer">
-                <span className={cn('mt-1 w-2 h-2 rounded-full shrink-0', n.urgent ? 'bg-destructive' : 'bg-amber-400')} />
-                <p className={cn('text-sm flex-1', n.urgent ? 'font-medium' : 'text-muted-foreground')}>{n.text}</p>
-              </DropdownMenuItem>
-            ))}
+            ) : (
+              <div className="max-h-72 overflow-y-auto">
+                {notifications.map((n) => (
+                  <DropdownMenuItem key={n.id} className="flex items-start gap-2 py-2.5 cursor-pointer">
+                    <span className={cn('mt-1 w-2 h-2 rounded-full shrink-0', n.urgent ? 'bg-destructive' : 'bg-amber-400')} />
+                    <p className={cn('text-sm flex-1', n.urgent ? 'font-medium' : 'text-muted-foreground')}>{n.text}</p>
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

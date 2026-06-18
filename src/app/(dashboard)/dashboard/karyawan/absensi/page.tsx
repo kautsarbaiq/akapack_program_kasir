@@ -73,21 +73,31 @@ export default function AbsensiPage() {
         <p className="text-muted-foreground text-sm mt-1">Masukkan kode karyawan untuk clock-in / clock-out · {hadirCount}/{activeEmployees.length} sedang hadir · {outletName(activeOutletId)}</p>
       </div>
 
-      {/* Absen 1-klik untuk karyawan yang sedang login */}
-      {meEmp && (
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3 flex-wrap">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${getAvatarColor(meEmp.name)}`}>{getInitials(meEmp.name)}</div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold truncate">{meEmp.name}</p>
-              <p className="text-xs text-muted-foreground">{statusOf(meEmp.id).label}</p>
-            </div>
-            <Button onClick={() => doClock(meEmp)} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-              <Fingerprint size={16} /> Absen Saya
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* Absen 1-klik untuk karyawan yang sedang login — tombol jelas sesuai status */}
+      {meEmp && (() => {
+        const last = lastToday(meEmp.id)
+        const nextIn = !last || last.type === 'out' // langkah berikutnya: masuk?
+        return (
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3 flex-wrap">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${getAvatarColor(meEmp.name)}`}>{getInitials(meEmp.name)}</div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">{meEmp.name}</p>
+                <p className={`text-xs font-medium ${statusOf(meEmp.id).cls}`}>{statusOf(meEmp.id).label}</p>
+              </div>
+              {nextIn ? (
+                <Button onClick={() => doClock(meEmp)} className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 h-11 px-5 text-base">
+                  <LogIn size={18} /> Absen Masuk
+                </Button>
+              ) : (
+                <Button onClick={() => doClock(meEmp)} className="gap-2 bg-amber-600 text-white hover:bg-amber-700 h-11 px-5 text-base">
+                  <LogOut size={18} /> Absen Pulang
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Keypad */}
