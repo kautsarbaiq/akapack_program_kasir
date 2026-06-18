@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatRupiah, formatDateTime } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/use-settings-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import { PAYMENT_LABELS } from '@/lib/constants'
 import type { Transaction } from '@/types'
 
@@ -31,7 +32,14 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
   const storeAddress = useSettingsStore((s) => s.storeAddress)
   const storePhone = useSettingsStore((s) => s.storePhone)
   const receiptFooter = useSettingsStore((s) => s.receiptFooter)
+  const outlets = useOutletStore((s) => s.outlets)
   if (!transaction) return null
+
+  // Header struk diambil dari OUTLET tempat transaksi (per-cabang), fallback ke pengaturan global.
+  const outlet = outlets.find((o) => o.id === transaction.outlet_id)
+  const headerName = outlet?.name || storeName || 'AKAPACK'
+  const headerAddress = outlet?.address || storeAddress || ''
+  const headerPhone = outlet?.phone || storePhone || ''
 
   // Cetak struk lewat iframe terisolasi: HANYA isi #receipt-print yang ikut,
   // jadi tak ada gangguan posisi dialog / elemen lain, dan ukuran kertas pasti 76mm.
@@ -51,8 +59,9 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body { width: 76mm; padding: 4mm 3mm; color: #000; background: #fff;
-        font-family: ui-monospace, "Courier New", monospace; font-size: 12px; line-height: 1.45;
-        -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        font-family: ui-monospace, "Courier New", monospace; font-size: 13px; font-weight: 700; line-height: 1.5;
+        letter-spacing: 0.2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body * { font-weight: 700 !important; }
     </style></head><body>${src.innerHTML}</body></html>`)
     doc.close()
     const run = () => {
@@ -66,7 +75,10 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
   const sendWhatsApp = () => {
     const t = transaction
     const lines = [
-      `*${storeName || 'AKAPACK'}* — Struk Pembelian`,
+      `*${headerName}*`,
+      headerAddress,
+      headerPhone,
+      'Struk Pembelian',
       t.transaction_number,
       formatDateTime(t.created_at),
       '--------------------------------',
@@ -104,7 +116,9 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
 
         <div className="rounded-xl border bg-muted/20 p-4 font-mono text-xs space-y-2">
           <div className="text-center space-y-0.5">
-            <p className="font-bold text-sm">{storeName || 'AKAPACK'}</p>
+            <p className="font-bold text-sm">{headerName}</p>
+            {headerAddress && <p className="text-muted-foreground text-[11px] leading-tight">{headerAddress}</p>}
+            {headerPhone && <p className="text-muted-foreground text-[11px]">{headerPhone}</p>}
             <p className="text-muted-foreground">Struk Pembelian</p>
             <p className="text-muted-foreground">{formatDateTime(transaction.created_at)}</p>
           </div>
@@ -158,11 +172,11 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
         </div>
 
         {/* Versi cetak — bersih untuk printer struk Epson TM-U220D (dot-matrix, 76mm). Tersembunyi di layar. */}
-        <div id="receipt-print" className="hidden print:block" style={{ fontFamily: 'ui-monospace, monospace', color: '#000', fontSize: 12, lineHeight: 1.45 }}>
+        <div id="receipt-print" className="hidden print:block" style={{ fontFamily: 'ui-monospace, monospace', color: '#000', fontSize: 13, fontWeight: 700, lineHeight: 1.5 }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{storeName || 'AKAPACK'}</div>
-            {storeAddress && <div>{storeAddress}</div>}
-            {storePhone && <div>{storePhone}</div>}
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{headerName}</div>
+            {headerAddress && <div style={{ fontSize: 12 }}>{headerAddress}</div>}
+            {headerPhone && <div style={{ fontSize: 12 }}>{headerPhone}</div>}
           </div>
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
           <div>No: {transaction.transaction_number}</div>
