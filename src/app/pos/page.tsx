@@ -600,16 +600,6 @@ export default function POSPage() {
         {/* Summary & Payment */}
         <div className="p-4 space-y-4 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Tag size={14} className="text-muted-foreground" />
-              <Input
-                type="number"
-                placeholder="Diskon manual (Rp)"
-                className="h-8 text-sm flex-1"
-                value={discount || ''}
-                onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-              />
-            </div>
             {appliedPromo ? (
               <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 h-8">
                 <span className="text-xs font-medium text-emerald-700 truncate flex items-center gap-1"><PartyPopper size={12} className="shrink-0" /> {appliedPromo.name} (-{formatRupiah(promoDiscount)})</span>
