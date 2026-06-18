@@ -13,6 +13,7 @@ import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { formatRupiah, formatNumber } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
+import { OutletFilter } from '@/components/dashboard/outlet-filter'
 
 const PERIODS = [
   { value: '7', label: '7 Hari' },
@@ -45,12 +46,14 @@ export default function LaporanPenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const products = useProductStore((s) => s.products)
   const [period, setPeriod] = useState('30')
+  const [outletFilter, setOutletFilter] = useState('all')
 
   const report = useMemo(() => {
     const days = Number(period)
     const cutoff = Date.now() - days * 86400000
     const completed = transactions.filter(
       (t) => t.status === 'completed' && new Date(t.created_at).getTime() >= cutoff
+        && (outletFilter === 'all' || t.outlet_id === outletFilter)
     )
 
     const totalRevenue = completed.reduce((s, t) => s + t.total, 0)
@@ -122,7 +125,7 @@ export default function LaporanPenjualanPage() {
       .sort((a, b) => b.total - a.total)
 
     return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, paymentData, cashierData }
-  }, [transactions, products, period])
+  }, [transactions, products, period, outletFilter])
 
   const isEmpty = report.totalTrx === 0
 
@@ -133,7 +136,8 @@ export default function LaporanPenjualanPage() {
           <h1 className="text-2xl font-bold">Laporan Penjualan</h1>
           <p className="text-muted-foreground text-sm mt-1">Analisis performa dari transaksi nyata</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap justify-end">
+          <OutletFilter value={outletFilter} onChange={setOutletFilter} />
           {PERIODS.map((p) => (
             <Button key={p.value} variant={period === p.value ? 'default' : 'outline'} size="sm"
               className={`text-xs ${period === p.value ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}

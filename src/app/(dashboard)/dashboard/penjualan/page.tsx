@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
-import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { formatRupiah, formatDateTime, rankedSearch } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
@@ -20,14 +20,13 @@ import { toast } from 'sonner'
 export default function PenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const voidTransaction = useTransactionStore((s) => s.voidTransaction)
-  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const outlets = useOutletStore((s) => s.outlets)
-  const activeOutlet = outlets.find((o) => o.id === activeOutletId)
+  const [outletFilter, setOutletFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
 
-  // Pisahkan per-cabang: hanya transaksi outlet yang sedang dipilih (Bandung / Garut).
-  const outletTx = transactions.filter((t) => t.outlet_id === activeOutletId)
+  // Filter per-cabang — pilihan: Semua Cabang / Bandung / Garut.
+  const outletTx = outletFilter === 'all' ? transactions : transactions.filter((t) => t.outlet_id === outletFilter)
   const totalOmzet = outletTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
   const totalTrx = outletTx.filter(t => t.status === 'completed').length
 
@@ -38,7 +37,7 @@ export default function PenjualanPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">Riwayat Transaksi</h1>
-          <p className="text-muted-foreground text-sm mt-1">Cabang: <span className="font-medium text-foreground">{activeOutlet?.name ?? 'Semua'}</span> · ganti cabang di kanan atas</p>
+          <p className="text-muted-foreground text-sm mt-1">{outletFilter === 'all' ? 'Semua cabang' : outlets.find((o) => o.id === outletFilter)?.name ?? 'Cabang'}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5 text-xs">
           <Download size={14} /> Export Excel
@@ -67,6 +66,7 @@ export default function PenjualanPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Cari no. transaksi, pelanggan..." className="pl-9 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <OutletFilter value={outletFilter} onChange={setOutletFilter} />
         <Select defaultValue="all">
           <SelectTrigger className="w-36 h-9 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>

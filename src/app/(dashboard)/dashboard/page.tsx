@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
+import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useProductStore } from '@/stores/use-product-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
@@ -27,12 +28,14 @@ export default function DashboardPage() {
   const customers = useCustomerStore((s) => s.customers)
   const storeName = useSettingsStore((s) => s.storeName)
   const [period, setPeriod] = useState('30')
+  const [outletFilter, setOutletFilter] = useState('all')
 
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Selamat Pagi' : now.getHours() < 17 ? 'Selamat Siang' : 'Selamat Sore'
 
   const r = useMemo(() => {
-    const completed = transactions.filter((t) => t.status === 'completed')
+    const txns = outletFilter === 'all' ? transactions : transactions.filter((t) => t.outlet_id === outletFilter)
+    const completed = txns.filter((t) => t.status === 'completed')
     const todayKey = new Date().toISOString().slice(0, 10)
     const yd = new Date(); yd.setDate(yd.getDate() - 1)
     const yKey = yd.toISOString().slice(0, 10)
@@ -77,9 +80,9 @@ export default function DashboardPage() {
       .sort((a, b) => a.stock - b.stock)
       .slice(0, 6)
 
-    const recent = transactions.slice(0, 5)
+    const recent = txns.slice(0, 5)
     return { today, revChange: pct(today.rev, yest.rev), trxChange: pct(today.trx, yest.trx), itemsChange: pct(today.items, yest.items), newCust, chart, top, low, recent }
-  }, [transactions, products, customers, period])
+  }, [transactions, products, customers, period, outletFilter])
 
   const kpiCards = [
     { title: 'Omzet Hari Ini', value: formatRupiah(r.today.rev), change: r.revChange, icon: DollarSign, iconBg: 'oklch(0.55 0.22 264 / 0.1)', iconColor: 'oklch(0.55 0.22 264)' },
@@ -97,11 +100,14 @@ export default function DashboardPage() {
             {now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — {storeName || 'AKAPACK'}
           </p>
         </div>
-        <Link href="/pos">
-          <Button size="sm" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-            <ShoppingCart size={15} /> Buka POS Kasir
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <OutletFilter value={outletFilter} onChange={setOutletFilter} />
+          <Link href="/pos">
+            <Button size="sm" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+              <ShoppingCart size={15} /> Buka POS Kasir
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
