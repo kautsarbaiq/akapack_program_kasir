@@ -2,18 +2,45 @@ import { create } from 'zustand'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { useEmployeeStore } from './use-employee-store'
+import { useActiveOutletStore } from './use-active-outlet-store'
+
+const STAFF_KEY = 'akapack-staff'
 
 export interface CurrentUser {
   name: string
   email: string
   role: string
+  outletId?: string | null   // cabang user; null = semua cabang (owner/manager)
+  employeeId?: string         // id karyawan (untuk absensi & shift)
+  viaStaff?: boolean          // true bila login via nama+PIN (karyawan)
 }
+
+interface StaffSaved { employeeId: string; name: string; role: string; outletId: string }
+
+function readStaff(): StaffSaved | null {
+  if (typeof window === 'undefined') return null
+  try { const r = localStorage.getItem(STAFF_KEY); return r ? (JSON.parse(r) as StaffSaved) : null } catch { return null }
+}
+function writeStaff(s: StaffSaved | null) {
+  if (typeof window === 'undefined') return
+  try { if (s) localStorage.setItem(STAFF_KEY, JSON.stringify(s)); else localStorage.removeItem(STAFF_KEY) } catch { /* noop */ }
+}
+
+/** Hapus sesi karyawan (dipanggil saat owner login via email atau saat logout). */
+export function clearStaffSession() { writeStaff(null) }
+
+/** Ada sesi karyawan aktif (nama+PIN)? Dipakai AuthGuard agar karyawan tak dilempar ke /login. */
+export function hasStaffSession(): boolean { return readStaff() !== null }
 
 interface CurrentUserStore {
   user: CurrentUser | null
   loaded: boolean
-  /** Muat user yang sedang login dari sesi Supabase; nama/role di-resolve dari data karyawan via email. */
+  /** Muat user aktif: sesi karyawan (nama+PIN) diutamakan, lalu sesi Supabase (owner). */
   fetch: () => Promise<void>
+  /** Login karyawan via nama + PIN. Return pesan error, atau null bila sukses. */
+  staffLogin: (name: string, pin: string) => Promise<string | null>
+  /** Keluar dari semua sesi (karyawan & owner). */
+  logout: () => Promise<void>
 }
 
 export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
@@ -21,28 +48,58 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
   loaded: false,
 
   fetch: async () => {
-    if (!isSupabaseConfigured()) {
-      set({ user: { name: 'Mode Demo', email: '', role: 'owner' }, loaded: true })
+    // 1) Sesi karyawan (nama+PIN) diprioritaskan.
+    const staff = readStaff()
+    if (staff) {
+      useActiveOutletStore.getState().setActiveOutlet(staff.outletId) // kunci ke cabang karyawan
+      set({ user: { name: staff.name, email: '', role: staff.role, outletId: staff.outletId, employeeId: staff.employeeId, viaStaff: true }, loaded: true })
       return
     }
+    // 2) Mode demo (Supabase belum dikonfigurasi).
+    if (!isSupabaseConfigured()) {
+      set({ user: { name: 'Mode Demo', email: '', role: 'owner', outletId: null }, loaded: true })
+      return
+    }
+    // 3) Sesi Supabase = owner/manager (login via email). Cocokkan email ke data karyawan.
     try {
       const { data } = await getSupabaseBrowser().auth.getSession()
       const u = data.session?.user
-      if (!u) {
-        set({ user: null, loaded: true })
-        return
-      }
+      if (!u) { set({ user: null, loaded: true }); return }
       const email = u.email ?? ''
-      // Cocokkan email ke karyawan untuk nama & role; fallback ke metadata, lalu prefix email.
       const emp = useEmployeeStore.getState().employees.find(
         (e) => e.email && e.email.toLowerCase() === email.toLowerCase()
       )
       const metaName = (u.user_metadata?.full_name as string | undefined) ?? ''
       const name = emp?.name || metaName || (email ? email.split('@')[0] : 'Pengguna')
-      const role = emp?.role || (u.user_metadata?.role as string | undefined) || 'owner'
-      set({ user: { name, email, role }, loaded: true })
+      // Default DIBALIK: akun email tak dikenal = 'cashier' (terbatas), BUKAN owner.
+      // Owner harus terdaftar di data karyawan dgn role owner (email cocok).
+      const role = emp?.role || (u.user_metadata?.role as string | undefined) || 'cashier'
+      set({ user: { name, email, role, outletId: emp?.outlet_id ?? null, employeeId: emp?.id, viaStaff: false }, loaded: true })
     } catch {
       set({ user: null, loaded: true })
     }
+  },
+
+  staffLogin: async (name, pin) => {
+    let employees = useEmployeeStore.getState().employees
+    if (!employees.length) { await useEmployeeStore.getState().fetch(); employees = useEmployeeStore.getState().employees }
+    const nm = name.trim().toLowerCase()
+    const p = pin.trim()
+    if (!nm || !p) return 'Nama dan PIN wajib diisi.'
+    const emp = employees.find(
+      (e) => e.is_active && e.name.trim().toLowerCase() === nm && (String(e.pin ?? '') === p || String(e.code ?? '') === p)
+    )
+    if (!emp) return 'Nama atau PIN salah, atau karyawan belum terdaftar.'
+    if (!emp.outlet_id) return 'Karyawan ini belum ditetapkan cabangnya. Hubungi owner.'
+    writeStaff({ employeeId: emp.id, name: emp.name, role: emp.role, outletId: emp.outlet_id })
+    useActiveOutletStore.getState().setActiveOutlet(emp.outlet_id) // kunci ke cabang karyawan
+    set({ user: { name: emp.name, email: '', role: emp.role, outletId: emp.outlet_id, employeeId: emp.id, viaStaff: true }, loaded: true })
+    return null
+  },
+
+  logout: async () => {
+    writeStaff(null)
+    if (isSupabaseConfigured()) { try { await getSupabaseBrowser().auth.signOut() } catch { /* noop */ } }
+    set({ user: null, loaded: true })
   },
 }))

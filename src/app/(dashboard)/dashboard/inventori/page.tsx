@@ -20,6 +20,7 @@ import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { ImportStokDialog } from '@/components/dashboard/import-stok-dialog'
 import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { formatRupiah, formatDateTime, getStockStatus, rankedSearch } from '@/lib/utils'
@@ -42,6 +43,9 @@ export default function InventoriPage() {
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const outlets = useOutletStore((s) => s.outlets)
   const activeOutletName = outlets.find((o) => o.id === activeOutletId)?.name ?? 'Outlet'
+
+  const role = useCurrentUserStore((s) => (s.user?.role || '').toLowerCase())
+  const readOnly = role !== 'owner' && role !== 'manager' // karyawan: lihat-saja, tak bisa edit stok
 
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
@@ -142,8 +146,9 @@ export default function InventoriPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Manajemen Inventori</h1>
-          <p className="text-muted-foreground text-sm mt-1">Stok outlet aktif: <span className="font-medium text-foreground">{activeOutletName}</span> · klik-kanan baris untuk menu</p>
+          <p className="text-muted-foreground text-sm mt-1">Stok outlet aktif: <span className="font-medium text-foreground">{activeOutletName}</span>{readOnly ? ' · mode lihat-saja' : ' · klik-kanan baris untuk menu'}</p>
         </div>
+        {!readOnly && (
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openFlow('in')}><ArrowDownToLine size={15} /> Stok Masuk</Button>
           <Button size="sm" variant="outline" className="gap-1.5 text-amber-700" onClick={() => openFlow('out')}><ArrowUpFromLine size={15} /> Stok Keluar</Button>
@@ -151,6 +156,7 @@ export default function InventoriPage() {
           <Link href="/dashboard/inventori/opname"><Button size="sm" variant="outline" className="gap-1.5"><ClipboardList size={15} /> Opname</Button></Link>
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportOpen(true)}><FileSpreadsheet size={15} /> Import Excel</Button>
         </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -192,8 +198,8 @@ export default function InventoriPage() {
               </thead>
               <tbody>
                 {visible.map((p) => (
-                  <tr key={p.id} className="hover:bg-muted/30 transition-colors cursor-context-menu" style={{ borderBottom: '1px solid var(--border)' }}
-                    onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, product: p }) }}>
+                  <tr key={p.id} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}
+                    onContextMenu={readOnly ? undefined : (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, product: p }) }}>
                     <td className="py-3 px-4 font-medium">{p.name}{!p.is_active && <span className="ml-1.5 text-xs text-muted-foreground">(nonaktif)</span>}</td>
                     <td className="py-3 px-4 font-mono text-xs text-muted-foreground">{p.sku}</td>
                     <td className="py-3 px-4"><Badge variant="secondary" className="text-xs">{p.category?.name}</Badge></td>
@@ -202,10 +208,14 @@ export default function InventoriPage() {
                     <td className="py-3 px-4"><StatusBadge stock={p.stock} minStock={p.min_stock} /></td>
                     <td className="py-3 px-4 font-semibold">{formatRupiah(p.stock * p.cost_price)}</td>
                     <td className="py-3 px-3">
+                      {readOnly ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : (
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Stok masuk" onClick={() => openFlow('in', p.id)}><ArrowDownToLine size={13} /></Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600" title="Stok keluar" onClick={() => openFlow('out', p.id)}><ArrowUpFromLine size={13} /></Button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 ))}

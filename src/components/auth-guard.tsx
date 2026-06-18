@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
+import { hasStaffSession } from '@/stores/use-current-user-store'
 
 /**
  * Proteksi route sisi-klien. Diperlukan di build Tauri / static export yang TIDAK
@@ -20,6 +21,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured()) return
     let active = true
     const check = async () => {
+      if (hasStaffSession()) return // karyawan login via nama+PIN — sesi valid
       const { data } = await getSupabaseBrowser().auth.getSession()
       if (active && !data.session) router.replace('/login')
     }

@@ -56,6 +56,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   const displayName = currentUser?.name ?? 'Pengguna'
   const displayEmail = currentUser?.email ?? ''
   const roleLabel = currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : 'Pengguna'
+  const role = (currentUser?.role || '').toLowerCase()
+  const outletLocked = role !== 'owner' && role !== 'manager' // karyawan terkunci ke 1 cabang
 
   const switchOutlet = (id: string) => {
     setActiveOutlet(id)
@@ -65,11 +67,10 @@ export function Header({ onMenuClick }: HeaderProps) {
     toast.success(`Outlet aktif: ${outlets.find((o) => o.id === id)?.name ?? ''}`)
   }
 
+  const logout = useCurrentUserStore((s) => s.logout)
   const handleLogout = async () => {
-    if (isSupabaseConfigured()) {
-      await getSupabaseBrowser().auth.signOut()
-      toast.success('Berhasil keluar')
-    }
+    await logout() // bersihkan sesi karyawan (PIN) & owner (Supabase)
+    toast.success('Berhasil keluar')
     router.push('/login')
     router.refresh()
   }
@@ -96,7 +97,13 @@ export function Header({ onMenuClick }: HeaderProps) {
         <p className="text-sm font-semibold text-foreground">{pageTitle}</p>
       </div>
 
-      {/* Outlet switcher */}
+      {/* Outlet switcher — karyawan terkunci ke cabangnya (label statis) */}
+      {outletLocked ? (
+        <div className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-sm shrink-0" title="Cabang terkunci untuk karyawan">
+          <Store size={15} className="text-primary" />
+          <span className="max-w-[120px] truncate">{activeOutlet?.name ?? 'Outlet'}</span>
+        </div>
+      ) : (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0" title={activeOutlet?.name ?? 'Outlet'}>
@@ -116,6 +123,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      )}
 
       {/* Search */}
       <div className="flex-1 max-w-md hidden md:block">

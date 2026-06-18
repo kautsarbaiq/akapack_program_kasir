@@ -109,10 +109,12 @@ const bottomItems: NavItem[] = [
   { title: 'Pengaturan', href: '/dashboard/pengaturan', icon: Settings },
 ]
 
-// Menu khusus karyawan (role 'cashier'): hanya POS Kasir + Absensi.
+// Menu khusus karyawan (role 'cashier'): POS Kasir, Absensi, Analisis Absensi, Stok (lihat).
 const cashierNav: NavItem[] = [
   { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
+  { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
+  { title: 'Stok (Lihat)', href: '/dashboard/inventori', icon: Warehouse },
 ]
 
 interface SidebarProps {
@@ -147,8 +149,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     return pathname.startsWith(href)
   }
 
+  const logout = useCurrentUserStore((s) => s.logout)
   const handleLogout = async () => {
-    if (isSupabaseConfigured()) await getSupabaseBrowser().auth.signOut()
+    await logout() // bersihkan sesi karyawan (PIN) & owner (Supabase)
     toast.success('Berhasil keluar')
     router.push('/login')
     router.refresh()
