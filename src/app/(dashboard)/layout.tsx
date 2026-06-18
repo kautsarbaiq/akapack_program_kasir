@@ -5,12 +5,14 @@ import { Sidebar } from '@/components/dashboard/sidebar'
 import { Header } from '@/components/dashboard/header'
 import { DataBootstrap } from '@/components/data-bootstrap'
 import { AuthGuard } from '@/components/auth-guard'
+import { RoleGuard } from '@/components/dashboard/role-guard'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
     <AuthGuard>
+    <RoleGuard />
     <div className="flex h-screen overflow-hidden bg-background">
       <DataBootstrap />
       {/* Sidebar */}

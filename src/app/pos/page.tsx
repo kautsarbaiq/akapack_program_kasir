@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
+import Link from 'next/link'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CheckCircle2,
   ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split,
-  Landmark, ShoppingBag, Music2, Store
+  Landmark, ShoppingBag, Music2, Store, LayoutDashboard
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { OutletSwitcher } from '@/components/dashboard/outlet-switcher'
@@ -429,6 +430,10 @@ export default function POSPage() {
       {/* ── MIDDLE: Product Grid ── */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-muted/30">
         <div className="p-3 shrink-0 flex items-center gap-2 flex-wrap">
+          <Link href="/dashboard" title="Kembali ke menu"
+            className="inline-flex items-center justify-center h-10 w-10 rounded-md border bg-background hover:bg-muted shrink-0 text-muted-foreground">
+            <LayoutDashboard size={16} />
+          </Link>
           <OutletSwitcher className="bg-background h-10" />
           <select
             value={selectedCategory}

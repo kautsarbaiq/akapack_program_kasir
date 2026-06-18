@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShoppingCart, Package, Warehouse,
   Receipt, Users, Tag, UserCheck, BarChart3, Settings,
-  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck,
+  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck, CalendarCheck,
 } from 'lucide-react'
 import { cn, getInitials, getAvatarColor } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -109,6 +109,12 @@ const bottomItems: NavItem[] = [
   { title: 'Pengaturan', href: '/dashboard/pengaturan', icon: Settings },
 ]
 
+// Menu khusus karyawan (role 'cashier'): hanya POS Kasir + Absensi.
+const cashierNav: NavItem[] = [
+  { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
+  { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
+]
+
 interface SidebarProps {
   open: boolean
   onClose: () => void
@@ -124,6 +130,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const currentUser = useCurrentUserStore((s) => s.user)
   const userName = currentUser?.name ?? 'Pengguna'
   const userRole = currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : ''
+  // Owner & manager lihat semua menu; karyawan (cashier/lainnya) hanya POS Kasir + Absensi.
+  const role = (currentUser?.role || 'owner').toLowerCase()
+  const isPrivileged = role === 'owner' || role === 'manager'
+  const visibleNav = isPrivileged ? navItems : cashierNav
+  const visibleBottom = isPrivileged ? bottomItems : []
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) =>
@@ -195,7 +206,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-          {navItems.map((item) => {
+          {visibleNav.map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)
             const expanded = expandedItems.includes(item.title)
@@ -294,8 +305,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Bottom section */}
         <div className="px-2 pb-3 space-y-0.5" style={{ borderTop: '1px solid oklch(0.22 0.04 256)', paddingTop: '12px' }}>
-          {/* Buka storefront pembeli di tab baru */}
-          <a href="/toko" target="_blank" rel="noopener noreferrer"
+          {/* Buka storefront pembeli di tab baru — hanya owner/manager */}
+          {isPrivileged && <a href="/toko" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
             style={{ color: 'oklch(0.6 0.02 250)' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'oklch(0.2 0.04 256)'; (e.currentTarget as HTMLElement).style.color = 'white' }}
@@ -303,8 +314,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <Store size={18} className="shrink-0" />
             <span className={cn('flex-1 transition-all duration-300 truncate', open ? 'opacity-100' : 'opacity-0 lg:opacity-0 w-0')}>Toko Online</span>
             {open && <ExternalLink size={13} className="shrink-0 opacity-60" />}
-          </a>
-          {bottomItems.map((item) => {
+          </a>}
+          {visibleBottom.map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)
             return (
