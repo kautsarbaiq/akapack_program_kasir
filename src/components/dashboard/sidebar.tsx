@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
     title: 'Inventori', href: '/dashboard/inventori', icon: Warehouse,
     children: [
       { title: 'Stok Saat Ini', href: '/dashboard/inventori' },
-      { title: 'Stok Masuk (Pembelian)', href: '/dashboard/pembelian' },
+      { title: 'Stok Masuk', href: '/dashboard/pembelian' },
       { title: 'Stok Keluar', href: '/dashboard/stok-keluar' },
       { title: 'Pergerakan Stok', href: '/dashboard/inventori/pergerakan' },
       { title: 'Stock Opname', href: '/dashboard/inventori/opname' },
@@ -56,9 +56,9 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    title: 'Pembelian / Stok Masuk', href: '/dashboard/pembelian', icon: Truck,
+    title: 'Stok Masuk', href: '/dashboard/pembelian', icon: Truck,
     children: [
-      { title: 'Dokumen Pembelian', href: '/dashboard/pembelian' },
+      { title: 'Daftar Stok Masuk', href: '/dashboard/pembelian' },
       { title: 'Stok Keluar', href: '/dashboard/stok-keluar' },
       { title: 'Supplier', href: '/dashboard/pembelian/supplier' },
     ],

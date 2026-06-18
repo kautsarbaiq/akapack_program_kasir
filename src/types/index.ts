@@ -354,6 +354,8 @@ export interface PurchaseOrder {
   paid: boolean      // untuk tempo: sudah dilunasi?
   paid_at?: string   // tanggal pelunasan (untuk jurnal & aging yang benar)
   notes?: string
+  received_from?: string // "Diterima dari" — sumber barang (mis. transfer/supplier bebas)
+  received_by?: string   // "Diterima Oleh" — email/nama user yang membuat dokumen
   date: string
   received_at?: string
   created_at: string

@@ -28,6 +28,8 @@ interface PurchaseRow {
   paid: boolean | null
   paid_at: string | null
   notes: string | null
+  received_from: string | null
+  received_by: string | null
   date: string
   received_at: string | null
   created_at: string
@@ -50,6 +52,8 @@ async function persistPurchase(po: PurchaseOrder): Promise<string | null> {
         paid: po.paid,
         paid_at: po.paid_at ?? null,
         notes: po.notes ?? null,
+        received_from: po.received_from ?? null,
+        received_by: po.received_by ?? null,
         date: po.date,
         received_at: po.received_at ?? null,
       })
@@ -131,6 +135,8 @@ export const usePurchaseStore = create<PurchaseStore>()((set) => ({
           paid: r.paid ?? false,
           paid_at: r.paid_at ?? undefined,
           notes: r.notes ?? undefined,
+          received_from: r.received_from ?? undefined,
+          received_by: r.received_by ?? undefined,
           date: r.date,
           received_at: r.received_at ?? undefined,
           created_at: r.created_at,

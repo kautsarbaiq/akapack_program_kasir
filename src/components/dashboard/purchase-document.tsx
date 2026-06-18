@@ -11,8 +11,6 @@ const STATUS_LABEL: Record<PurchaseOrder['status'], { label: string; color: stri
   received: { label: 'Posted', color: '#059669' },
   cancelled: { label: 'Batal', color: '#dc2626' },
 }
-const PAYMENT_LABEL: Record<PurchaseOrder['payment'], string> = { cash: 'Tunai', transfer: 'Transfer', credit: 'Tempo (Hutang)' }
-
 /**
  * Dokumen Stok Masuk (cetak) — gaya invoice. Dipakai untuk pratinjau & window.print().
  * Bungkus dengan id="print-area" agar CSS print mengisolasi hanya dokumen ini.
@@ -29,6 +27,7 @@ export function PurchaseDocument({ po }: { po: PurchaseOrder }) {
     const p = products.find((x) => x.id === productId)
     return p ? p.cost_price : fallback
   }
+  const imageOf = (productId: string) => products.find((x) => x.id === productId)?.image_url
 
   return (
     <div id="print-area" className="bg-white text-black mx-auto" style={{ width: '100%', maxWidth: 760, padding: 28, fontSize: 13 }}>
@@ -46,26 +45,23 @@ export function PurchaseDocument({ po }: { po: PurchaseOrder }) {
         </div>
       </div>
 
-      {/* Info */}
-      <div className="grid grid-cols-2 gap-4" style={{ marginBottom: 18 }}>
-        <div>
+      {/* Info — 3 kolom: Tanggal/Dibuat oleh, Supplier/Diterima dari, Catatan */}
+      <div className="grid grid-cols-3 gap-4" style={{ marginBottom: 18 }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
           <p style={{ fontSize: 10, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5 }}>Tanggal</p>
-          <p style={{ fontWeight: 600 }}>{formatDate(po.date)}</p>
-          {po.received_at && <p style={{ fontSize: 11, color: '#555', marginTop: 2 }}>Diterima: {formatDate(po.received_at)}</p>}
+          <p style={{ fontWeight: 600, marginTop: 2 }}>{formatDate(po.date)}</p>
+          {po.received_by && <p style={{ fontSize: 11, color: '#555', marginTop: 4 }}>Dibuat oleh: {po.received_by}</p>}
         </div>
-        <div>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
           <p style={{ fontSize: 10, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5 }}>Supplier</p>
-          <p style={{ fontWeight: 600 }}>{po.supplier?.name ?? '—'}</p>
-          <p style={{ fontSize: 11, color: '#555', marginTop: 2 }}>Pembayaran: {PAYMENT_LABEL[po.payment]}{po.payment === 'credit' && po.status === 'received' ? (po.paid ? ' · Lunas' : ' · Belum lunas') : ''}</p>
+          <p style={{ fontWeight: 600, marginTop: 2 }}>{po.supplier?.name ?? '—'}</p>
+          {po.received_from && <p style={{ fontSize: 11, color: '#555', marginTop: 4 }}>Diterima dari: {po.received_from}</p>}
+        </div>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+          <p style={{ fontSize: 10, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5 }}>Catatan</p>
+          <p style={{ fontSize: 12, marginTop: 2 }}>{po.notes || '—'}</p>
         </div>
       </div>
-
-      {po.notes && (
-        <div style={{ marginBottom: 16, padding: 10, background: '#f7f7f7', borderRadius: 8 }}>
-          <p style={{ fontSize: 10, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5, marginBottom: 2 }}>Catatan</p>
-          <p style={{ fontSize: 12 }}>{po.notes}</p>
-        </div>
-      )}
 
       {/* Item */}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -83,7 +79,14 @@ export function PurchaseDocument({ po }: { po: PurchaseOrder }) {
           {po.items.map((it, i) => (
             <tr key={it.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
               <td style={{ padding: '8px 10px', color: '#888' }}>{i + 1}</td>
-              <td style={{ padding: '8px 10px', fontWeight: 600 }}>{it.product_name}</td>
+              <td style={{ padding: '8px 10px', fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {imageOf(it.product_id)
+                    ? <img src={imageOf(it.product_id)} alt="" style={{ width: 26, height: 26, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                    : <div style={{ width: 26, height: 26, borderRadius: 4, background: '#f3f4f6', flexShrink: 0 }} />}
+                  <span>{it.product_name}</span>
+                </div>
+              </td>
               <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatRupiah(it.cost)}</td>
               <td style={{ padding: '8px 10px', textAlign: 'center' }}>{it.qty}</td>
               <td style={{ padding: '8px 10px', textAlign: 'right', color: '#555' }}>{formatRupiah(avgCost(it.product_id, it.cost))}</td>
