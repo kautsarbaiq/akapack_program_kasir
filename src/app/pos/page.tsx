@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CreditCard, Smartphone, ArrowLeftRight, CheckCircle2,
-  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split, PartyPopper
+  ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { Button } from '@/components/ui/button'
@@ -23,14 +23,13 @@ import { useCategoryStore } from '@/stores/use-category-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useShiftStore } from '@/stores/use-shift-store'
-import { usePromotionStore } from '@/stores/use-promotion-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn } from '@/lib/utils'
-import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, Promotion, ProductVariant } from '@/types'
+import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, ProductVariant } from '@/types'
 import { toast } from 'sonner'
 
 interface CartItem {
@@ -78,8 +77,6 @@ export default function POSPage() {
   const addTransaction = useTransactionStore((s) => s.addTransaction)
   const currentShift = useShiftStore((s) => s.currentShift)
   const recordSale = useShiftStore((s) => s.recordSale)
-  const promotions = usePromotionStore((s) => s.promotions)
-  const recordPromoUse = usePromotionStore((s) => s.recordPromoUse)
   const redeemPointsAction = useCustomerStore((s) => s.redeemPoints)
   const taxRate = useSettingsStore((s) => s.taxRate)
   const serviceRate = useSettingsStore((s) => s.serviceRate)
@@ -96,8 +93,6 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [discount, setDiscount] = useState(0)
-  const [promoCode, setPromoCode] = useState('')
-  const [appliedPromo, setAppliedPromo] = useState<Promotion | null>(null)
   const [pointsRedeem, setPointsRedeem] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [splitMethod1, setSplitMethod1] = useState<PaymentMethod>('cash')
@@ -124,13 +119,7 @@ export default function POSPage() {
   }, [products, search, selectedCategory])
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
-  const promoDiscount = !appliedPromo
-    ? 0
-    : appliedPromo.type === 'percentage'
-      ? Math.round((subtotal * appliedPromo.value) / 100)
-      : appliedPromo.type === 'fixed'
-        ? Math.min(appliedPromo.value, subtotal)
-        : 0
+  const promoDiscount = 0
   const maxRedeem = Math.max(0, Math.min(selectedCustomer?.points ?? 0, subtotal - discount - promoDiscount))
   const pointsUsed = Math.max(0, Math.min(pointsRedeem, maxRedeem))
   const discountAmount = discount + promoDiscount + pointsUsed
@@ -252,29 +241,9 @@ export default function POSPage() {
     }))
   }
 
-  const applyPromo = () => {
-    const code = promoCode.trim().toUpperCase()
-    if (!code) return
-    const promo = promotions.find((p) => p.is_active && p.code && p.code.toUpperCase() === code)
-    if (!promo) { toast.error('Kode promo tidak ditemukan atau tidak aktif'); return }
-    if (promo.min_purchase && subtotal < promo.min_purchase) {
-      toast.error(`Min. belanja ${formatRupiah(promo.min_purchase)} untuk promo ini`)
-      return
-    }
-    setAppliedPromo(promo)
-    toast.success(`Promo "${promo.name}" diterapkan`)
-  }
-
-  const removePromo = () => {
-    setAppliedPromo(null)
-    setPromoCode('')
-  }
-
   const clearCart = () => {
     setCart([])
     setDiscount(0)
-    setPromoCode('')
-    setAppliedPromo(null)
     setPointsRedeem(0)
     setSplitAmount1(0)
     setPaidAmount(0)
@@ -404,7 +373,6 @@ export default function POSPage() {
     if (selectedCustomer) recordPurchase(selectedCustomer.id, total)
     if (selectedCustomer && pointsUsed > 0) redeemPointsAction(selectedCustomer.id, pointsUsed)
     recordSale(total)
-    if (appliedPromo) recordPromoUse(appliedPromo.id)
 
     setShowPayment(false)
     setReceiptTxn(txn)
@@ -600,23 +568,6 @@ export default function POSPage() {
         {/* Summary & Payment */}
         <div className="p-4 space-y-4 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
           <div className="space-y-2">
-            {appliedPromo ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 h-8">
-                <span className="text-xs font-medium text-emerald-700 truncate flex items-center gap-1"><PartyPopper size={12} className="shrink-0" /> {appliedPromo.name} (-{formatRupiah(promoDiscount)})</span>
-                <button onClick={removePromo} className="text-emerald-700 hover:text-emerald-900 shrink-0"><X size={13} /></button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Kode promo / voucher"
-                  className="h-8 text-sm flex-1 font-mono uppercase"
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo() } }}
-                />
-                <Button type="button" variant="outline" size="sm" className="h-8" onClick={applyPromo}>Pakai</Button>
-              </div>
-            )}
             {selectedCustomer && selectedCustomer.points > 0 && (
               <div className="flex items-center gap-2">
                 <Gift size={14} className="text-muted-foreground" />
@@ -635,7 +586,6 @@ export default function POSPage() {
           <div className="space-y-1.5">
             <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatRupiah(subtotal)}</span></div>
             {discount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon manual</span><span>-{formatRupiah(discount)}</span></div>}
-            {promoDiscount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Promo{appliedPromo ? ` · ${appliedPromo.name}` : ''}</span><span>-{formatRupiah(promoDiscount)}</span></div>}
             {pointsUsed > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Tukar poin ({pointsUsed})</span><span>-{formatRupiah(pointsUsed)}</span></div>}
             {taxAmount > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>PPN ({taxRate}%)</span><span>+{formatRupiah(taxAmount)}</span></div>}
             {serviceAmount > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Service ({serviceRate}%)</span><span>+{formatRupiah(serviceAmount)}</span></div>}
