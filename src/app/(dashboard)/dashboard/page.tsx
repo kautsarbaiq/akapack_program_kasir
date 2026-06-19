@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar,
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, ShoppingCart, Package,
@@ -81,7 +81,17 @@ export default function DashboardPage() {
       .slice(0, 6)
 
     const recent = txns.slice(0, 5)
-    return { today, revChange: pct(today.rev, yest.rev), trxChange: pct(today.trx, yest.trx), itemsChange: pct(today.items, yest.items), newCust, chart, top, low, recent }
+
+    // Orderan per jam HARI INI (laporan harian per jam)
+    const hourlyToday = Array.from({ length: 24 }, (_, h) => ({ hour: `${String(h).padStart(2, '0')}`, orders: 0, revenue: 0 }))
+    completed.filter((t) => t.created_at.slice(0, 10) === todayKey).forEach((t) => {
+      const h = new Date(t.created_at).getHours()
+      hourlyToday[h].orders += 1
+      hourlyToday[h].revenue += t.total
+    })
+    const peakToday = hourlyToday.reduce((a, b) => (b.orders > a.orders ? b : a), hourlyToday[0])
+
+    return { today, revChange: pct(today.rev, yest.rev), trxChange: pct(today.trx, yest.trx), itemsChange: pct(today.items, yest.items), newCust, chart, top, low, recent, hourlyToday, peakToday }
   }, [transactions, products, customers, period, outletFilter])
 
   const kpiCards = [
@@ -166,6 +176,27 @@ export default function DashboardPage() {
               <Tooltip formatter={(val: unknown) => [formatRupiah(Number(val)), 'Omzet']} contentStyle={{ borderRadius: '12px', border: '1px solid oklch(0.9 0.01 250)', fontSize: 12 }} />
               <Area type="monotone" dataKey="revenue" stroke="oklch(0.55 0.22 264)" strokeWidth={2.5} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 5 }} />
             </AreaChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Orderan per jam (hari ini) */}
+      <Card>
+        <CardHeader className="flex-row items-start justify-between pb-4">
+          <div>
+            <CardTitle>Orderan per Jam — Hari Ini</CardTitle>
+            <CardDescription>Jumlah transaksi tiap jam{r.peakToday.orders > 0 ? ` · tersibuk jam ${r.peakToday.hour}.00 (${r.peakToday.orders} orderan)` : ''}</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={r.hourlyToday} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.01 250)" vertical={false} />
+              <XAxis dataKey="hour" tick={{ fontSize: 10, fill: 'oklch(0.6 0.01 250)' }} axisLine={false} tickLine={false} interval={1} />
+              <YAxis tick={{ fontSize: 11, fill: 'oklch(0.6 0.01 250)' }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip formatter={(val: unknown, n: unknown) => n === 'orders' ? [`${val} orderan`, 'Orderan'] : [formatRupiah(Number(val)), 'Omzet']} contentStyle={{ borderRadius: '12px', border: '1px solid oklch(0.9 0.01 250)', fontSize: 12 }} labelFormatter={(l) => `Jam ${l}.00`} />
+              <Bar dataKey="orders" fill="oklch(0.55 0.22 264)" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>

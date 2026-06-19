@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend
+  ResponsiveContainer, PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts'
 import { TrendingUp, TrendingDown, Download } from 'lucide-react'
 import { useTransactionStore } from '@/stores/use-transaction-store'
@@ -130,7 +130,16 @@ export default function LaporanPenjualanPage() {
       .map(([name, d]) => ({ name, count: d.count, total: d.total, avg: d.count ? Math.round(d.total / d.count) : 0 }))
       .sort((a, b) => b.total - a.total)
 
-    return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, paymentData, cashierData }
+    // Distribusi per jam (00–23): berapa orderan & omzet tiap jam — untuk lihat jam ramai.
+    const hourly = Array.from({ length: 24 }, (_, h) => ({ hour: `${String(h).padStart(2, '0')}.00`, orders: 0, revenue: 0 }))
+    completed.forEach((t) => {
+      const h = new Date(t.created_at).getHours()
+      hourly[h].orders += 1
+      hourly[h].revenue += t.total
+    })
+    const peakHour = hourly.reduce((a, b) => (b.orders > a.orders ? b : a), hourly[0])
+
+    return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, paymentData, cashierData, hourly, peakHour }
   }, [transactions, products, period, outletFilter])
 
   const isEmpty = report.totalTrx === 0
@@ -165,6 +174,7 @@ export default function LaporanPenjualanPage() {
         <TabsList>
           <TabsTrigger value="ringkasan">Ringkasan</TabsTrigger>
           {canSeeProfit && <TabsTrigger value="laba">Laba / Rugi</TabsTrigger>}
+          <TabsTrigger value="jam">Per Jam</TabsTrigger>
           <TabsTrigger value="produk">Per Produk</TabsTrigger>
           <TabsTrigger value="metode">Per Metode</TabsTrigger>
           <TabsTrigger value="kasir">Per Kasir</TabsTrigger>
@@ -198,6 +208,51 @@ export default function LaporanPenjualanPage() {
                   <Area type="monotone" dataKey="revenue" stroke="oklch(0.55 0.22 264)" strokeWidth={2.5} fill="url(#grad1)" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Per Jam — distribusi orderan tiap jam (laporan harian) */}
+        <TabsContent value="jam" className="space-y-6 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <KPICard title="Total Orderan" value={`${report.totalTrx}`} />
+            <KPICard title="Jam Tersibuk" value={report.peakHour.orders > 0 ? report.peakHour.hour : '—'} subtitle={report.peakHour.orders > 0 ? `${report.peakHour.orders} orderan` : 'belum ada'} accent />
+            <KPICard title="Omzet Jam Tersibuk" value={formatRupiah(report.peakHour.revenue)} />
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Orderan per Jam</CardTitle>
+              <CardDescription>Jumlah transaksi di tiap jam pada periode terpilih</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div style={{ height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={report.hourly} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.01 250)" vertical={false} />
+                    <XAxis dataKey="hour" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={1} />
+                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip formatter={(v: unknown, n: unknown) => n === 'orders' ? [`${v} orderan`, 'Orderan'] : [formatRupiah(Number(v)), 'Omzet']} contentStyle={{ borderRadius: '12px', fontSize: 12 }} />
+                    <Bar dataKey="orders" fill="oklch(0.55 0.22 264)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead><tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>{['Jam', 'Orderan', 'Omzet'].map((h) => <th key={h} className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">{h}</th>)}</tr></thead>
+                <tbody>
+                  {report.hourly.filter((h) => h.orders > 0).map((h) => (
+                    <tr key={h.hour} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-muted/30">
+                      <td className="py-2.5 px-4 font-medium">{h.hour}</td>
+                      <td className="py-2.5 px-4">{h.orders} orderan</td>
+                      <td className="py-2.5 px-4">{formatRupiah(h.revenue)}</td>
+                    </tr>
+                  ))}
+                  {report.hourly.every((h) => h.orders === 0) && <tr><td colSpan={3} className="py-10 text-center text-muted-foreground">Belum ada orderan pada periode ini</td></tr>}
+                </tbody>
+              </table>
             </CardContent>
           </Card>
         </TabsContent>
