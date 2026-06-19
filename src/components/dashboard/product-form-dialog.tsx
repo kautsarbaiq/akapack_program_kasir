@@ -20,6 +20,7 @@ import {
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useRole } from '@/stores/use-current-user-store'
 import { uploadProductImage } from '@/lib/supabase/storage'
 import { generateSKU, formatRupiah } from '@/lib/utils'
 import { productSchema, type ProductFormValues } from '@/lib/validations'
@@ -38,6 +39,7 @@ interface Props {
 
 export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Props) {
   const isEdit = !!product
+  const { canSeeCost } = useRole() // HPP/harga modal hanya owner
   const categories = useCategoryStore((s) => s.categories)
   const addProduct = useProductStore((s) => s.addProduct)
   const updateProduct = useProductStore((s) => s.updateProduct)
@@ -250,6 +252,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
                   </div>
                   {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
                 </div>
+                {canSeeCost && (
                 <div className="space-y-2">
                   <Label>HPP (Harga Pokok)</Label>
                   <div className="relative">
@@ -258,6 +261,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
                   </div>
                   {errors.cost_price && <p className="text-xs text-destructive">{errors.cost_price.message}</p>}
                 </div>
+                )}
               </div>
 
               <div className="space-y-2">

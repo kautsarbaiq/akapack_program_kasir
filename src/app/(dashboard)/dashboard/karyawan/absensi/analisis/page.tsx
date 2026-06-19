@@ -9,6 +9,7 @@ import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { useCurrentUserStore, useRole } from '@/stores/use-current-user-store'
 import { getAvatarColor, getInitials, localDay, formatTime } from '@/lib/utils'
 
 function firstOfMonth(): string {
@@ -26,8 +27,12 @@ export default function AnalisisAbsensiPage() {
   const [from, setFrom] = useState(firstOfMonth())
   const [to, setTo] = useState(localDay(new Date()))
 
+  const me = useCurrentUserStore((s) => s.user)
+  const { isCashier } = useRole() // kasir hanya lihat absensi sendiri
+
   const rows = useMemo(() => {
-    const staff = employees.filter((e) => e.is_active && e.outlet_id === activeOutletId)
+    const staff = employees.filter((e) => e.is_active && e.outlet_id === activeOutletId
+      && (!isCashier || e.id === me?.employeeId || e.name === me?.name))
     return staff.map((e) => {
       const recs = records.filter((r) => {
         if (r.employee_id !== e.id || r.outlet_id !== activeOutletId) return false
@@ -40,7 +45,7 @@ export default function AnalisisAbsensiPage() {
       const last = recs.length ? recs.reduce((a, b) => (a.timestamp > b.timestamp ? a : b)) : undefined
       return { e, hadir: days.size, ins, outs, last }
     })
-  }, [employees, records, activeOutletId, from, to])
+  }, [employees, records, activeOutletId, from, to, isCashier, me])
 
   const totalHadir = rows.reduce((s, r) => s + r.hadir, 0)
 

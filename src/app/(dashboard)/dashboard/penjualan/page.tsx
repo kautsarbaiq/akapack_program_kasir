@@ -12,7 +12,8 @@ import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
-import { formatRupiah, formatDateTime, rankedSearch } from '@/lib/utils'
+import { useRole } from '@/stores/use-current-user-store'
+import { formatRupiah, formatDateTime, rankedSearch, localDay } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
 import { toast } from 'sonner'
@@ -23,14 +24,21 @@ export default function PenjualanPage() {
   const outlets = useOutletStore((s) => s.outlets)
   const [outletFilter, setOutletFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
+  const { canEditTx } = useRole() // void/edit transaksi hanya owner
 
-  // Filter per-cabang — pilihan: Semua Cabang / Bandung / Garut.
+  // Filter per-cabang + rentang tanggal.
   const outletTx = outletFilter === 'all' ? transactions : transactions.filter((t) => t.outlet_id === outletFilter)
-  const totalOmzet = outletTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
-  const totalTrx = outletTx.filter(t => t.status === 'completed').length
+  const dateTx = outletTx.filter((t) => {
+    const d = localDay(t.created_at)
+    return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
+  })
+  const totalOmzet = dateTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
+  const totalTrx = dateTx.filter(t => t.status === 'completed').length
 
-  const filtered = rankedSearch(outletTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
+  const filtered = rankedSearch(dateTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
 
   return (
     <div className="space-y-6">
@@ -61,12 +69,18 @@ export default function PenjualanPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex gap-3 flex-wrap items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Cari no. transaksi, pelanggan..." className="pl-9 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <OutletFilter value={outletFilter} onChange={setOutletFilter} />
+        <div className="flex items-center gap-1.5">
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-36 text-sm" title="Dari tanggal" />
+          <span className="text-muted-foreground text-xs">s/d</span>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-36 text-sm" title="Sampai tanggal" />
+          {(dateFrom || dateTo) && <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setDateFrom(''); setDateTo('') }}>Reset</Button>}
+        </div>
         <Select defaultValue="all">
           <SelectTrigger className="w-36 h-9 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -173,7 +187,7 @@ export default function PenjualanPage() {
                   <Button variant="outline" className="flex-1 gap-2" onClick={() => toast.info('Fitur cetak struk')}>
                     <FileText size={14} /> Cetak Struk
                   </Button>
-                  {selected.status === 'completed' && (
+                  {canEditTx && selected.status === 'completed' && (
                     <Button variant="destructive" className="flex-1" onClick={() => {
                       if (confirm('Void transaksi ini? Stok tidak dikembalikan otomatis.')) {
                         voidTransaction(selected.id); toast.success('Transaksi berhasil di-void'); setSelected(null)

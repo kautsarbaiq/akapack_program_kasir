@@ -41,6 +41,23 @@ export function clearStaffSession() { writeStaff(null) }
 /** Ada sesi karyawan aktif (nama+PIN)? Dipakai AuthGuard agar karyawan tak dilempar ke /login. */
 export function hasStaffSession(): boolean { return readStaff() !== null }
 
+/** Hak akses berdasar peran. owner = penuh; manager = pengawasan (tanpa laba/modal/edit-tx); cashier = terbatas. */
+export function useRole() {
+  const role = useCurrentUserStore((s) => (s.user?.role || '').toLowerCase())
+  const isOwner = role === 'owner'
+  const isManager = role === 'manager'
+  return {
+    role,
+    isOwner,
+    isManager,
+    isCashier: !isOwner && !isManager,
+    canSeeCost: isOwner,       // harga modal / nilai stok (sensitif) — hanya owner
+    canSeeProfit: isOwner,     // laba / margin — hanya owner
+    canEditTx: isOwner,        // edit / void transaksi — hanya owner
+    canEditStock: isOwner || isManager, // input/ubah stok & barang — owner + manager
+  }
+}
+
 interface CurrentUserStore {
   user: CurrentUser | null
   loaded: boolean

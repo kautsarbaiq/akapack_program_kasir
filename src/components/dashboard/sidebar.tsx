@@ -117,6 +117,40 @@ const cashierNav: NavItem[] = [
   { title: 'Stok (Lihat)', href: '/dashboard/inventori', icon: Warehouse },
 ]
 
+// Menu manager: input barang, cek stok, penjualan & laporan omzet (TANPA Akuntansi/laba/modal/edit-tx).
+const managerNav: NavItem[] = [
+  { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
+  {
+    title: 'Produk', href: '/dashboard/produk', icon: Package,
+    children: [
+      { title: 'Katalog Produk', href: '/dashboard/produk' },
+      { title: 'Kategori', href: '/dashboard/produk/kategori' },
+      { title: 'Import / Export', href: '/dashboard/produk/import' },
+    ],
+  },
+  {
+    title: 'Inventori', href: '/dashboard/inventori', icon: Warehouse,
+    children: [
+      { title: 'Stok Saat Ini', href: '/dashboard/inventori' },
+      { title: 'Stok Masuk', href: '/dashboard/pembelian' },
+      { title: 'Stok Keluar', href: '/dashboard/stok-keluar' },
+      { title: 'Pergerakan Stok', href: '/dashboard/inventori/pergerakan' },
+      { title: 'Stock Opname', href: '/dashboard/inventori/opname' },
+    ],
+  },
+  {
+    title: 'Penjualan', href: '/dashboard/penjualan', icon: Receipt,
+    children: [
+      { title: 'Riwayat Transaksi', href: '/dashboard/penjualan' },
+      { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan' },
+    ],
+  },
+  { title: 'Laporan', href: '/dashboard/laporan', icon: BarChart3 },
+  { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
+  { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: UserCheck },
+]
+
 interface SidebarProps {
   open: boolean
   onClose: () => void
@@ -134,9 +168,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const userRole = currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : ''
   // Owner & manager lihat semua menu; karyawan (cashier/lainnya) hanya POS Kasir + Absensi.
   const role = (currentUser?.role || 'owner').toLowerCase()
-  const isPrivileged = role === 'owner' || role === 'manager'
-  const visibleNav = isPrivileged ? navItems : cashierNav
-  const visibleBottom = isPrivileged ? bottomItems : []
+  const isOwner = role === 'owner'
+  const isManager = role === 'manager'
+  const isPrivileged = isOwner || isManager
+  const visibleNav = isOwner ? navItems : isManager ? managerNav : cashierNav
+  const visibleBottom = isOwner ? bottomItems : [] // Pengaturan hanya owner
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) =>

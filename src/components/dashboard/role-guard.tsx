@@ -11,10 +11,20 @@ const CASHIER_ALLOWED = [
   '/dashboard/inventori',        // Stok (mode lihat-saja)
 ]
 
+/** Halaman yang boleh diakses manager (TANPA Akuntansi/Promosi/Pelanggan/Karyawan-mgmt/Outlet/Pengaturan). */
+const MANAGER_ALLOWED = [
+  '/dashboard/produk',
+  '/dashboard/inventori',
+  '/dashboard/pembelian',
+  '/dashboard/stok-keluar',
+  '/dashboard/penjualan',
+  '/dashboard/laporan',
+  '/dashboard/karyawan/absensi',
+]
+
 /**
- * Pembatas akses + isolasi cabang. Owner/manager bebas (semua cabang).
- * Karyawan (cashier): hanya Absensi, Analisis Absensi, Stok (lihat) — selain itu dilempar
- * ke Absensi; dan outlet aktif DIKUNCI ke cabang karyawan tsb (tak bisa lihat cabang lain).
+ * Pembatas akses + isolasi cabang. Owner = bebas. Manager = akses luas (tanpa modul terlarang),
+ * bisa lintas cabang. Karyawan (cashier) = hanya Absensi/Analisis/Stok(lihat), dikunci ke cabangnya.
  */
 export function RoleGuard() {
   const router = useRouter()
@@ -26,10 +36,15 @@ export function RoleGuard() {
   useEffect(() => {
     if (!loaded || !user) return
     const role = (user.role || '').toLowerCase()
-    if (role === 'owner' || role === 'manager') return
-    // Karyawan: kunci outlet aktif ke cabangnya.
+    if (role === 'owner') return
+    if (role === 'manager') {
+      if (pathname === '/dashboard') return
+      const ok = MANAGER_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))
+      if (!ok) router.replace('/dashboard')
+      return
+    }
+    // Karyawan: kunci outlet aktif ke cabangnya + batasi halaman.
     if (user.outletId) setActiveOutlet(user.outletId)
-    // Batasi halaman.
     const ok = CASHIER_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))
     if (!ok) router.replace('/dashboard/karyawan/absensi')
   }, [loaded, user, pathname, router, setActiveOutlet])

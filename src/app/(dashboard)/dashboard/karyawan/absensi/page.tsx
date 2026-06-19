@@ -10,7 +10,7 @@ import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
-import { useCurrentUserStore } from '@/stores/use-current-user-store'
+import { useCurrentUserStore, useRole } from '@/stores/use-current-user-store'
 import { formatTime, formatDateTime, getAvatarColor, getInitials, localDay } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -23,6 +23,7 @@ export default function AbsensiPage() {
   const outlets = useOutletStore((s) => s.outlets)
   const outletName = (id?: string) => outlets.find((o) => o.id === id)?.name ?? '-'
   const me = useCurrentUserStore((s) => s.user)
+  const { isOwner } = useRole()
   // Karyawan login → absen 1-klik untuk dirinya. Cocokkan id (atau nama) ke data.
   const meEmp = me?.viaStaff ? employees.find((e) => e.id === me.employeeId || e.name === me.name) : undefined
 
@@ -99,6 +100,8 @@ export default function AbsensiPage() {
         )
       })()}
 
+      {/* Kiosk lengkap (keypad + status semua + riwayat) hanya owner. Karyawan & manager cukup absen sendiri di atas (privasi). */}
+      {isOwner && (<>
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Keypad */}
         <Card>
@@ -168,6 +171,12 @@ export default function AbsensiPage() {
           </table>
         </CardContent>
       </Card>
+      </>)}
+
+      {/* Karyawan & manager tanpa data diri (jarang) */}
+      {!isOwner && !meEmp && (
+        <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Data karyawanmu tak ditemukan. Hubungi owner.</CardContent></Card>
+      )}
     </div>
   )
 }

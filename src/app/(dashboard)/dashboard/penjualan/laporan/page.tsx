@@ -14,11 +14,14 @@ import { useProductStore } from '@/stores/use-product-store'
 import { formatRupiah, formatNumber } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
+import { useRole } from '@/stores/use-current-user-store'
 
 const PERIODS = [
+  { value: '1', label: 'Hari Ini' },
   { value: '7', label: '7 Hari' },
-  { value: '30', label: '30 Hari' },
+  { value: '30', label: 'Bulanan' },
   { value: '90', label: '3 Bulan' },
+  { value: '365', label: 'Tahunan' },
 ]
 
 const PIE_COLORS = [
@@ -47,10 +50,13 @@ export default function LaporanPenjualanPage() {
   const products = useProductStore((s) => s.products)
   const [period, setPeriod] = useState('30')
   const [outletFilter, setOutletFilter] = useState('all')
+  const { canSeeProfit } = useRole() // tab Laba/Rugi hanya owner
 
   const report = useMemo(() => {
     const days = Number(period)
-    const cutoff = Date.now() - days * 86400000
+    // "Hari Ini" (1) = sejak awal hari ini; lainnya = N hari terakhir.
+    const startToday = new Date(); startToday.setHours(0, 0, 0, 0)
+    const cutoff = days === 1 ? startToday.getTime() : Date.now() - days * 86400000
     const completed = transactions.filter(
       (t) => t.status === 'completed' && new Date(t.created_at).getTime() >= cutoff
         && (outletFilter === 'all' || t.outlet_id === outletFilter)
@@ -158,7 +164,7 @@ export default function LaporanPenjualanPage() {
       <Tabs defaultValue="ringkasan">
         <TabsList>
           <TabsTrigger value="ringkasan">Ringkasan</TabsTrigger>
-          <TabsTrigger value="laba">Laba / Rugi</TabsTrigger>
+          {canSeeProfit && <TabsTrigger value="laba">Laba / Rugi</TabsTrigger>}
           <TabsTrigger value="produk">Per Produk</TabsTrigger>
           <TabsTrigger value="metode">Per Metode</TabsTrigger>
           <TabsTrigger value="kasir">Per Kasir</TabsTrigger>
@@ -196,8 +202,8 @@ export default function LaporanPenjualanPage() {
           </Card>
         </TabsContent>
 
-        {/* Laba / Rugi */}
-        <TabsContent value="laba" className="space-y-6 mt-6">
+        {/* Laba / Rugi — hanya owner */}
+        {canSeeProfit && <TabsContent value="laba" className="space-y-6 mt-6">
           <div className="grid grid-cols-3 gap-4">
             <KPICard title="Penjualan Bersih" value={formatRupiah(report.netSales)} subtitle="setelah diskon, sebelum pajak" />
             <KPICard title="HPP (Modal)" value={formatRupiah(report.cogs)} subtitle="perkiraan dari harga modal" />
@@ -215,7 +221,7 @@ export default function LaporanPenjualanPage() {
               <p className="text-xs text-muted-foreground pt-1">*HPP dihitung dari harga modal produk saat ini (perkiraan). Pajak & service charge tidak dihitung sebagai laba.</p>
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent>}
 
         {/* Per Produk */}
         <TabsContent value="produk" className="mt-6">

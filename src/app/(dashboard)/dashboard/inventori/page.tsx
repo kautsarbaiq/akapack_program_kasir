@@ -20,7 +20,7 @@ import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useVariantStore } from '@/stores/use-variant-store'
-import { useCurrentUserStore } from '@/stores/use-current-user-store'
+import { useRole } from '@/stores/use-current-user-store'
 import { ImportStokDialog } from '@/components/dashboard/import-stok-dialog'
 import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { formatRupiah, formatDateTime, getStockStatus, rankedSearch } from '@/lib/utils'
@@ -44,8 +44,9 @@ export default function InventoriPage() {
   const outlets = useOutletStore((s) => s.outlets)
   const activeOutletName = outlets.find((o) => o.id === activeOutletId)?.name ?? 'Outlet'
 
-  const role = useCurrentUserStore((s) => (s.user?.role || '').toLowerCase())
-  const readOnly = role !== 'owner' && role !== 'manager' // karyawan: lihat-saja, tak bisa edit stok
+  const { isCashier, canSeeCost } = useRole()
+  const readOnly = isCashier // karyawan: lihat-saja; manager & owner bisa input stok
+  // canSeeCost (Nilai stok = modal): hanya owner
 
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
@@ -162,8 +163,8 @@ export default function InventoriPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Total SKU', value: products.length, color: 'text-foreground' },
-          // Nilai Stok = modal (sensitif) → hanya owner/manager
-          ...(readOnly ? [] : [{ label: `Nilai Stok (${activeOutletName})`, value: formatRupiah(totalValue), color: 'text-foreground', small: true }]),
+          // Nilai Stok = modal (sensitif) → hanya owner
+          ...(canSeeCost ? [{ label: `Nilai Stok (${activeOutletName})`, value: formatRupiah(totalValue), color: 'text-foreground', small: true }] : []),
           { label: 'Stok Menipis', value: lowCount, color: 'text-amber-600' },
           { label: 'Stok Habis', value: outCount, color: 'text-destructive' },
         ].map((s) => (
@@ -192,7 +193,7 @@ export default function InventoriPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Produk', 'SKU', 'Kategori', 'Stok', 'Min.', 'Status', ...(readOnly ? [] : ['Nilai']), ''].map((h) => (
+                  {['Produk', 'SKU', 'Kategori', 'Stok', 'Min.', 'Status', ...(canSeeCost ? ['Nilai'] : []), ''].map((h) => (
                     <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -207,7 +208,7 @@ export default function InventoriPage() {
                     <td className="py-3 px-4"><span className={`font-bold ${getStockStatus(p.stock, p.min_stock) === 'out' ? 'text-destructive' : getStockStatus(p.stock, p.min_stock) === 'low' ? 'text-amber-600' : ''}`}>{p.stock}</span><span className="text-muted-foreground text-xs"> {p.unit}</span></td>
                     <td className="py-3 px-4 text-muted-foreground text-xs">{p.min_stock}</td>
                     <td className="py-3 px-4"><StatusBadge stock={p.stock} minStock={p.min_stock} /></td>
-                    {!readOnly && <td className="py-3 px-4 font-semibold">{formatRupiah(p.stock * p.cost_price)}</td>}
+                    {canSeeCost && <td className="py-3 px-4 font-semibold">{formatRupiah(p.stock * p.cost_price)}</td>}
                     <td className="py-3 px-3">
                       {readOnly ? (
                         <span className="text-xs text-muted-foreground">—</span>
@@ -289,7 +290,7 @@ export default function InventoriPage() {
           {detail && (<>
             <SheetHeader className="pb-4"><SheetTitle>{detail.name}</SheetTitle></SheetHeader>
             <div className="space-y-2 text-sm">
-              {[['SKU', detail.sku], ['Barcode', detail.barcode ?? '-'], ['Kategori', detail.category?.name ?? '-'], ['Satuan', detail.unit], ['Harga Jual', formatRupiah(detail.price)], ['Harga Modal', formatRupiah(detail.cost_price)], ['Stok (outlet aktif)', `${detail.stock} ${detail.unit}`], ['Min. Stok', `${detail.min_stock}`], ['Status', detail.is_active ? 'Aktif' : 'Nonaktif']].map(([k, v]) => (
+              {[['SKU', detail.sku], ['Barcode', detail.barcode ?? '-'], ['Kategori', detail.category?.name ?? '-'], ['Satuan', detail.unit], ['Harga Jual', formatRupiah(detail.price)], ...(canSeeCost ? [['Harga Modal', formatRupiah(detail.cost_price)]] : []), ['Stok (outlet aktif)', `${detail.stock} ${detail.unit}`], ['Min. Stok', `${detail.min_stock}`], ['Status', detail.is_active ? 'Aktif' : 'Nonaktif']].map(([k, v]) => (
                 <div key={k} className="flex justify-between py-1.5" style={{ borderBottom: '1px solid var(--border)' }}><span className="text-muted-foreground">{k}</span><span className="font-medium text-right">{v}</span></div>
               ))}
               {detail.description && <p className="text-xs text-muted-foreground pt-2">{detail.description}</p>}

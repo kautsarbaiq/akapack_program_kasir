@@ -26,6 +26,7 @@ import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { ProductFormDialog } from '@/components/dashboard/product-form-dialog'
 import { ImportProdukDialog } from '@/components/dashboard/import-produk-dialog'
 import { formatRupiah, getStockStatus, rankedSearch } from '@/lib/utils'
+import { useRole } from '@/stores/use-current-user-store'
 import type { Product } from '@/types'
 import { toast } from 'sonner'
 
@@ -38,6 +39,7 @@ export default function ProdukPage() {
   const removeProduct = useProductStore((s) => s.deleteProduct)
   const deleteAllProducts = useProductStore((s) => s.deleteAllProducts)
   const categories = useCategoryStore((s) => s.categories)
+  const { canSeeCost } = useRole() // HPP/harga modal hanya owner
 
   const [view, setView] = useState<ViewMode>('table')
   const [search, setSearch] = useState('')
@@ -235,7 +237,7 @@ export default function ProdukPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['Produk', 'Kategori', 'Harga Jual', 'HPP', 'Stok', 'Status', 'Aksi'].map((h) => (
+                    {['Produk', 'Kategori', 'Harga Jual', ...(canSeeCost ? ['HPP'] : []), 'Stok', 'Status', 'Aksi'].map((h) => (
                       <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
                     ))}
                   </tr>
@@ -258,7 +260,7 @@ export default function ProdukPage() {
                         <Badge variant="secondary" className="text-xs">{p.category?.name}</Badge>
                       </td>
                       <td className="py-3 px-4 font-semibold">{formatRupiah(p.price)}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{formatRupiah(p.cost_price)}</td>
+                      {canSeeCost && <td className="py-3 px-4 text-muted-foreground">{formatRupiah(p.cost_price)}</td>}
                       <td className="py-3 px-4">
                         <StockBadge stock={p.stock} minStock={p.min_stock} />
                       </td>
