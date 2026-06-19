@@ -59,9 +59,10 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
       @page { size: 76mm auto; margin: 0; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
-      body { width: 76mm; padding: 1mm 3mm 3mm; color: #000; background: #fff;
-        font-family: ui-monospace, "Courier New", monospace; font-size: 15px; font-weight: 700; line-height: 1.5;
+      body { width: 76mm; padding: 0 3mm 3mm; color: #000; background: #fff;
+        font-family: ui-monospace, "Courier New", monospace; font-size: 16px; font-weight: 700; line-height: 1.45;
         letter-spacing: 0.2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body > *:first-child { margin-top: 0 !important; }
       body * { font-weight: 700 !important; }
     </style></head><body>${src.innerHTML}</body></html>`)
     doc.close()
@@ -173,11 +174,11 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
         </div>
 
         {/* Versi cetak — bersih untuk printer struk Epson TM-U220D (dot-matrix, 76mm). Tersembunyi di layar. */}
-        <div id="receipt-print" className="hidden print:block" style={{ fontFamily: 'ui-monospace, monospace', color: '#000', fontSize: 15, fontWeight: 700, lineHeight: 1.5 }}>
+        <div id="receipt-print" className="hidden print:block" style={{ fontFamily: 'ui-monospace, monospace', color: '#000', fontSize: 16, fontWeight: 700, lineHeight: 1.45 }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 20 }}>{headerName}</div>
-            {headerAddress && <div style={{ fontSize: 14 }}>{headerAddress}</div>}
-            {headerPhone && <div style={{ fontSize: 14 }}>{headerPhone}</div>}
+            <div style={{ fontWeight: 700, fontSize: 22 }}>{headerName}</div>
+            {headerAddress && <div style={{ fontSize: 15 }}>{headerAddress}</div>}
+            {headerPhone && <div style={{ fontSize: 15 }}>{headerPhone}</div>}
           </div>
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
           <div>No: {transaction.transaction_number}</div>
@@ -199,7 +200,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           {transaction.discount_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Diskon</span><span>-{formatRupiah(transaction.discount_amount)}</span></div>}
           {transaction.tax_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>PPN</span><span>+{formatRupiah(transaction.tax_amount)}</span></div>}
           {transaction.service_charge_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Service</span><span>+{formatRupiah(transaction.service_charge_amount)}</span></div>}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 17, marginTop: 3 }}><span>TOTAL</span><span>{formatRupiah(transaction.total)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 19, marginTop: 3 }}><span>TOTAL</span><span>{formatRupiah(transaction.total)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{PAYMENT_LABELS[transaction.payment_method]}</span><span>{formatRupiah(transaction.paid_amount)}</span></div>
           {transaction.payment_method === 'cash' && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Kembali</span><span>{formatRupiah(transaction.change_amount)}</span></div>}
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
