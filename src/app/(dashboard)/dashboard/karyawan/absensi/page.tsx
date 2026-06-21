@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Fingerprint, ArrowLeft, LogIn, LogOut, Delete, CheckCircle2, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
@@ -29,6 +30,7 @@ export default function AbsensiPage() {
 
   const [code, setCode] = useState('')
   const [result, setResult] = useState<{ name: string; type: 'in' | 'out'; time: string } | null>(null)
+  const [histDate, setHistDate] = useState(localDay(new Date()))
 
   const doClock = (emp: { id: string; name: string }) => {
     const r = clock(emp as never, activeOutletId)
@@ -52,10 +54,16 @@ export default function AbsensiPage() {
     setCode('')
   }
 
-  const todayRecords = useMemo(() => {
-    const t = localDay(new Date())
-    return records.filter((r) => localDay(r.timestamp) === t && r.outlet_id === activeOutletId)
-  }, [records, activeOutletId])
+  // Riwayat absen per tanggal — terlihat di SEMUA role.
+  // Owner: semua karyawan cabang aktif. Non-owner (kasir/manager): hanya absen DIRI sendiri (privasi).
+  const histRecords = useMemo(() => {
+    const list = records
+      .filter((r) => localDay(r.timestamp) === histDate && r.outlet_id === activeOutletId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    if (isOwner) return list
+    if (!meEmp) return []
+    return list.filter((r) => r.employee_id === meEmp.id)
+  }, [records, histDate, activeOutletId, isOwner, meEmp])
 
   const statusOf = (empId: string) => {
     const last = lastToday(empId)
@@ -146,32 +154,40 @@ export default function AbsensiPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Riwayat hari ini */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Riwayat Absensi Hari Ini</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Karyawan', 'Tipe', 'Waktu', 'Outlet'].map((h) => <th key={h} className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {todayRecords.map((r) => (
-                <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td className="py-2.5 px-4 font-medium">{r.employee?.name ?? employees.find((e) => e.id === r.employee_id)?.name ?? 'Karyawan'}</td>
-                  <td className="py-2.5 px-4">{r.type === 'in' ? <Badge className="text-xs gap-1 bg-emerald-100 text-emerald-700 border-emerald-200"><LogIn size={10} />Masuk</Badge> : <Badge className="text-xs gap-1 bg-amber-100 text-amber-700 border-amber-200"><LogOut size={10} />Pulang</Badge>}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground">{formatDateTime(r.timestamp)}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground text-xs">{outletName(r.outlet_id)}</td>
-                </tr>
-              ))}
-              {todayRecords.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-muted-foreground">Belum ada absensi hari ini</td></tr>}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
       </>)}
+
+      {/* Riwayat Absensi per tanggal — terlihat di SEMUA role.
+          Owner: semua karyawan cabang. Non-owner: hanya absen diri sendiri (privasi). */}
+      {(isOwner || meEmp) && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <CardTitle className="text-base">Riwayat Absensi{!isOwner && ' — Saya'}</CardTitle>
+            <Input type="date" value={histDate} max={localDay(new Date())}
+              onChange={(e) => setHistDate(e.target.value || localDay(new Date()))}
+              className="h-9 w-40 text-sm" title="Lihat tanggal" />
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
+                  {['Karyawan', 'Tipe', 'Waktu', 'Outlet'].map((h) => <th key={h} className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {histRecords.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td className="py-2.5 px-4 font-medium">{r.employee?.name ?? employees.find((e) => e.id === r.employee_id)?.name ?? 'Karyawan'}</td>
+                    <td className="py-2.5 px-4">{r.type === 'in' ? <Badge className="text-xs gap-1 bg-emerald-100 text-emerald-700 border-emerald-200"><LogIn size={10} />Masuk</Badge> : <Badge className="text-xs gap-1 bg-amber-100 text-amber-700 border-amber-200"><LogOut size={10} />Pulang</Badge>}</td>
+                    <td className="py-2.5 px-4 text-muted-foreground">{formatDateTime(r.timestamp)}</td>
+                    <td className="py-2.5 px-4 text-muted-foreground text-xs">{outletName(r.outlet_id)}</td>
+                  </tr>
+                ))}
+                {histRecords.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-muted-foreground">Tidak ada absensi pada tanggal ini</td></tr>}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Karyawan & manager tanpa data diri (jarang) */}
       {!isOwner && !meEmp && (

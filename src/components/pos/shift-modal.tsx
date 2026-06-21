@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useEmployeeStore } from '@/stores/use-employee-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import {
   openShiftSchema, type OpenShiftFormValues,
   closeShiftSchema, type CloseShiftFormValues,
@@ -42,16 +44,23 @@ export function ShiftModal({ open, onOpenChange, mode }: Props) {
 }
 
 function OpenShiftForm({ onDone }: { onDone: () => void }) {
-  const employees = useEmployeeStore((s) => s.employees).filter((e) => e.is_active)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const me = useCurrentUserStore((s) => s.user)
+  // Hanya kasir CABANG aktif yang boleh dibuka shift-nya (karyawan tanpa cabang = fallback).
+  const employees = useEmployeeStore((s) => s.employees)
+    .filter((e) => e.is_active && (!e.outlet_id || e.outlet_id === activeOutletId))
   const openShift = useShiftStore((s) => s.openShift)
+
+  // Default kasir = user yang sedang login (kalau dia karyawan cabang ini).
+  const defaultEmployeeId = me?.employeeId && employees.some((e) => e.id === me.employeeId) ? me.employeeId : ''
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<OpenShiftFormValues>({
     resolver: zodResolver(openShiftSchema),
-    defaultValues: { employee_id: '', opening_cash: 0 },
+    defaultValues: { employee_id: defaultEmployeeId, opening_cash: 0 },
   })
   const employeeId = watch('employee_id')
 
-  useEffect(() => { reset({ employee_id: '', opening_cash: 0 }) }, [reset])
+  useEffect(() => { reset({ employee_id: defaultEmployeeId, opening_cash: 0 }) }, [reset, defaultEmployeeId])
 
   const onSubmit = async (data: OpenShiftFormValues) => {
     const employee = employees.find((e) => e.id === data.employee_id)

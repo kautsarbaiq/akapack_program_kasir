@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, BarChart, Bar
@@ -11,7 +12,7 @@ import {
 import { TrendingUp, TrendingDown, Download } from 'lucide-react'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
-import { formatRupiah, formatNumber } from '@/lib/utils'
+import { formatRupiah, formatNumber, localDay } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useRole } from '@/stores/use-current-user-store'
@@ -50,17 +51,29 @@ export default function LaporanPenjualanPage() {
   const products = useProductStore((s) => s.products)
   const [period, setPeriod] = useState('30')
   const [outletFilter, setOutletFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const { canSeeProfit } = useRole() // tab Laba/Rugi hanya owner
+
+  // Mode rentang tanggal kustom (per tanggal). Kalau aktif, override tombol periode.
+  const useRange = !!(dateFrom || dateTo)
+  const rangeStart = dateFrom || dateTo
+  const rangeEnd = dateTo || dateFrom
 
   const report = useMemo(() => {
     const days = Number(period)
     // "Hari Ini" (1) = sejak awal hari ini; lainnya = N hari terakhir.
     const startToday = new Date(); startToday.setHours(0, 0, 0, 0)
     const cutoff = days === 1 ? startToday.getTime() : Date.now() - days * 86400000
-    const completed = transactions.filter(
-      (t) => t.status === 'completed' && new Date(t.created_at).getTime() >= cutoff
-        && (outletFilter === 'all' || t.outlet_id === outletFilter)
-    )
+    const completed = transactions.filter((t) => {
+      if (t.status !== 'completed') return false
+      if (outletFilter !== 'all' && t.outlet_id !== outletFilter) return false
+      if (useRange) {
+        const d = localDay(t.created_at)
+        return d >= rangeStart && d <= rangeEnd
+      }
+      return new Date(t.created_at).getTime() >= cutoff
+    })
 
     const totalRevenue = completed.reduce((s, t) => s + t.total, 0)
     const totalTrx = completed.length
@@ -79,14 +92,27 @@ export default function LaporanPenjualanPage() {
     const grossProfit = netSales - cogs
     const margin = netSales > 0 ? Math.round((grossProfit / netSales) * 100) : 0
 
-    // Tren harian
-    const trend = Array.from({ length: days }, (_, i) => {
-      const d = new Date()
-      d.setDate(d.getDate() - (days - 1 - i))
-      const key = d.toISOString().slice(0, 10)
-      const rev = completed.filter((t) => t.created_at.slice(0, 10) === key).reduce((s, t) => s + t.total, 0)
-      return { label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), revenue: rev }
-    })
+    // Tren harian — periode (N hari terakhir) ATAU rentang tanggal kustom.
+    let trend: { label: string; revenue: number }[]
+    if (useRange) {
+      const start = new Date(rangeStart + 'T00:00:00')
+      const end = new Date(rangeEnd + 'T00:00:00')
+      const dayCount = Math.min(366, Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1))
+      trend = Array.from({ length: dayCount }, (_, i) => {
+        const d = new Date(start); d.setDate(d.getDate() + i)
+        const key = localDay(d)
+        const rev = completed.filter((t) => localDay(t.created_at) === key).reduce((s, t) => s + t.total, 0)
+        return { label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), revenue: rev }
+      })
+    } else {
+      trend = Array.from({ length: days }, (_, i) => {
+        const d = new Date()
+        d.setDate(d.getDate() - (days - 1 - i))
+        const key = d.toISOString().slice(0, 10)
+        const rev = completed.filter((t) => t.created_at.slice(0, 10) === key).reduce((s, t) => s + t.total, 0)
+        return { label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), revenue: rev }
+      })
+    }
 
     // Per produk
     const prodAgg: Record<string, { name: string; sku: string; qty: number; revenue: number }> = {}
@@ -140,7 +166,7 @@ export default function LaporanPenjualanPage() {
     const peakHour = hourly.reduce((a, b) => (b.orders > a.orders ? b : a), hourly[0])
 
     return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, paymentData, cashierData, hourly, peakHour }
-  }, [transactions, products, period, outletFilter])
+  }, [transactions, products, period, outletFilter, useRange, rangeStart, rangeEnd])
 
   const isEmpty = report.totalTrx === 0
 
@@ -154,12 +180,16 @@ export default function LaporanPenjualanPage() {
         <div className="flex gap-2 items-center flex-wrap justify-end">
           <OutletFilter value={outletFilter} onChange={setOutletFilter} />
           {PERIODS.map((p) => (
-            <Button key={p.value} variant={period === p.value ? 'default' : 'outline'} size="sm"
-              className={`text-xs ${period === p.value ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
-              onClick={() => setPeriod(p.value)}>
+            <Button key={p.value} variant={!useRange && period === p.value ? 'default' : 'outline'} size="sm"
+              className={`text-xs ${!useRange && period === p.value ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''} ${useRange ? 'opacity-50' : ''}`}
+              onClick={() => { setPeriod(p.value); setDateFrom(''); setDateTo('') }}>
               {p.label}
             </Button>
           ))}
+          <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-36 text-sm" title="Dari tanggal" />
+          <span className="text-muted-foreground text-xs">s/d</span>
+          <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-36 text-sm" title="Sampai tanggal" />
+          {useRange && <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setDateFrom(''); setDateTo('') }}>Reset</Button>}
           <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Download size={13} /> Export</Button>
         </div>
       </div>

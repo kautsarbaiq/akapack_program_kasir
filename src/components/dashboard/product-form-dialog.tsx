@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select'
+import { CategoryCombobox } from '@/components/dashboard/category-combobox'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
@@ -180,16 +181,8 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
 
               <div className="space-y-2">
                 <Label>Kategori *</Label>
-                <Select value={categoryId} onValueChange={(v) => { if (v) setValue('category_id', v, { shouldValidate: true }) }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih kategori..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategoryCombobox categories={categories} value={categoryId}
+                  onChange={(v) => setValue('category_id', v, { shouldValidate: true })} />
                 {errors.category_id && <p className="text-xs text-destructive">{errors.category_id.message}</p>}
               </div>
 

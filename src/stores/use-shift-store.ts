@@ -5,6 +5,7 @@ import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured, DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 import { updateRow } from '@/lib/supabase/repo'
 import { useEmployeeStore } from './use-employee-store'
+import { useActiveOutletStore } from './use-active-outlet-store'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
@@ -29,6 +30,7 @@ async function persistShiftOpen(shift: Shift): Promise<string | null> {
       .from('shifts')
       .insert({
         tenant_id: DEFAULT_TENANT_ID,
+        outlet_id: isUuid(shift.outlet_id) ? shift.outlet_id : null,
         employee_id: isUuid(shift.employee_id) ? shift.employee_id : null,
         opening_cash: shift.opening_cash,
         total_sales: 0,
@@ -70,10 +72,15 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
       return
     }
     try {
-      const { data, error } = await getSupabaseBrowser()
+      // PENTING: shift di-scope per CABANG aktif. Tanpa filter ini, POS Bandung bisa
+      // menampilkan shift kasir Garut (atau sebaliknya) — "kasir bertugas berubah sendiri".
+      const activeOutletId = useActiveOutletStore.getState().activeOutletId
+      let q = getSupabaseBrowser()
         .from('shifts')
         .select('*')
         .eq('status', 'open')
+      if (isUuid(activeOutletId)) q = q.eq('outlet_id', activeOutletId)
+      const { data, error } = await q
         .order('opened_at', { ascending: false })
         .limit(1)
       if (error || !data || !data.length) {
@@ -104,9 +111,10 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
   },
 
   openShift: (employee, openingCash) => {
+    const activeOutletId = useActiveOutletStore.getState().activeOutletId
     const shift: Shift = {
       id: generateId('shift'),
-      outlet_id: DEFAULT_OUTLET_ID,
+      outlet_id: isUuid(activeOutletId) ? activeOutletId : DEFAULT_OUTLET_ID,
       employee_id: employee.id,
       employee,
       opening_cash: openingCash,
