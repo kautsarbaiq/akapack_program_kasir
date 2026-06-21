@@ -136,7 +136,7 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
         base += 1
         const isoDate = d.date ? new Date(d.date).toISOString() : new Date().toISOString()
         const po: PurchaseOrder = {
-          id: poId, number: genIN(d.date, base), supplier_id: undefined, supplier: undefined,
+          id: poId, number: genIN(d.date, base), outlet_id: outlet, supplier_id: undefined, supplier: undefined,
           items: poItems, total: poItems.reduce((s, i) => s + i.subtotal, 0),
           status: 'received', payment: 'credit', paid: false,
           notes: d.note || undefined, received_from: d.from || undefined, received_by: me,

@@ -18,6 +18,7 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { formatRupiah, formatDate, generateId, localDay, rankedSearch } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem, PurchaseStatus } from '@/types'
@@ -52,8 +53,6 @@ export default function StokMasukPage() {
   const deletePurchase = usePurchaseStore((s) => s.deletePurchase)
   const suppliers = useSupplierStore((s) => s.suppliers)
   const products = useProductStore((s) => s.products)
-  const incrementStock = useProductStore((s) => s.incrementStock)
-  const decrementStock = useProductStore((s) => s.decrementStock)
   const setCostPrice = useProductStore((s) => s.setCostPrice)
   const addMovement = useStockMovementStore((s) => s.addMovement)
   const currentUser = useCurrentUserStore((s) => s.user)
@@ -107,17 +106,22 @@ export default function StokMasukPage() {
   }
 
   // Tambah stok + pergerakan + moving-average cost untuk dokumen yang diposting.
+  // PENTING: stok masuk ke CABANG DOKUMEN (po.outlet_id), BUKAN outlet aktif — supaya
+  // posting/menghapus dokumen Bandung saat sedang melihat Garut tak mengubah stok Garut.
   const applyStock = (po: PurchaseOrder) => {
+    const outlet = po.outlet_id || useActiveOutletStore.getState().activeOutletId
+    const inv = useInventoryStore.getState()
     po.items.forEach((it) => {
       const prod = useProductStore.getState().products.find((p) => p.id === it.product_id)
-      // before/after dari inventory NYATA (cabang aktif) — bukan prod.stock yang bisa basi.
-      const { before: invBefore, after: invAfter } = incrementStock(it.product_id, it.qty)
+      const { before: invBefore, after: invAfter } = inv.applyDelta(outlet, it.product_id, undefined, it.qty)
       if (prod && it.cost > 0) {
         const denom = invBefore + it.qty
         setCostPrice(it.product_id, denom > 0 ? Math.round((invBefore * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
       }
-      addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: useActiveOutletStore.getState().activeOutletId })
+      addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: outlet })
     })
+    // Segarkan tampilan stok outlet aktif (kalau dokumen ini memang di outlet aktif).
+    useProductStore.getState().projectStock(useActiveOutletStore.getState().activeOutletId)
   }
 
   const create = (postNow: boolean) => {
@@ -147,7 +151,9 @@ export default function StokMasukPage() {
       return m ? Math.max(mx, parseInt(m[1], 10)) : mx
     }, 0) + 1
     const po: PurchaseOrder = {
-      id: poId, number: genIN(date, nextSeq), supplier_id: supplierId || undefined, supplier,
+      id: poId, number: genIN(date, nextSeq),
+      outlet_id: useActiveOutletStore.getState().activeOutletId, // kunci cabang dokumen saat dibuat
+      supplier_id: supplierId || undefined, supplier,
       items: poItems, total: poItems.reduce((s, i) => s + i.subtotal, 0),
       status: postNow ? 'received' : 'ordered', payment: 'credit', paid: false,
       notes: notes.trim() || undefined, received_from: receivedFrom.trim() || undefined, received_by: me,
@@ -176,10 +182,14 @@ export default function StokMasukPage() {
     const wasPosted = po.status === 'received'
     if (!confirm(`Hapus dokumen ${po.number}?${wasPosted ? ' Stok yang sudah masuk akan dikembalikan.' : ''}`)) return
     if (wasPosted) {
+      const outlet = po.outlet_id || useActiveOutletStore.getState().activeOutletId
+      const inv = useInventoryStore.getState()
       po.items.forEach((it) => {
-        const { before: invBefore, after: invAfter } = decrementStock(it.product_id, it.qty)
-        addMovement({ product_id: it.product_id, type: 'out', quantity: -it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Hapus Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: useActiveOutletStore.getState().activeOutletId })
+        // Kembalikan stok ke CABANG DOKUMEN, bukan outlet aktif (cegah salah cabang).
+        const { before: invBefore, after: invAfter } = inv.applyDelta(outlet, it.product_id, undefined, -it.qty)
+        addMovement({ product_id: it.product_id, type: 'out', quantity: -it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Hapus Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: outlet })
       })
+      useProductStore.getState().projectStock(useActiveOutletStore.getState().activeOutletId)
     }
     deletePurchase(po.id)
     toast.success('Dokumen dihapus')

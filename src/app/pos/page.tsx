@@ -348,6 +348,8 @@ export default function POSPage() {
       product_id: c.product_id,
       product_name: c.factor !== 1 ? `${c.product_name} (${c.unit})` : c.product_name,
       product_price: c.price,
+      // snapshot HPP saat jual (varian→modal varian, else modal produk) → laba historis akurat
+      cost_price: (c.variant_id ? variants.find((x) => x.id === c.variant_id)?.cost_price : products.find((p) => p.id === c.product_id)?.cost_price) ?? 0,
       quantity: c.quantity,
       discount: c.discount,
       subtotal: c.subtotal,

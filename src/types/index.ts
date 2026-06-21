@@ -179,6 +179,7 @@ export interface TransactionItem {
   product?: Product
   product_name: string   // snapshot saat transaksi
   product_price: number  // snapshot saat transaksi
+  cost_price?: number    // HPP snapshot saat transaksi — untuk laba/rugi historis akurat
   quantity: number
   discount: number
   subtotal: number
@@ -347,6 +348,7 @@ export interface PurchaseItem {
 export interface PurchaseOrder {
   id: string
   number: string     // PO-YYYYMMDD-xxx
+  outlet_id?: string // cabang tujuan stok — dipakai saat posting & pembatalan (jangan pakai outlet aktif)
   supplier_id?: string
   supplier?: Supplier
   items: PurchaseItem[]

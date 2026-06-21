@@ -16,6 +16,7 @@ interface TxnItemRow {
   product_id: string | null
   product_name: string
   product_price: number
+  cost_price: number | null
   quantity: number
   discount: number
   subtotal: number
@@ -89,6 +90,7 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         product_id: isUuid(it.product_id) ? it.product_id : null,
         product_name: it.product_name,
         product_price: it.product_price,
+        cost_price: it.cost_price ?? 0,
         quantity: it.quantity,
         discount: it.discount,
         subtotal: it.subtotal,
@@ -148,6 +150,7 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
           product_id: it.product_id ?? '',
           product_name: it.product_name,
           product_price: it.product_price,
+          cost_price: it.cost_price ?? 0,
           quantity: it.quantity,
           discount: it.discount,
           subtotal: it.subtotal,

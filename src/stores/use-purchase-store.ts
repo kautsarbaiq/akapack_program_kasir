@@ -21,6 +21,7 @@ interface PurchaseItemRow {
 interface PurchaseRow {
   id: string
   number: string
+  outlet_id: string | null
   supplier_id: string | null
   total: number
   status: PurchaseStatus
@@ -45,6 +46,7 @@ async function persistPurchase(po: PurchaseOrder): Promise<string | null> {
       .insert({
         tenant_id: DEFAULT_TENANT_ID,
         number: po.number,
+        outlet_id: isUuid(po.outlet_id) ? po.outlet_id : null,
         supplier_id: isUuid(po.supplier_id) ? po.supplier_id : null,
         total: po.total,
         status: po.status,
@@ -131,6 +133,7 @@ export const usePurchaseStore = create<PurchaseStore>()((set) => ({
         return {
           id: r.id,
           number: r.number,
+          outlet_id: r.outlet_id ?? undefined,
           supplier_id: r.supplier_id ?? undefined,
           supplier: suppliers.find((s) => s.id === r.supplier_id),
           items,

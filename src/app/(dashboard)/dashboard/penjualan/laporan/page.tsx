@@ -80,14 +80,16 @@ export default function LaporanPenjualanPage() {
     const totalTrx = completed.length
     const avgTrx = totalTrx ? Math.round(totalRevenue / totalTrx) : 0
 
-    // HPP (perkiraan dari harga modal produk saat ini)
+    // HPP: pakai modal SNAPSHOT saat transaksi (it.cost_price) → laba historis tak berubah saat
+    // harga modal diubah. Transaksi lama (sebelum migrasi, cost_price 0) fallback ke modal kini.
     const costById = new Map(products.map((p) => [p.id, p.cost_price]))
     let netSales = 0
     let cogs = 0
     completed.forEach((t) => {
       netSales += t.subtotal - t.discount_amount
       t.items.forEach((it) => {
-        cogs += it.quantity * (costById.get(it.product_id) ?? 0)
+        const unitCost = it.cost_price && it.cost_price > 0 ? it.cost_price : (costById.get(it.product_id) ?? 0)
+        cogs += it.quantity * unitCost
       })
     })
     const grossProfit = netSales - cogs
