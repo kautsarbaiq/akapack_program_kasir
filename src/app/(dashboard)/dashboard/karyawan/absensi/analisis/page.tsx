@@ -32,7 +32,7 @@ export default function AnalisisAbsensiPage() {
 
   const rows = useMemo(() => {
     const staff = employees.filter((e) => e.is_active && e.outlet_id === activeOutletId
-      && (!isCashier || e.id === me?.employeeId || e.name === me?.name))
+      && (!isCashier || e.id === me?.employeeId)) // kasir: hanya baris dirinya (match id, bukan nama)
     return staff.map((e) => {
       const recs = records.filter((r) => {
         if (r.employee_id !== e.id || r.outlet_id !== activeOutletId) return false

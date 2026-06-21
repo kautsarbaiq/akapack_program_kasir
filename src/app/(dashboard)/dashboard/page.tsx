@@ -19,7 +19,7 @@ import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useProductStore } from '@/stores/use-product-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
-import { formatRupiah, formatNumber, formatDateTime } from '@/lib/utils'
+import { formatRupiah, formatNumber, formatDateTime, localDay } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
 
 export default function DashboardPage() {
@@ -36,11 +36,11 @@ export default function DashboardPage() {
   const r = useMemo(() => {
     const txns = outletFilter === 'all' ? transactions : transactions.filter((t) => t.outlet_id === outletFilter)
     const completed = txns.filter((t) => t.status === 'completed')
-    const todayKey = new Date().toISOString().slice(0, 10)
+    const todayKey = localDay(new Date())
     const yd = new Date(); yd.setDate(yd.getDate() - 1)
-    const yKey = yd.toISOString().slice(0, 10)
+    const yKey = localDay(yd)
     const sumDay = (key: string) => {
-      const ts = completed.filter((t) => t.created_at.slice(0, 10) === key)
+      const ts = completed.filter((t) => localDay(t.created_at) === key)
       return {
         rev: ts.reduce((s, t) => s + t.total, 0),
         trx: ts.length,
@@ -50,15 +50,15 @@ export default function DashboardPage() {
     const today = sumDay(todayKey)
     const yest = sumDay(yKey)
     const pct = (a: number, b: number) => (b > 0 ? Math.round(((a - b) / b) * 100) : 0)
-    const newCust = customers.filter((c) => (c.created_at || '').slice(0, 10) === todayKey).length
+    const newCust = customers.filter((c) => (c.created_at ? localDay(c.created_at) : '') === todayKey).length
 
     const days = Number(period)
     const chart = Array.from({ length: days }, (_, i) => {
       const d = new Date(); d.setDate(d.getDate() - (days - 1 - i))
-      const k = d.toISOString().slice(0, 10)
+      const k = localDay(d)
       return {
         label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
-        revenue: completed.filter((t) => t.created_at.slice(0, 10) === k).reduce((s, t) => s + t.total, 0),
+        revenue: completed.filter((t) => localDay(t.created_at) === k).reduce((s, t) => s + t.total, 0),
       }
     })
 
@@ -84,7 +84,7 @@ export default function DashboardPage() {
 
     // Orderan per jam HARI INI (laporan harian per jam)
     const hourlyToday = Array.from({ length: 24 }, (_, h) => ({ hour: `${String(h).padStart(2, '0')}`, orders: 0, revenue: 0 }))
-    completed.filter((t) => t.created_at.slice(0, 10) === todayKey).forEach((t) => {
+    completed.filter((t) => localDay(t.created_at) === todayKey).forEach((t) => {
       const h = new Date(t.created_at).getHours()
       hourlyToday[h].orders += 1
       hourlyToday[h].revenue += t.total

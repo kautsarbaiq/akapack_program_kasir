@@ -124,15 +124,19 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
     }
     try {
       const sb = getSupabaseBrowser()
-      const { data, error } = await sb
-        .from('transactions')
-        .select('*, transaction_items(*)')
-        .order('created_at', { ascending: false })
-      if (error || !data) {
-        set({ loaded: true })
-        return
+      // Paginasi: PostgREST membatasi 1000 baris/permintaan — tanpa ini transaksi lama (>1000) hilang.
+      const rows: TxnRow[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb
+          .from('transactions')
+          .select('*, transaction_items(*)')
+          .order('created_at', { ascending: false })
+          .range(from, from + 999)
+        if (error) { if (from === 0) { set({ loaded: true }); return } break }
+        const page = (data ?? []) as unknown as TxnRow[]
+        rows.push(...page)
+        if (page.length < 1000) break
       }
-      const rows = data as unknown as TxnRow[]
       const customers = useCustomerStore.getState().customers
       const employees = useEmployeeStore.getState().employees
       const mapped: Transaction[] = rows.map((r) => {

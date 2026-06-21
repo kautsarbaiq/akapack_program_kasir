@@ -39,11 +39,19 @@ export const useAttendanceStore = create<AttendanceStore>()((set, get) => ({
       return
     }
     try {
-      const { data, error } = await getSupabaseBrowser()
-        .from('attendance')
-        .select('*')
-        .order('timestamp', { ascending: false })
-      if (error || !data) { set({ loaded: true }); return }
+      // Paginasi: hindari batas 1000 baris PostgREST — absensi lama tidak boleh hilang.
+      const data: AttendanceRow[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error } = await getSupabaseBrowser()
+          .from('attendance')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .range(from, from + 999)
+        if (error) { if (from === 0) { set({ loaded: true }); return } break }
+        const rows = (page ?? []) as AttendanceRow[]
+        data.push(...rows)
+        if (rows.length < 1000) break
+      }
       const employees = useEmployeeStore.getState().employees
       const mapped: Attendance[] = (data as AttendanceRow[]).map((r) => ({
         id: r.id,

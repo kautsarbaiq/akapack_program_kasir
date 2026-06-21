@@ -26,7 +26,8 @@ export default function AbsensiPage() {
   const me = useCurrentUserStore((s) => s.user)
   const { isOwner } = useRole()
   // Karyawan login → absen 1-klik untuk dirinya. Cocokkan id (atau nama) ke data.
-  const meEmp = me?.viaStaff ? employees.find((e) => e.id === me.employeeId || e.name === me.name) : undefined
+  // Cocokkan HANYA via employeeId — jangan fallback ke nama (bisa kena karyawan senama di cabang lain).
+  const meEmp = me?.viaStaff && me.employeeId ? employees.find((e) => e.id === me.employeeId) : undefined
 
   const [code, setCode] = useState('')
   const [result, setResult] = useState<{ name: string; type: 'in' | 'out'; time: string } | null>(null)

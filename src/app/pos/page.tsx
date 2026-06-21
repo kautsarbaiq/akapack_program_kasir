@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
@@ -75,6 +75,7 @@ function linePriceFor(product: Product, unitName: string, qty: number): number {
 export default function POSPage() {
   const products = useProductStore((s) => s.products)
   const decrementStock = useProductStore((s) => s.decrementStock)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const categories = useCategoryStore((s) => s.categories)
   const recordPurchase = useCustomerStore((s) => s.recordPurchase)
   const addTransaction = useTransactionStore((s) => s.addTransaction)
@@ -299,13 +300,18 @@ export default function POSPage() {
     toast.success('Pesanan dipulihkan')
   }
 
+  // Guard anti double-submit: cegah klik "Konfirmasi" dua kali (transaksi & potong stok ganda).
+  const submittingRef = useRef(false)
+
   const handlePaymentOpen = () => {
     if (cart.length === 0) { toast.error('Keranjang masih kosong!'); return }
     if (paymentMethod === 'cash' && paidAmount === 0) setPaidAmount(total)
+    submittingRef.current = false // mulai alur bayar baru
     setShowPayment(true)
   }
 
   const handleConfirm = () => {
+    if (submittingRef.current) return // sudah diproses — abaikan klik berulang
     if (!currentShift) { toast.error('Shift belum dibuka'); return }
     if (cart.length === 0) return
     if (paymentMethod === 'cash' && paidAmount < total) {
@@ -358,13 +364,12 @@ export default function POSPage() {
       created_at: now,
     }
 
+    submittingRef.current = true // kunci: mulai sini transaksi diproses
     addTransaction(txn)
     cart.forEach((c) => {
       if (c.variant_id) {
-        const v = variants.find((x) => x.id === c.variant_id)
-        const before = v?.stock ?? 0
-        const after = Math.max(0, before - c.quantity)
-        decrementVariantStock(c.variant_id, c.quantity)
+        // before/after dari inventory NYATA (cabang aktif) — bukan stok proyeksi yang bisa basi.
+        const { before, after } = decrementVariantStock(c.variant_id, c.quantity)
         addMovement({
           product_id: c.product_id,
           type: 'out',
@@ -374,14 +379,12 @@ export default function POSPage() {
           notes: `Penjualan POS (${c.product_name})`,
           reference_id: txnId,
           created_by_name: emp?.name,
+          outlet_id: activeOutletId,
         })
         return
       }
       const qtyBase = c.quantity * c.factor
-      const prod = products.find((p) => p.id === c.product_id)
-      const before = prod?.stock ?? 0
-      const after = Math.max(0, before - qtyBase)
-      decrementStock(c.product_id, qtyBase)
+      const { before, after } = decrementStock(c.product_id, qtyBase)
       addMovement({
         product_id: c.product_id,
         type: 'out',
@@ -391,6 +394,7 @@ export default function POSPage() {
         notes: 'Penjualan POS',
         reference_id: txnId,
         created_by_name: emp?.name,
+        outlet_id: activeOutletId,
       })
     })
     if (selectedCustomer) recordPurchase(selectedCustomer.id, total)

@@ -84,14 +84,19 @@ export const useJournalStore = create<JournalStore>()((set) => ({
     }
     try {
       const sb = getSupabaseBrowser()
-      const { data, error } = await sb
-        .from('journal_entries')
-        .select('*, journal_lines(*)')
-        .eq('source', 'manual')
-        .order('date', { ascending: false })
-      if (error || !data) {
-        set({ loaded: true })
-        return
+      // Paginasi (hindari batas 1000 baris PostgREST).
+      const data: JournalEntryRow[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error } = await sb
+          .from('journal_entries')
+          .select('*, journal_lines(*)')
+          .eq('source', 'manual')
+          .order('date', { ascending: false })
+          .range(from, from + 999)
+        if (error) { if (from === 0) { set({ loaded: true }); return } break }
+        const rows = (page ?? []) as unknown as JournalEntryRow[]
+        data.push(...rows)
+        if (rows.length < 1000) break
       }
       const accounts = useAccountStore.getState().accounts
       const mapped: JournalEntry[] = (data as unknown as JournalEntryRow[]).map((r) => {

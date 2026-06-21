@@ -112,10 +112,13 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
     const nm = name.trim().toLowerCase()
     const p = pin.trim()
     if (!nm || !p) return 'Nama dan PIN wajib diisi.'
-    const emp = employees.find(
+    const matches = employees.filter(
       (e) => e.is_active && e.name.trim().toLowerCase() === nm && (String(e.pin ?? '') === p || String(e.code ?? '') === p)
     )
-    if (!emp) return 'Nama atau PIN salah, atau karyawan belum terdaftar.'
+    if (matches.length === 0) return 'Nama atau PIN salah, atau karyawan belum terdaftar.'
+    // Cegah login ke cabang yang salah saat ada karyawan senama + PIN sama di 2 cabang.
+    if (matches.length > 1) return 'Nama & PIN cocok ke lebih dari 1 karyawan — hubungi owner agar PIN dibuat unik.'
+    const emp = matches[0]
     if (!emp.outlet_id) return 'Karyawan ini belum ditetapkan cabangnya. Hubungi owner.'
     writeStaff({ employeeId: emp.id, name: emp.name, role: emp.role, outletId: emp.outlet_id })
     useActiveOutletStore.getState().setActiveOutlet(emp.outlet_id) // kunci ke cabang karyawan

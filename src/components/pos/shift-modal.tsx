@@ -19,6 +19,7 @@ import { useShiftStore } from '@/stores/use-shift-store'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
+import { useTransactionStore } from '@/stores/use-transaction-store'
 import {
   openShiftSchema, type OpenShiftFormValues,
   closeShiftSchema, type CloseShiftFormValues,
@@ -109,6 +110,7 @@ function OpenShiftForm({ onDone }: { onDone: () => void }) {
 function CloseShiftForm({ onDone }: { onDone: () => void }) {
   const currentShift = useShiftStore((s) => s.currentShift)
   const closeShift = useShiftStore((s) => s.closeShift)
+  const transactions = useTransactionStore((s) => s.transactions)
 
   const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<CloseShiftFormValues>({
     resolver: zodResolver(closeShiftSchema),
@@ -128,7 +130,17 @@ function CloseShiftForm({ onDone }: { onDone: () => void }) {
     )
   }
 
-  const expectedCash = currentShift.opening_cash + currentShift.total_sales
+  // Kas Seharusnya = kas awal + penjualan TUNAI saja (transfer/QRIS/marketplace tidak masuk laci).
+  // Dihitung dari transaksi shift ini (sejak shift dibuka, cabang sama) — tahan refresh.
+  const openedMs = new Date(currentShift.opened_at).getTime()
+  const cashSales = transactions.reduce((sum, t) => {
+    if (t.status !== 'completed' || t.outlet_id !== currentShift.outlet_id) return sum
+    if (new Date(t.created_at).getTime() < openedMs) return sum
+    if (t.payment_method === 'cash') return sum + t.total // kas masuk laci = total (kembalian sudah diberikan)
+    if (t.payment_method === 'split' && t.payment_details) return sum + (t.payment_details['cash'] ?? 0)
+    return sum
+  }, 0)
+  const expectedCash = currentShift.opening_cash + cashSales
   const diff = (Number.isFinite(closingCash) ? closingCash : 0) - expectedCash
 
   const onSubmit = async (data: CloseShiftFormValues) => {
@@ -149,6 +161,7 @@ function CloseShiftForm({ onDone }: { onDone: () => void }) {
           <div className="flex justify-between"><span className="text-muted-foreground">Kas Awal</span><span>{formatRupiah(currentShift.opening_cash)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Total Transaksi</span><span>{currentShift.total_transactions}x</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Total Penjualan</span><span className="font-semibold">{formatRupiah(currentShift.total_sales)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penjualan Tunai</span><span>{formatRupiah(cashSales)}</span></div>
           <Separator />
           <div className="flex justify-between font-semibold"><span>Kas Seharusnya</span><span>{formatRupiah(expectedCash)}</span></div>
         </div>

@@ -62,9 +62,10 @@ export default function LaporanPenjualanPage() {
 
   const report = useMemo(() => {
     const days = Number(period)
-    // "Hari Ini" (1) = sejak awal hari ini; lainnya = N hari terakhir.
-    const startToday = new Date(); startToday.setHours(0, 0, 0, 0)
-    const cutoff = days === 1 ? startToday.getTime() : Date.now() - days * 86400000
+    // Batas bawah = awal hari (lokal) dari (days-1) hari lalu → konsisten dgn bucket grafik tren
+    // (mis. "7 Hari" = hari ini + 6 hari sebelumnya), bukan rolling days*24jam yang lebih lebar.
+    const startDay = new Date(); startDay.setHours(0, 0, 0, 0); startDay.setDate(startDay.getDate() - (days - 1))
+    const cutoff = startDay.getTime()
     const completed = transactions.filter((t) => {
       if (t.status !== 'completed') return false
       if (outletFilter !== 'all' && t.outlet_id !== outletFilter) return false
@@ -108,8 +109,8 @@ export default function LaporanPenjualanPage() {
       trend = Array.from({ length: days }, (_, i) => {
         const d = new Date()
         d.setDate(d.getDate() - (days - 1 - i))
-        const key = d.toISOString().slice(0, 10)
-        const rev = completed.filter((t) => t.created_at.slice(0, 10) === key).reduce((s, t) => s + t.total, 0)
+        const key = localDay(d)
+        const rev = completed.filter((t) => localDay(t.created_at) === key).reduce((s, t) => s + t.total, 0)
         return { label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), revenue: rev }
       })
     }

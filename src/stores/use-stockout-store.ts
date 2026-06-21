@@ -96,13 +96,18 @@ export const useStockOutStore = create<StockOutStore>()((set) => ({
     }
     try {
       const sb = getSupabaseBrowser()
-      const { data, error } = await sb
-        .from('stock_outs')
-        .select('*, stock_out_items(*)')
-        .order('date', { ascending: false })
-      if (error || !data) {
-        set({ loaded: true })
-        return
+      // Paginasi (hindari batas 1000 baris PostgREST).
+      const data: StockOutRow[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error } = await sb
+          .from('stock_outs')
+          .select('*, stock_out_items(*)')
+          .order('date', { ascending: false })
+          .range(from, from + 999)
+        if (error) { if (from === 0) { set({ loaded: true }); return } break }
+        const rows = (page ?? []) as unknown as StockOutRow[]
+        data.push(...rows)
+        if (rows.length < 1000) break
       }
       const mapped: StockOut[] = (data as unknown as StockOutRow[]).map((r) => {
         const items: StockOutItem[] = (r.stock_out_items ?? []).map((it) => ({

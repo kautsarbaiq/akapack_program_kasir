@@ -121,8 +121,19 @@ export default function StokMasukPage() {
   }
 
   const create = (postNow: boolean) => {
-    const valid = items.filter((i) => i.product_id && i.qty > 0 && i.cost > 0)
-    if (!valid.length) { toast.error('Tambah minimal 1 produk dengan qty & harga beli > 0'); return }
+    const rawValid = items.filter((i) => i.product_id && i.qty > 0 && i.cost > 0)
+    if (!rawValid.length) { toast.error('Tambah minimal 1 produk dengan qty & harga beli > 0'); return }
+    // Gabung baris produk yang sama (sum qty, cost rata-rata tertimbang) — cegah moving-average kacau & movement ganda.
+    const mergedMap = new Map<string, DraftItem>()
+    for (const i of rawValid) {
+      const ex = mergedMap.get(i.product_id)
+      if (ex) {
+        const totQty = ex.qty + i.qty
+        ex.cost = totQty > 0 ? Math.round((ex.cost * ex.qty + i.cost * i.qty) / totQty) : i.cost
+        ex.qty = totQty
+      } else mergedMap.set(i.product_id, { ...i })
+    }
+    const valid = [...mergedMap.values()]
     const poId = generateId('po')
     const poItems: PurchaseItem[] = valid.map((i) => {
       const prod = products.find((p) => p.id === i.product_id)

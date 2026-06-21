@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
@@ -23,22 +23,27 @@ export default function PenjualanPage() {
   const voidTransaction = useTransactionStore((s) => s.voidTransaction)
   const outlets = useOutletStore((s) => s.outlets)
   const [outletFilter, setOutletFilter] = useState('all')
+  const [methodFilter, setMethodFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
   const { canEditTx } = useRole() // void/edit transaksi hanya owner
 
-  // Filter per-cabang + rentang tanggal.
+  // Filter per-cabang + rentang tanggal + metode + status.
   const outletTx = outletFilter === 'all' ? transactions : transactions.filter((t) => t.outlet_id === outletFilter)
   const dateTx = outletTx.filter((t) => {
     const d = localDay(t.created_at)
     return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
   })
-  const totalOmzet = dateTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
-  const totalTrx = dateTx.filter(t => t.status === 'completed').length
+  const methodTx = methodFilter === 'all' ? dateTx : dateTx.filter((t) => t.payment_method === methodFilter)
+  // Omzet/jumlah transaksi tetap dari transaksi SELESAI (void tak dihitung omzet).
+  const totalOmzet = methodTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
+  const totalTrx = methodTx.filter(t => t.status === 'completed').length
 
-  const filtered = rankedSearch(dateTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
+  const statusTx = statusFilter === 'all' ? methodTx : methodTx.filter((t) => t.status === statusFilter)
+  const filtered = rankedSearch(statusTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
 
   return (
     <div className="space-y-6">
@@ -81,15 +86,15 @@ export default function PenjualanPage() {
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-36 text-sm" title="Sampai tanggal" />
           {(dateFrom || dateTo) && <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setDateFrom(''); setDateTo('') }}>Reset</Button>}
         </div>
-        <Select defaultValue="all">
-          <SelectTrigger className="w-36 h-9 text-sm"><SelectValue /></SelectTrigger>
+        <Select value={methodFilter} onValueChange={(v) => v && setMethodFilter(v)}>
+          <SelectTrigger className="w-36 h-9 text-sm">{methodFilter === 'all' ? 'Semua Metode' : (PAYMENT_LABELS[methodFilter] ?? methodFilter)}</SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Metode</SelectItem>
             {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select defaultValue="all">
-          <SelectTrigger className="w-36 h-9 text-sm"><SelectValue /></SelectTrigger>
+        <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+          <SelectTrigger className="w-36 h-9 text-sm">{statusFilter === 'all' ? 'Semua Status' : statusFilter === 'completed' ? 'Selesai' : 'Void'}</SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
             <SelectItem value="completed">Selesai</SelectItem>

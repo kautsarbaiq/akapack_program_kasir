@@ -24,9 +24,9 @@ interface VariantStore {
   deleteVariant: (id: string) => void
   /** Kurangi stok varian saat transaksi POS */
   clearAll: () => void
-  decrementVariantStock: (id: string, qty: number) => void
+  decrementVariantStock: (id: string, qty: number) => { before: number; after: number }
   /** Kembalikan stok varian (mis. pesanan online dibatalkan) */
-  incrementVariantStock: (id: string, qty: number) => void
+  incrementVariantStock: (id: string, qty: number) => { before: number; after: number }
   /** Proyeksikan stok varian dari inventory outlet tsb (saat ganti outlet aktif) */
   projectVariantStock: (outletId: string) => void
 }
@@ -112,18 +112,20 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
   // Stok varian per-outlet: lewat inventory (outlet aktif), lalu proyeksi field `stock`.
   decrementVariantStock: (id, qty) => {
     const v = get().variants.find((x) => x.id === id)
-    if (!v) return
+    if (!v) return { before: 0, after: 0 }
     const outlet = useActiveOutletStore.getState().activeOutletId
-    const { after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, -qty)
+    const { before, after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, -qty)
     set((s) => ({ variants: s.variants.map((x) => (x.id === id ? { ...x, stock: after } : x)) }))
+    return { before, after }
   },
 
   incrementVariantStock: (id, qty) => {
     const v = get().variants.find((x) => x.id === id)
-    if (!v) return
+    if (!v) return { before: 0, after: 0 }
     const outlet = useActiveOutletStore.getState().activeOutletId
-    const { after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, qty)
+    const { before, after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, qty)
     set((s) => ({ variants: s.variants.map((x) => (x.id === id ? { ...x, stock: after } : x)) }))
+    return { before, after }
   },
 
   projectVariantStock: (outletId) => {
