@@ -13,6 +13,7 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { toast } from 'sonner'
 
 type Line = { product_id: string; qty: number }
@@ -107,10 +108,9 @@ export default function TransferStokPage() {
               const avail = stockAtFrom.get(it.product_id) ?? 0
               return (
                 <div key={i} className="flex items-center gap-2">
-                  <select value={it.product_id} onChange={(e) => setItem(i, { product_id: e.target.value })} className="flex-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                    <option value="">— pilih produk —</option>
-                    {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  <div className="flex-1">
+                    <ProductCombobox products={products} value={it.product_id} onChange={(pid) => setItem(i, { product_id: pid })} placeholder="Pilih produk…" />
+                  </div>
                   <span className={`w-28 text-right text-sm tabular-nums ${it.product_id && it.qty > avail ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>{it.product_id ? avail : '—'}</span>
                   <Input type="number" min={1} className="w-20 text-right" value={it.qty || ''} onChange={(e) => setItem(i, { qty: Math.max(0, Number(e.target.value)) })} />
                   <button type="button" onClick={() => removeLine(i)} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30" disabled={items.length <= 1}><X size={14} /></button>
