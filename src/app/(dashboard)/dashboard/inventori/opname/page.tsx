@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProductStore } from '@/stores/use-product-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import { rankedSearch } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -14,6 +16,8 @@ export default function StockOpnamePage() {
   const products = useProductStore((s) => s.products)
   const setStock = useProductStore((s) => s.setStock)
   const addMovement = useStockMovementStore((s) => s.addMovement)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const outletName = useOutletStore((s) => s.outlets.find((o) => o.id === activeOutletId)?.name ?? 'Cabang aktif')
 
   const [search, setSearch] = useState('')
   const [actual, setActual] = useState<Record<string, string>>({})
@@ -39,6 +43,8 @@ export default function StockOpnamePage() {
       toast.error('Belum ada selisih untuk disimpan')
       return
     }
+    // Opname menimpa stok — pastikan cabangnya benar dulu.
+    if (!confirm(`Simpan opname ${changes.length} produk untuk cabang ${outletName}? Stok sistem akan ditimpa angka fisik.`)) return
     changes.forEach((p) => {
       const before = p.stock
       const after = Number(actual[p.id])
@@ -49,10 +55,11 @@ export default function StockOpnamePage() {
         quantity: after - before,
         before_stock: before,
         after_stock: after,
-        notes: 'Stock opname',
+        notes: `Stock opname (${outletName})`,
+        outlet_id: activeOutletId,
       })
     })
-    toast.success(`Opname tersimpan: ${changes.length} produk disesuaikan`)
+    toast.success(`Opname ${outletName}: ${changes.length} produk disesuaikan`)
     setActual({})
   }
 
@@ -61,7 +68,7 @@ export default function StockOpnamePage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardCheck size={22} /> Stock Opname</h1>
-          <p className="text-muted-foreground text-sm mt-1">Hitung stok fisik dan sesuaikan dengan sistem</p>
+          <p className="text-muted-foreground text-sm mt-1">Hitung stok fisik & sesuaikan — cabang: <span className="font-semibold text-foreground">{outletName}</span></p>
         </div>
         <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={handleSave} disabled={changes.length === 0}>

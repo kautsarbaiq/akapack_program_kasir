@@ -18,7 +18,7 @@ import { useOutletStore } from '@/stores/use-outlet-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
-import { formatRupiah, formatDate, generateId } from '@/lib/utils'
+import { formatRupiah, formatDate, generateId, localDay } from '@/lib/utils'
 import type { StockOut, StockOutItem, StockOutStatus, StockOutReason } from '@/types'
 import { toast } from 'sonner'
 
@@ -32,9 +32,16 @@ const STATUS: Record<StockOutStatus, { label: string; cls: string }> = {
 }
 const REASONS: StockOutReason[] = ['rusak', 'hilang', 'pemakaian', 'retur', 'penyesuaian', 'lainnya']
 
-function genNo() {
-  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  return `OUT-${ymd}-${Math.floor(Math.random() * 900 + 100)}`
+// Nomor urut harian dari MAX yang ada (bukan acak) → tak bentrok. Pakai tanggal lokal.
+function genNo(existing: { number: string }[]) {
+  const ymd = localDay(new Date()).replace(/-/g, '')
+  const prefix = `OUT-${ymd}-`
+  const max = existing.reduce((mx, d) => {
+    if (!d.number?.startsWith(prefix)) return mx
+    const n = parseInt(d.number.slice(prefix.length), 10)
+    return Number.isNaN(n) ? mx : Math.max(mx, n)
+  }, 0)
+  return `${prefix}${String(max + 1).padStart(3, '0')}`
 }
 
 type DraftItem = { product_id: string; qty: number }
@@ -90,7 +97,7 @@ export default function StokKeluarPage() {
       return { id: generateId('outi'), stock_out_id: docId, product_id: pid, product_name: prod?.name ?? '-', qty, cost, subtotal: qty * cost }
     })
     const doc: StockOut = {
-      id: docId, number: genNo(), outlet_id: outletId, reason,
+      id: docId, number: genNo(stockOuts), outlet_id: outletId, reason,
       items: docItems, total: docItems.reduce((s, i) => s + i.subtotal, 0), total_qty: docItems.reduce((s, i) => s + i.qty, 0),
       status: 'draft', notes: notes.trim() || undefined,
       date: new Date(date).toISOString(), created_at: new Date().toISOString(),

@@ -34,6 +34,7 @@ import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
 import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn, rankedSearch } from '@/lib/utils'
 import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, ProductVariant } from '@/types'
 import { toast } from 'sonner'
@@ -322,13 +323,25 @@ export default function POSPage() {
       toast.error('Pilih 2 metode berbeda untuk split')
       return
     }
+    // Cek stok FINAL terhadap inventory nyata (cegah oversell bila stok berubah sejak layar dimuat).
+    const invNow = useInventoryStore.getState()
+    for (const c of cart) {
+      const need = c.variant_id ? c.quantity : c.quantity * c.factor
+      const live = invNow.stockAt(activeOutletId, c.product_id, c.variant_id)
+      if (live !== null && need > live) {
+        toast.error(`Stok ${c.product_name} tinggal ${live}, tidak cukup untuk ${need}`)
+        return
+      }
+    }
     const splitAmt1 = Math.min(splitAmount1, total)
     const splitDetails = paymentMethod === 'split'
       ? { [splitMethod1]: splitAmt1, [splitMethod2]: total - splitAmt1 }
       : undefined
 
     const now = new Date().toISOString()
-    const txnId = generateId('trx')
+    // UUID asli sejak awal supaya reference_id pergerakan stok tertaut ke transaksi di DB
+    // (bukan id sementara yg jadi NULL). Fallback ke generateId bila crypto tak tersedia.
+    const txnId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : generateId('trx')
     const items: TransactionItem[] = cart.map((c) => ({
       id: generateId('item'),
       transaction_id: txnId,

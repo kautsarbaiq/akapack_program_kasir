@@ -34,6 +34,26 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Pertahanan SERVER-side: rute sensitif (akuntansi/laba-modal, pengaturan, kelola outlet/karyawan,
+  // promosi, pelanggan) hanya untuk owner. Cegah kasir/manager membukanya via URL langsung — jangan
+  // hanya andalkan guard di klien. Cookie peran ditulis saat login/fetch (fail-open bila belum ada,
+  // klien tetap menjaga). Absensi tetap boleh untuk semua role.
+  const role = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
+  if ((user || hasStaff) && role && role !== 'owner') {
+    const ownerOnly =
+      path.startsWith('/dashboard/akuntansi') ||
+      path.startsWith('/dashboard/pengaturan') ||
+      path.startsWith('/dashboard/outlet') ||
+      path.startsWith('/dashboard/promosi') ||
+      path.startsWith('/dashboard/pelanggan') ||
+      (path.startsWith('/dashboard/karyawan') && !path.startsWith('/dashboard/karyawan/absensi'))
+    if (ownerOnly) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
+
   return response
 }
 

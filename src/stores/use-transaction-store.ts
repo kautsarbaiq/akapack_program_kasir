@@ -56,6 +56,8 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
     const { data, error } = await sb
       .from('transactions')
       .insert({
+        // Pakai id uuid dari klien bila ada → reference_id pergerakan stok tetap tertaut.
+        ...(isUuid(txn.id) ? { id: txn.id } : {}),
         tenant_id: DEFAULT_TENANT_ID,
         outlet_id: isUuid(txn.outlet_id) ? txn.outlet_id : null,
         transaction_number: txn.transaction_number,

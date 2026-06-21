@@ -141,8 +141,13 @@ export default function StokMasukPage() {
     })
     const supplier = suppliers.find((s) => s.id === supplierId)
     const now = new Date().toISOString()
+    // Nomor urut dari MAX nomor yang ada (bukan panjang array) → tak bentrok walau ada yg dihapus.
+    const nextSeq = purchases.reduce((mx, p) => {
+      const m = /(\d{8})$/.exec(p.number || '')
+      return m ? Math.max(mx, parseInt(m[1], 10)) : mx
+    }, 0) + 1
     const po: PurchaseOrder = {
-      id: poId, number: genIN(date, purchases.length + 1), supplier_id: supplierId || undefined, supplier,
+      id: poId, number: genIN(date, nextSeq), supplier_id: supplierId || undefined, supplier,
       items: poItems, total: poItems.reduce((s, i) => s + i.subtotal, 0),
       status: postNow ? 'received' : 'ordered', payment: 'credit', paid: false,
       notes: notes.trim() || undefined, received_from: receivedFrom.trim() || undefined, received_by: me,

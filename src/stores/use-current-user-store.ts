@@ -21,6 +21,16 @@ function readStaff(): StaffSaved | null {
   if (typeof window === 'undefined') return null
   try { const r = localStorage.getItem(STAFF_KEY); return r ? (JSON.parse(r) as StaffSaved) : null } catch { return null }
 }
+const ROLE_KEY = 'akapack-role'
+/** Tulis peran ke cookie agar middleware (proxy.ts) bisa menolak akses rute sensitif owner di SERVER. */
+export function setRoleCookie(role: string | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (role) document.cookie = `${ROLE_KEY}=${role.toLowerCase()}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`
+    else document.cookie = `${ROLE_KEY}=; path=/; max-age=0; samesite=lax`
+  } catch { /* noop */ }
+}
+
 function writeStaff(s: StaffSaved | null) {
   if (typeof window === 'undefined') return
   try {
@@ -28,9 +38,11 @@ function writeStaff(s: StaffSaved | null) {
       localStorage.setItem(STAFF_KEY, JSON.stringify(s))
       // Cookie penanda agar middleware (proxy.ts) mengizinkan akses (sesi karyawan, bukan Supabase).
       document.cookie = `${STAFF_KEY}=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`
+      setRoleCookie(s.role)
     } else {
       localStorage.removeItem(STAFF_KEY)
       document.cookie = `${STAFF_KEY}=; path=/; max-age=0; samesite=lax`
+      setRoleCookie(null)
     }
   } catch { /* noop */ }
 }
@@ -78,11 +90,13 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
     const staff = readStaff()
     if (staff) {
       useActiveOutletStore.getState().setActiveOutlet(staff.outletId) // kunci ke cabang karyawan
+      setRoleCookie(staff.role)
       set({ user: { name: staff.name, email: '', role: staff.role, outletId: staff.outletId, employeeId: staff.employeeId, viaStaff: true }, loaded: true })
       return
     }
     // 2) Mode demo (Supabase belum dikonfigurasi).
     if (!isSupabaseConfigured()) {
+      setRoleCookie('owner')
       set({ user: { name: 'Mode Demo', email: '', role: 'owner', outletId: null }, loaded: true })
       return
     }
@@ -90,7 +104,7 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
     try {
       const { data } = await getSupabaseBrowser().auth.getSession()
       const u = data.session?.user
-      if (!u) { set({ user: null, loaded: true }); return }
+      if (!u) { setRoleCookie(null); set({ user: null, loaded: true }); return }
       const email = u.email ?? ''
       const emp = useEmployeeStore.getState().employees.find(
         (e) => e.email && e.email.toLowerCase() === email.toLowerCase()
@@ -100,6 +114,7 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
       // Default DIBALIK: akun email tak dikenal = 'cashier' (terbatas), BUKAN owner.
       // Owner harus terdaftar di data karyawan dgn role owner (email cocok).
       const role = emp?.role || (u.user_metadata?.role as string | undefined) || 'cashier'
+      setRoleCookie(role)
       set({ user: { name, email, role, outletId: emp?.outlet_id ?? null, employeeId: emp?.id, viaStaff: false }, loaded: true })
     } catch {
       set({ user: null, loaded: true })
