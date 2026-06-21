@@ -17,6 +17,7 @@ import { useSupplierStore } from '@/stores/use-supplier-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { formatRupiah, formatDate, generateId, localDay, rankedSearch } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem, PurchaseStatus } from '@/types'
@@ -109,13 +110,13 @@ export default function StokMasukPage() {
   const applyStock = (po: PurchaseOrder) => {
     po.items.forEach((it) => {
       const prod = useProductStore.getState().products.find((p) => p.id === it.product_id)
-      const before = prod?.stock ?? 0
+      // before/after dari inventory NYATA (cabang aktif) — bukan prod.stock yang bisa basi.
+      const { before: invBefore, after: invAfter } = incrementStock(it.product_id, it.qty)
       if (prod && it.cost > 0) {
-        const denom = before + it.qty
-        setCostPrice(it.product_id, denom > 0 ? Math.round((before * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
+        const denom = invBefore + it.qty
+        setCostPrice(it.product_id, denom > 0 ? Math.round((invBefore * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
       }
-      incrementStock(it.product_id, it.qty)
-      addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: before, after_stock: before + it.qty, notes: `Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me })
+      addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: useActiveOutletStore.getState().activeOutletId })
     })
   }
 
@@ -160,10 +161,8 @@ export default function StokMasukPage() {
     if (!confirm(`Hapus dokumen ${po.number}?${wasPosted ? ' Stok yang sudah masuk akan dikembalikan.' : ''}`)) return
     if (wasPosted) {
       po.items.forEach((it) => {
-        const prod = useProductStore.getState().products.find((p) => p.id === it.product_id)
-        const before = prod?.stock ?? 0
-        decrementStock(it.product_id, it.qty)
-        addMovement({ product_id: it.product_id, type: 'out', quantity: -it.qty, before_stock: before, after_stock: Math.max(0, before - it.qty), notes: `Hapus Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me })
+        const { before: invBefore, after: invAfter } = decrementStock(it.product_id, it.qty)
+        addMovement({ product_id: it.product_id, type: 'out', quantity: -it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Hapus Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: useActiveOutletStore.getState().activeOutletId })
       })
     }
     deletePurchase(po.id)

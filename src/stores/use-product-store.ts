@@ -39,10 +39,10 @@ interface ProductStore {
   /** Hapus SEMUA produk (katalog) — DB dulu, baru memori. Cascade: inventory, varian, pergerakan stok.
    *  Gagal bila ada produk dipakai di dokumen Pembelian/Stok Keluar (FK RESTRICT). Kembalikan status jujur. */
   deleteAllProducts: () => Promise<{ ok: boolean; error?: string }>
-  /** Kurangi stok saat transaksi POS */
-  decrementStock: (id: string, qty: number) => void
-  /** Kembalikan stok (mis. pesanan online dibatalkan) */
-  incrementStock: (id: string, qty: number) => void
+  /** Kurangi stok saat transaksi POS. Mengembalikan before/after NYATA dari inventory. */
+  decrementStock: (id: string, qty: number) => { before: number; after: number }
+  /** Tambah stok (stok masuk / pembatalan pesanan). Mengembalikan before/after NYATA dari inventory. */
+  incrementStock: (id: string, qty: number) => { before: number; after: number }
   /** Set stok absolut (stok masuk / opname) */
   setStock: (id: string, newStock: number) => void
   /** Set harga modal (mis. moving-average saat terima pembelian) */
@@ -243,8 +243,15 @@ export const useProductStore = create<ProductStore>()((set) => ({
           : p
       ),
     }))
-    // Stok adalah sumber-kebenaran inventory (per outlet aktif), bukan kolom products
-    useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, id, undefined, values.stock)
+    // Stok adalah sumber-kebenaran inventory (per outlet aktif), bukan kolom products.
+    // HANYA tulis bila user benar-benar mengubah angka stok di form — kalau tidak, JANGAN sentuh
+    // inventory (cegah edit produk menimpa/menghapus hasil Stok Masuk/Keluar/Opname).
+    const outlet = useActiveOutletStore.getState().activeOutletId
+    const invStore = useInventoryStore.getState()
+    const liveStock = invStore.stockAt(outlet, id)
+    if (liveStock === null || values.stock !== liveStock) {
+      invStore.setStockAt(outlet, id, undefined, values.stock)
+    }
     void updateRow('products', id, {
       category_id: values.category_id,
       name: values.name,
@@ -292,14 +299,16 @@ export const useProductStore = create<ProductStore>()((set) => ({
   // Stok kini per-outlet: mutasi diterapkan ke inventory outlet AKTIF, lalu proyeksi field `stock`.
   decrementStock: (id, qty) => {
     const outlet = useActiveOutletStore.getState().activeOutletId
-    const { after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, -qty)
+    const { before, after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, -qty)
     set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
+    return { before, after }
   },
 
   incrementStock: (id, qty) => {
     const outlet = useActiveOutletStore.getState().activeOutletId
-    const { after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, qty)
+    const { before, after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, qty)
     set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
+    return { before, after }
   },
 
   setStock: (id, newStock) => {

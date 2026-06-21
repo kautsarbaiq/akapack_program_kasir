@@ -83,7 +83,16 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       ),
     }))
     const pv = get().variants.find((x) => x.id === id)
-    if (pv) useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, pv.product_id, id, data.stock)
+    if (pv) {
+      // Sama seperti produk: hanya tulis stok kalau benar-benar diubah, agar edit varian
+      // tidak menimpa hasil Stok Masuk/Keluar.
+      const outlet = useActiveOutletStore.getState().activeOutletId
+      const invStore = useInventoryStore.getState()
+      const liveStock = invStore.stockAt(outlet, pv.product_id, id)
+      if (liveStock === null || data.stock !== liveStock) {
+        invStore.setStockAt(outlet, pv.product_id, id, data.stock)
+      }
+    }
     void updateRow('product_variants', id, {
       name: data.name,
       sku: data.sku || null,

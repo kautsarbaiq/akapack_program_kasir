@@ -21,6 +21,8 @@ import { CategoryCombobox } from '@/components/dashboard/category-combobox'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useRole } from '@/stores/use-current-user-store'
 import { uploadProductImage } from '@/lib/supabase/storage'
 import { generateSKU, formatRupiah } from '@/lib/utils'
@@ -49,6 +51,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const addVariant = useVariantStore((s) => s.addVariant)
   const updateVariant = useVariantStore((s) => s.updateVariant)
   const deleteVariant = useVariantStore((s) => s.deleteVariant)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
@@ -77,6 +80,9 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   useEffect(() => {
     if (open) {
       if (product) {
+        // Stok diambil dari inventory cabang aktif (sumber kebenaran), bukan product.stock
+        // yang bisa basi — supaya menyimpan edit TIDAK menimpa hasil Stok Masuk/Keluar.
+        const liveStock = useInventoryStore.getState().stockAt(activeOutletId, product.id)
         reset({
           name: product.name,
           category_id: product.category_id,
@@ -85,7 +91,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
           description: product.description ?? '',
           price: product.price,
           cost_price: product.cost_price,
-          stock: product.stock,
+          stock: liveStock ?? product.stock,
           min_stock: product.min_stock,
           unit: product.unit,
           is_active: product.is_active,
@@ -101,10 +107,14 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
       setPriceOnline(product?.price_online ?? 0)
       setImageUrl(product?.image_url ?? '')
       const existingVars = product ? useVariantStore.getState().byProduct(product.id) : []
-      setVariantRows(existingVars.map((v) => ({ id: v.id, name: v.name, price: v.price, cost_price: v.cost_price, stock: v.stock })))
+      const invStore = useInventoryStore.getState()
+      setVariantRows(existingVars.map((v) => ({
+        id: v.id, name: v.name, price: v.price, cost_price: v.cost_price,
+        stock: invStore.stockAt(activeOutletId, v.product_id, v.id) ?? v.stock, // dari inventory cabang aktif
+      })))
       setHasVariantsLocal(product?.has_variants ?? existingVars.length > 0)
     }
-  }, [open, product, reset])
+  }, [open, product, reset, activeOutletId])
 
   const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
