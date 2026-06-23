@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -25,7 +24,6 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
-  const router = useRouter()
   const [mode, setMode] = useState<'owner' | 'staff'>('owner')
   const [showPassword, setShowPassword] = useState(false)
 
@@ -40,14 +38,14 @@ export default function LoginPage() {
       await new Promise((r) => setTimeout(r, 500))
       clearStaffSession()
       toast.success('Masuk (mode demo).')
-      router.push('/dashboard'); return
+      window.location.assign('/dashboard'); return
     }
     try {
       const { error } = await getSupabaseBrowser().auth.signInWithPassword({ email: data.email, password: data.password })
       if (error) { toast.error(`Login gagal: ${error.message}`); return }
       clearStaffSession() // pastikan tak ada sesi karyawan tersisa
       toast.success('Login berhasil! Selamat datang.')
-      router.push('/dashboard'); router.refresh()
+      window.location.assign('/dashboard')
     } catch {
       toast.error('Login gagal. Periksa email dan password Anda.')
     }
@@ -71,7 +69,9 @@ export default function LoginPage() {
     setStaffBusy(false)
     if (err) { toast.error(err); return }
     toast.success(`Selamat datang, ${staffName}!`)
-    router.push('/pos'); router.refresh()
+    // Navigasi keras: pastikan cookie sesi baru terbaca middleware & halaman dimuat fresh.
+    // (router.push setelah set-cookie kadang tidak jadi navigasi → user "nyangkut" di /login.)
+    window.location.assign('/pos')
   }
 
   return (

@@ -109,9 +109,10 @@ const bottomItems: NavItem[] = [
   { title: 'Pengaturan', href: '/dashboard/pengaturan', icon: Settings },
 ]
 
-// Menu khusus karyawan (role 'cashier'): POS Kasir, Absensi, Analisis Absensi, Stok (lihat).
+// Menu khusus karyawan (role 'cashier'): POS Kasir, Riwayat Transaksi, Absensi, Analisis Absensi, Stok (lihat).
 const cashierNav: NavItem[] = [
   { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
+  { title: 'Riwayat Transaksi', href: '/dashboard/penjualan', icon: Receipt },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
   { title: 'Stok (Lihat)', href: '/dashboard/inventori', icon: Warehouse },

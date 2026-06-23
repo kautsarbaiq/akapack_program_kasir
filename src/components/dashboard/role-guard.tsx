@@ -9,6 +9,7 @@ import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 const CASHIER_ALLOWED = [
   '/dashboard/karyawan/absensi', // Absensi + Analisis Absensi (sub-path)
   '/dashboard/inventori',        // Stok (mode lihat-saja)
+  '/dashboard/penjualan',        // Riwayat Transaksi (lihat saja; void tetap owner)
 ]
 
 /** Halaman yang boleh diakses manager (TANPA Akuntansi/Promosi/Pelanggan/Karyawan-mgmt/Outlet/Pengaturan). */
@@ -45,6 +46,8 @@ export function RoleGuard() {
     }
     // Karyawan: kunci outlet aktif ke cabangnya + batasi halaman.
     if (user.outletId) setActiveOutlet(user.outletId)
+    // Kasir boleh Riwayat Transaksi (/dashboard/penjualan) TAPI bukan Laporan Penjualan (omzet/laba).
+    if (pathname.startsWith('/dashboard/penjualan/laporan')) { router.replace('/dashboard/penjualan'); return }
     const ok = CASHIER_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))
     if (!ok) router.replace('/dashboard/karyawan/absensi')
   }, [loaded, user, pathname, router, setActiveOutlet])

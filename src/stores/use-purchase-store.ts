@@ -41,26 +41,28 @@ async function persistPurchase(po: PurchaseOrder): Promise<string | null> {
   if (!isSupabaseConfigured()) return null
   try {
     const sb = getSupabaseBrowser()
-    const { data, error } = await sb
-      .from('purchase_orders')
-      .insert({
-        tenant_id: DEFAULT_TENANT_ID,
-        number: po.number,
-        outlet_id: isUuid(po.outlet_id) ? po.outlet_id : null,
-        supplier_id: isUuid(po.supplier_id) ? po.supplier_id : null,
-        total: po.total,
-        status: po.status,
-        payment: po.payment,
-        paid: po.paid,
-        paid_at: po.paid_at ?? null,
-        notes: po.notes ?? null,
-        received_from: po.received_from ?? null,
-        received_by: po.received_by ?? null,
-        date: po.date,
-        received_at: po.received_at ?? null,
-      })
-      .select('id')
-      .single()
+    const base = {
+      tenant_id: DEFAULT_TENANT_ID,
+      number: po.number,
+      supplier_id: isUuid(po.supplier_id) ? po.supplier_id : null,
+      total: po.total,
+      status: po.status,
+      payment: po.payment,
+      paid: po.paid,
+      paid_at: po.paid_at ?? null,
+      notes: po.notes ?? null,
+      received_from: po.received_from ?? null,
+      received_by: po.received_by ?? null,
+      date: po.date,
+      received_at: po.received_at ?? null,
+    }
+    const payload = isUuid(po.outlet_id) ? { ...base, outlet_id: po.outlet_id } : base
+    let { data, error } = await sb.from('purchase_orders').insert(payload).select('id').single()
+    // Fallback: kalau kolom outlet_id belum dibuat (migrasi belum dijalankan), simpan tanpa kolom itu
+    // supaya dokumen tetap tersimpan. Per-cabang penuh aktif setelah migrasi dijalankan.
+    if (error && payload !== base && /outlet_id/i.test(error.message || '')) {
+      ({ data, error } = await sb.from('purchase_orders').insert(base).select('id').single())
+    }
     if (error || !data) {
       console.warn('[akapack] gagal simpan pembelian:', error?.message)
       return null
