@@ -80,14 +80,27 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
         .select('*')
         .eq('status', 'open')
       if (isUuid(activeOutletId)) q = q.eq('outlet_id', activeOutletId)
-      const { data, error } = await q
-        .order('opened_at', { ascending: false })
-        .limit(1)
+      const { data, error } = await q.order('opened_at', { ascending: false })
       if (error || !data || !data.length) {
         set({ loaded: true })
         return
       }
-      const r = (data as unknown as ShiftRow[])[0]
+      const rows = data as unknown as ShiftRow[]
+      // Auto-close shift yang dibuka SEBELUM hari ini (kasir lupa "Tutup Shift") → 1 hari = 1 shift,
+      // shift lama tak menumpuk. Hanya menandai status; data shift & transaksi tetap utuh.
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+      const todayMs = todayStart.getTime()
+      for (const s of rows) {
+        if (new Date(s.opened_at).getTime() < todayMs && isUuid(s.id)) {
+          void updateRow('shifts', s.id, { status: 'closed', closed_at: new Date().toISOString() })
+        }
+      }
+      // Shift berjalan = shift open TERBARU yang dibuka HARI INI (kalau tak ada, kasir buka shift baru).
+      const r = rows.find((s) => new Date(s.opened_at).getTime() >= todayMs)
+      if (!r) {
+        set({ currentShift: null, loaded: true })
+        return
+      }
       const emp = useEmployeeStore.getState().employees.find((e) => e.id === r.employee_id)
       set({
         currentShift: {

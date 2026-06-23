@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
-import { useRole } from '@/stores/use-current-user-store'
+import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
 import { formatRupiah, formatDateTime, rankedSearch, localDay } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
@@ -29,10 +29,15 @@ export default function PenjualanPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
-  const { canEditTx } = useRole() // void/edit transaksi hanya owner
+  const { canEditTx, isCashier } = useRole() // void/edit transaksi hanya owner
+  const me = useCurrentUserStore((s) => s.user)
+
+  // Kasir DIKUNCI ke cabangnya sendiri (Garut hanya Garut, Bandung hanya Bandung) — tak bisa pilih cabang lain.
+  const lockedOutlet = isCashier && me?.outletId ? me.outletId : null
+  const effectiveOutlet = lockedOutlet ?? outletFilter
 
   // Filter per-cabang + rentang tanggal + metode + status.
-  const outletTx = outletFilter === 'all' ? transactions : transactions.filter((t) => t.outlet_id === outletFilter)
+  const outletTx = effectiveOutlet === 'all' ? transactions : transactions.filter((t) => t.outlet_id === effectiveOutlet)
   const dateTx = outletTx.filter((t) => {
     const d = localDay(t.created_at)
     return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
@@ -50,7 +55,7 @@ export default function PenjualanPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">Riwayat Transaksi</h1>
-          <p className="text-muted-foreground text-sm mt-1">{outletFilter === 'all' ? 'Semua cabang' : outlets.find((o) => o.id === outletFilter)?.name ?? 'Cabang'}</p>
+          <p className="text-muted-foreground text-sm mt-1">{effectiveOutlet === 'all' ? 'Semua cabang' : outlets.find((o) => o.id === effectiveOutlet)?.name ?? 'Cabang'}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5 text-xs">
           <Download size={14} /> Export Excel
@@ -79,7 +84,10 @@ export default function PenjualanPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Cari no. transaksi, pelanggan..." className="pl-9 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <OutletFilter value={outletFilter} onChange={setOutletFilter} />
+        {/* Kasir: tak boleh ganti cabang — terkunci ke cabangnya. Owner/manager: bebas pilih. */}
+        {lockedOutlet
+          ? <Badge variant="outline" className="h-9 px-3 text-xs gap-1.5">{outlets.find((o) => o.id === lockedOutlet)?.name ?? 'Cabang saya'}</Badge>
+          : <OutletFilter value={outletFilter} onChange={setOutletFilter} />}
         <div className="flex items-center gap-1.5">
           <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-36 text-sm" title="Dari tanggal" />
           <span className="text-muted-foreground text-xs">s/d</span>
