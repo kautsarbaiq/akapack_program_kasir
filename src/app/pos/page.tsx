@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useDeferredValue } from 'react'
 import Link from 'next/link'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
@@ -12,7 +12,7 @@ import { CategoryIcon } from '@/components/category-icon'
 import { OutletSwitcher } from '@/components/dashboard/outlet-switcher'
 import { PAYMENT_METHODS as PAYMENT_METHOD_DEFS } from '@/lib/constants'
 
-const MAX_SHOWN = 120 // batas kartu produk yang dirender sekaligus (performa katalog besar)
+const MAX_SHOWN = 60 // batas kartu produk yang dirender sekaligus (performa katalog besar)
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -94,6 +94,9 @@ export default function POSPage() {
   const decrementVariantStock = useVariantStore((s) => s.decrementVariantStock)
 
   const [search, setSearch] = useState('')
+  // Nilai pencarian "ditunda": input tetap responsif (prioritas tinggi), filter+render katalog besar
+  // jalan di prioritas rendah → ketikan tak ngadat/ngacok walau ada ribuan produk.
+  const deferredSearch = useDeferredValue(search)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -116,8 +119,8 @@ export default function POSPage() {
 
   const filteredProducts = useMemo(() => {
     const base = products.filter((p) => p.is_active && (selectedCategory === 'all' || p.category_id === selectedCategory))
-    return rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
-  }, [products, search, selectedCategory])
+    return rankedSearch(base, deferredSearch, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
+  }, [products, deferredSearch, selectedCategory])
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
   const promoDiscount = 0
