@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, Store, Percent, Receipt, Bell, Globe } from 'lucide-react'
+import { Save, Store, Percent, Receipt, Bell, Globe, Wrench } from 'lucide-react'
+import { MaintenanceToggle } from '@/components/dashboard/maintenance-toggle'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -106,6 +107,7 @@ export default function PengaturanPage() {
           <TabsTrigger value="pajak" className="gap-1.5"><Percent size={14} /> Pajak & Biaya</TabsTrigger>
           <TabsTrigger value="struk" className="gap-1.5"><Receipt size={14} /> Struk</TabsTrigger>
           <TabsTrigger value="notif" className="gap-1.5"><Bell size={14} /> Notifikasi</TabsTrigger>
+          <TabsTrigger value="sistem" className="gap-1.5"><Wrench size={14} /> Sistem</TabsTrigger>
         </TabsList>
 
         {/* Profil Toko */}
@@ -321,6 +323,10 @@ export default function PengaturanPage() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="sistem">
+          <MaintenanceToggle />
         </TabsContent>
       </Tabs>
     </div>

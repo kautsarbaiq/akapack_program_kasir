@@ -1,16 +1,28 @@
-import { Wrench } from 'lucide-react'
+'use client'
 
-// Halaman "Sedang Maintenance". Ditampilkan middleware (proxy.ts) saat MAINTENANCE_MODE aktif.
-// Pesan bisa dikustom lewat env MAINTENANCE_MESSAGE (opsional).
-export const metadata = {
-  title: 'Sedang Maintenance — AKAPACK',
-  robots: { index: false, follow: false },
-}
+import { useState, useEffect } from 'react'
+import { Wrench } from 'lucide-react'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
+
+// Halaman "Sedang Maintenance". Ditampilkan middleware (proxy.ts) saat mode maintenance aktif.
+// Pesan diambil dari app_config (di-set lewat Pengaturan), fallback ke pesan default.
+const DEFAULT_MSG =
+  'Website sedang dalam perbaikan & peningkatan. Mohon kembali beberapa saat lagi — terima kasih atas pengertiannya.'
 
 export default function MaintenancePage() {
-  const message =
-    process.env.MAINTENANCE_MESSAGE?.trim() ||
-    'Website sedang dalam perbaikan & peningkatan. Mohon kembali beberapa saat lagi — terima kasih atas pengertiannya.'
+  const [message, setMessage] = useState(DEFAULT_MSG)
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    void (async () => {
+      try {
+        const { data } = await getSupabaseBrowser()
+          .from('app_config').select('maintenance_message').eq('id', 1).single()
+        if (data?.maintenance_message && data.maintenance_message.trim()) setMessage(data.maintenance_message.trim())
+      } catch { /* pakai default */ }
+    })()
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6 bg-gradient-to-b from-background to-muted/40">

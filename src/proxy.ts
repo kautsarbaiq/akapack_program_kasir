@@ -2,17 +2,41 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from '@/lib/supabase/config'
 
-const MAINTENANCE_ON = ['1', 'true', 'on', 'yes'].includes((process.env.MAINTENANCE_MODE || '').trim().toLowerCase())
+const MAINTENANCE_ENV = ['1', 'true', 'on', 'yes'].includes((process.env.MAINTENANCE_MODE || '').trim().toLowerCase())
+
+// Flag maintenance dari Supabase (bisa di-toggle 1 klik dari halaman Pengaturan, tanpa redeploy).
+// Di-cache ~15 dtk agar tak query tiap request, dan FAIL-OPEN (kalau gagal → anggap mati) supaya
+// hiccup DB tak pernah mengunci seluruh web.
+let maintCache: { on: boolean; ts: number } = { on: false, ts: 0 }
+async function maintenanceFromDB(): Promise<boolean> {
+  const now = Date.now()
+  if (now - maintCache.ts < 15000) return maintCache.on
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_config?id=eq.1&select=maintenance_mode`, {
+      headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      cache: 'no-store',
+    })
+    if (!res.ok) return maintCache.on
+    const rows = (await res.json()) as Array<{ maintenance_mode?: boolean }>
+    const on = Array.isArray(rows) && rows[0]?.maintenance_mode === true
+    maintCache = { on, ts: now }
+    return on
+  } catch {
+    return maintCache.on // fail-open: pertahankan nilai terakhir (default mati)
+  }
+}
 
 // Next.js 16: konvensi "proxy" (pengganti "middleware").
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
+  const supaOk = isSupabaseConfigured()
 
-  // ── MODE MAINTENANCE (dikontrol env MAINTENANCE_MODE di hosting) ──
+  // ── MODE MAINTENANCE (env hosting ATAU flag Supabase dari Pengaturan) ──
   // Saat aktif, semua pengunjung diarahkan ke halaman "Sedang Maintenance".
   // Owner (punya cookie peran 'owner') TETAP bisa masuk untuk mengelola. Halaman login & /maintenance
   // tetap terbuka agar owner bisa login dulu. Aset Next & API dibiarkan lewat agar halaman tampil benar.
-  if (MAINTENANCE_ON) {
+  const maintenanceOn = MAINTENANCE_ENV || (supaOk ? await maintenanceFromDB() : false)
+  if (maintenanceOn) {
     const role = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
     const exempt =
       path === '/maintenance' ||
@@ -28,7 +52,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Config-gated: kalau Supabase belum siap, jangan kunci apa pun (app tetap bisa dipakai).
-  if (!isSupabaseConfigured()) return NextResponse.next()
+  if (!supaOk) return NextResponse.next()
 
   // Auth & role-gating HANYA untuk rute terproteksi. Rute publik (landing, login, maintenance)
   // lewat tanpa query Supabase → lebih ringan walau middleware kini jalan di semua rute.
