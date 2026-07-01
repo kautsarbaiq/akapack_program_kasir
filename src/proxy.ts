@@ -90,6 +90,12 @@ export async function proxy(request: NextRequest) {
   // klien tetap menjaga). Absensi tetap boleh untuk semua role.
   const role = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
   if ((user || hasStaff) && role && role !== 'owner') {
+    // Tujuan redirect sesuai peran (hindari bounce ke halaman yang role itu tak boleh).
+    const landing = role === 'sales' ? '/dashboard/surat-pesanan'
+      : role === 'cashier' ? '/dashboard/karyawan/absensi'
+      : '/dashboard'
+    const redirectTo = (p: string) => { const url = request.nextUrl.clone(); url.pathname = p; return NextResponse.redirect(url) }
+
     const ownerOnly =
       path.startsWith('/dashboard/akuntansi') ||
       path.startsWith('/dashboard/pengaturan') ||
@@ -97,10 +103,14 @@ export async function proxy(request: NextRequest) {
       path.startsWith('/dashboard/promosi') ||
       path.startsWith('/dashboard/pelanggan') ||
       (path.startsWith('/dashboard/karyawan') && !path.startsWith('/dashboard/karyawan/absensi'))
-    if (ownerOnly) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+    if (ownerOnly) return redirectTo(landing)
+
+    // SALES: dikunci ke Surat Pesanan + Absensi. Dilarang POS & halaman dashboard lain (server-side).
+    if (role === 'sales') {
+      const salesOk = path === '/dashboard'
+        || path.startsWith('/dashboard/surat-pesanan')
+        || path.startsWith('/dashboard/karyawan/absensi')
+      if (path.startsWith('/pos') || (path.startsWith('/dashboard') && !salesOk)) return redirectTo('/dashboard/surat-pesanan')
     }
   }
 

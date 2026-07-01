@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DataBootstrap } from '@/components/data-bootstrap'
 import { AuthGuard } from '@/components/auth-guard'
+import { PosRoleGuard } from '@/components/pos/pos-role-guard'
 
 export const metadata: Metadata = {
   title: 'POS Kasir | AKAPACK',
@@ -14,6 +15,7 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
     <AuthGuard>
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <DataBootstrap />
+      <PosRoleGuard />
       {/* POS Header */}
       <header className="flex h-14 items-center px-4 shrink-0 gap-3 z-10"
         style={{ background: 'oklch(0.13 0.03 256)', borderBottom: '1px solid oklch(0.22 0.04 256)' }}>
