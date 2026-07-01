@@ -39,6 +39,8 @@ create table if not exists sales_order_items (
 create index if not exists idx_salesorders_outlet on sales_orders(outlet_id);
 create index if not exists idx_salesorders_customer on sales_orders(customer_name);
 create index if not exists idx_salesorderitems_doc on sales_order_items(sales_order_id);
+-- No. SP unik per tenant → cegah duplikat nomor saat 2 device buat bersamaan (silent → error).
+create unique index if not exists idx_salesorders_number on sales_orders(tenant_id, number);
 
 -- Akses (mode internal) + RLS off, konsisten dengan 0003/0004/0009/0010/0013
 grant all privileges on table sales_orders to anon, authenticated;

@@ -106,7 +106,8 @@ export const useSalesOrderStore = create<SalesOrderStore>()((set) => ({
     set((s) => ({ salesOrders: [doc, ...s.salesOrders] }))
     void persistSalesOrder(doc).then((newId) => {
       if (!newId) return
-      set((s) => ({ salesOrders: s.salesOrders.map((d) => (d.id === doc.id ? { ...d, id: newId } : d)) }))
+      // Tukar id sementara → UUID DB, termasuk FK sales_order_id di tiap item (biar konsisten).
+      set((s) => ({ salesOrders: s.salesOrders.map((d) => (d.id === doc.id ? { ...d, id: newId, items: d.items.map((it) => ({ ...it, sales_order_id: newId })) } : d)) }))
     })
   },
 

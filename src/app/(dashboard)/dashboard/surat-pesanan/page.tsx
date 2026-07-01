@@ -63,7 +63,9 @@ export default function SuratPesananPage() {
   const lockedOutlet = (!isOwner && !isManager) && me?.outletId ? me.outletId : null
 
   const [filter, setFilter] = useState<'all' | SalesOrderStatus>('all')
-  const [detail, setDetail] = useState<SalesOrder | null>(null)
+  // Simpan NOMOR (stabil per sesi), bukan objek — supaya detail selalu baca dok LIVE dari store
+  // (id sementara ditukar ke UUID setelah tersimpan; snapshot beku bikin tombol nyangkut & update DB terlewat).
+  const [detailNumber, setDetailNumber] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
   // form
@@ -84,6 +86,7 @@ export default function SuratPesananPage() {
     () => (filter === 'all' ? branchOrders : branchOrders.filter((d) => d.status === filter)),
     [branchOrders, filter]
   )
+  const detail = detailNumber ? salesOrders.find((d) => d.number === detailNumber) ?? null : null
   const doneCount = branchOrders.filter((d) => d.status === 'done').length
   const totalValue = branchOrders.filter((d) => d.status !== 'cancelled').reduce((s, d) => s + d.total, 0)
   const activeEmployees = employees.filter((e) => e.is_active)
@@ -97,7 +100,7 @@ export default function SuratPesananPage() {
   const removeItem = (idx: number) => setItems((ls) => (ls.length <= 1 ? ls : ls.filter((_, i) => i !== idx)))
 
   const openNew = () => {
-    setOutletId(activeOutletId); setCustomerName(''); setCustomerAddress(''); setCustomerPhone('')
+    setOutletId(lockedOutlet ?? activeOutletId); setCustomerName(''); setCustomerAddress(''); setCustomerPhone('')
     setSalesId(me?.employeeId ?? ''); setOrderDate(new Date().toISOString().slice(0, 10))
     setBankName(''); setBankRef(''); setShippingCost(0); setNotes('')
     setItems([{ product_id: '', qty: 1 }]); setOpen(true)
@@ -119,7 +122,7 @@ export default function SuratPesananPage() {
     const subtotal = docItems.reduce((s, i) => s + i.subtotal, 0)
     const salesName = employees.find((e) => e.id === salesId)?.name || me?.name || undefined
     const doc: SalesOrder = {
-      id: docId, number: genNo(salesOrders), outlet_id: outletId,
+      id: docId, number: genNo(salesOrders), outlet_id: lockedOutlet ?? outletId,
       customer_name: customerName.trim(),
       customer_address: customerAddress.trim() || undefined,
       customer_phone: customerPhone.trim() || undefined,
@@ -135,10 +138,10 @@ export default function SuratPesananPage() {
     setOpen(false)
   }
 
-  const changeStatus = (doc: SalesOrder, status: SalesOrderStatus, msg: string) => { setStatus(doc.id, status); toast.success(msg); setDetail(null) }
+  const changeStatus = (doc: SalesOrder, status: SalesOrderStatus, msg: string) => { setStatus(doc.id, status); toast.success(msg); setDetailNumber(null) }
   const remove = (doc: SalesOrder) => {
     if (!confirm(`Hapus Surat Pesanan ${doc.number}?`)) return
-    deleteSalesOrder(doc.id); toast.success('Surat Pesanan dihapus'); setDetail(null)
+    deleteSalesOrder(doc.id); toast.success('Surat Pesanan dihapus'); setDetailNumber(null)
   }
   const handlePrint = () => { if (typeof window !== 'undefined') window.print() }
 
@@ -193,7 +196,7 @@ export default function SuratPesananPage() {
                     <td className="py-3 px-4 font-bold">{formatRupiah(d.total)}</td>
                     <td className="py-3 px-4 text-xs text-muted-foreground">{formatDate(d.order_date)}</td>
                     <td className="py-3 px-4"><Badge variant="outline" className={`text-xs ${STATUS_BADGE[d.status]}`}>{SALES_ORDER_STATUS[d.status].label}</Badge></td>
-                    <td className="py-3 px-4"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetail(d)}><Eye size={13} /></Button></td>
+                    <td className="py-3 px-4"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetailNumber(d.number)}><Eye size={13} /></Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -204,7 +207,7 @@ export default function SuratPesananPage() {
       </Card>
 
       {/* Detail — dokumen (bisa dicetak) */}
-      <Dialog open={!!detail} onOpenChange={() => setDetail(null)}>
+      <Dialog open={!!detail} onOpenChange={() => setDetailNumber(null)}>
         <DialogContent showCloseButton={false} className="sm:max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0">
           {detail && (
             <>
@@ -226,7 +229,7 @@ export default function SuratPesananPage() {
                   )}
                   <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={handlePrint}><Printer size={14} /> Cetak</Button>
                   {canManage && <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" disabled={isPending(detail)} onClick={() => remove(detail)}><Trash2 size={14} /></Button>}
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setDetail(null)}><X size={15} /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setDetailNumber(null)}><X size={15} /></Button>
                 </div>
               </div>
               {isPending(detail) && <p className="px-5 py-2 text-xs text-amber-600 print:hidden">Menyimpan dokumen… tunggu sebentar.</p>}
@@ -261,7 +264,8 @@ export default function SuratPesananPage() {
               </div>
               <div className="space-y-2">
                 <Label>Outlet</Label>
-                <select value={outletId} onChange={(e) => setOutletId(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                <select value={lockedOutlet ?? outletId} onChange={(e) => setOutletId(e.target.value)} disabled={!!lockedOutlet}
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70">
                   {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </div>
