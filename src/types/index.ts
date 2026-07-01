@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════
 
 // ─── Auth & User ───────────────────────
-export type UserRole = 'owner' | 'manager' | 'cashier'
+export type UserRole = 'owner' | 'manager' | 'cashier' | 'sales'
 
 export interface User {
   id: string
@@ -391,6 +391,40 @@ export interface StockOut {
   notes?: string
   date: string
   posted_at?: string
+  created_at: string
+}
+
+// ─── Surat Pesanan (sales order / order letter — TIDAK mengurangi stok) ──
+export type SalesOrderStatus = 'draft' | 'confirmed' | 'done' | 'cancelled'
+
+export interface SalesOrderItem {
+  id: string
+  sales_order_id: string
+  product_id: string
+  product_name: string
+  qty: number
+  price: number      // harga jual per unit
+  subtotal: number
+}
+
+export interface SalesOrder {
+  id: string
+  number: string           // SP-YYYYMMDD-xxx (No. PO)
+  outlet_id: string
+  customer_name: string
+  customer_address?: string
+  customer_phone?: string
+  order_date: string
+  sales_name?: string
+  sales_id?: string
+  bank_name?: string
+  bank_ref?: string
+  shipping_cost: number    // ongkir
+  subtotal: number         // total item sebelum ongkir
+  total: number            // subtotal + shipping_cost
+  items: SalesOrderItem[]
+  status: SalesOrderStatus
+  notes?: string
   created_at: string
 }
 
