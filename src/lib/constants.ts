@@ -52,6 +52,7 @@ export const ROLES = [
   { value: 'owner', label: 'Pemilik / Owner' },
   { value: 'manager', label: 'Manager' },
   { value: 'cashier', label: 'Kasir' },
+  { value: 'sales', label: 'Sales' },
 ] as const
 
 export const NAV_ITEMS = [

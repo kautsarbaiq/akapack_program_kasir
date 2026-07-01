@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Pencil, ToggleLeft, ToggleRight, Shield, User, UserCheck } from 'lucide-react'
+import { Plus, Pencil, ToggleLeft, ToggleRight, Shield, User, UserCheck, FileText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -11,13 +11,14 @@ import { getInitials, getAvatarColor } from '@/lib/utils'
 import type { Employee } from '@/types'
 import { toast } from 'sonner'
 
-const ROLE_LABELS: Record<string, string> = { owner: 'Pemilik', manager: 'Manager', cashier: 'Kasir' }
+const ROLE_LABELS: Record<string, string> = { owner: 'Pemilik', manager: 'Manager', cashier: 'Kasir', sales: 'Sales' }
 const ROLE_COLORS: Record<string, string> = {
   owner: 'bg-purple-100 text-purple-700',
   manager: 'bg-blue-100 text-blue-700',
   cashier: 'bg-gray-100 text-gray-700',
+  sales: 'bg-amber-100 text-amber-700',
 }
-const ROLE_ICONS: Record<string, React.ComponentType<{ size?: number }>> = { owner: Shield, manager: UserCheck, cashier: User }
+const ROLE_ICONS: Record<string, React.ComponentType<{ size?: number }>> = { owner: Shield, manager: UserCheck, cashier: User, sales: FileText }
 
 export default function KaryawanPage() {
   const employees = useEmployeeStore((s) => s.employees)

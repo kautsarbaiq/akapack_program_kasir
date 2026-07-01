@@ -24,6 +24,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: 'owner', label: 'Pemilik / Owner', desc: 'Akses penuh ke semua fitur' },
   { value: 'manager', label: 'Manager', desc: 'Kelola produk, laporan, karyawan' },
   { value: 'cashier', label: 'Kasir', desc: 'Akses POS & transaksi' },
+  { value: 'sales', label: 'Sales', desc: 'Buat surat pesanan / order penjualan' },
 ]
 
 interface Props {
