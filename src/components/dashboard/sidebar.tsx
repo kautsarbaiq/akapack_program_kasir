@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShoppingCart, Package, Warehouse,
   Receipt, Users, Tag, UserCheck, BarChart3, Settings,
-  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck, CalendarCheck,
+  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck, CalendarCheck, FileText,
 } from 'lucide-react'
 import { cn, getInitials, getAvatarColor } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -71,6 +71,7 @@ const navItems: NavItem[] = [
       { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan' },
     ],
   },
+  { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
   {
     title: 'Akuntansi', href: '/dashboard/akuntansi', icon: Calculator,
     children: [
@@ -109,13 +110,21 @@ const bottomItems: NavItem[] = [
   { title: 'Pengaturan', href: '/dashboard/pengaturan', icon: Settings },
 ]
 
-// Menu khusus karyawan (role 'cashier'): POS Kasir, Riwayat Transaksi, Absensi, Analisis Absensi, Stok (lihat).
+// Menu khusus karyawan (role 'cashier'): POS Kasir, Riwayat Transaksi, Surat Pesanan (lihat), Absensi, Analisis Absensi, Stok (lihat).
 const cashierNav: NavItem[] = [
   { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
   { title: 'Riwayat Transaksi', href: '/dashboard/penjualan', icon: Receipt },
+  { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
   { title: 'Stok (Lihat)', href: '/dashboard/inventori', icon: Warehouse },
+]
+
+// Menu khusus SALES: Surat Pesanan (utama) + Absensi.
+const salesNav: NavItem[] = [
+  { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
+  { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
+  { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
 ]
 
 // Menu manager: input barang, cek stok, penjualan & laporan omzet (TANPA Akuntansi/laba/modal/edit-tx).
@@ -147,6 +156,7 @@ const managerNav: NavItem[] = [
       { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan' },
     ],
   },
+  { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
   { title: 'Laporan', href: '/dashboard/laporan', icon: BarChart3 },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: UserCheck },
@@ -172,7 +182,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const isOwner = role === 'owner'
   const isManager = role === 'manager'
   const isPrivileged = isOwner || isManager
-  const visibleNav = isOwner ? navItems : isManager ? managerNav : cashierNav
+  const visibleNav = isOwner ? navItems : isManager ? managerNav : role === 'sales' ? salesNav : cashierNav
   const visibleBottom = isOwner ? bottomItems : [] // Pengaturan hanya owner
 
   const toggleExpand = (title: string) => {

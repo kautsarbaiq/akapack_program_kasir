@@ -10,6 +10,13 @@ const CASHIER_ALLOWED = [
   '/dashboard/karyawan/absensi', // Absensi + Analisis Absensi (sub-path)
   '/dashboard/inventori',        // Stok (mode lihat-saja)
   '/dashboard/penjualan',        // Riwayat Transaksi (lihat saja; void tetap owner)
+  '/dashboard/surat-pesanan',    // Surat Pesanan (lihat saja)
+]
+
+/** Halaman yang boleh diakses SALES: buat surat pesanan + absensi. */
+const SALES_ALLOWED = [
+  '/dashboard/surat-pesanan',
+  '/dashboard/karyawan/absensi',
 ]
 
 /** Halaman yang boleh diakses manager (TANPA Akuntansi/Promosi/Pelanggan/Karyawan-mgmt/Outlet/Pengaturan). */
@@ -42,6 +49,13 @@ export function RoleGuard() {
       if (pathname === '/dashboard') return
       const ok = MANAGER_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))
       if (!ok) router.replace('/dashboard')
+      return
+    }
+    if (role === 'sales') {
+      // Sales: dikunci ke cabangnya; hanya Surat Pesanan + Absensi.
+      if (user.outletId) setActiveOutlet(user.outletId)
+      const ok = SALES_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))
+      if (!ok) router.replace('/dashboard/surat-pesanan')
       return
     }
     // Karyawan: kunci outlet aktif ke cabangnya + batasi halaman.

@@ -71,7 +71,9 @@ export default function LoginPage() {
     toast.success(`Selamat datang, ${staffName}!`)
     // Navigasi keras: pastikan cookie sesi baru terbaca middleware & halaman dimuat fresh.
     // (router.push setelah set-cookie kadang tidak jadi navigasi → user "nyangkut" di /login.)
-    window.location.assign('/pos')
+    // Sales mendarat di Surat Pesanan; lainnya di POS.
+    const role = (useCurrentUserStore.getState().user?.role || '').toLowerCase()
+    window.location.assign(role === 'sales' ? '/dashboard/surat-pesanan' : '/pos')
   }
 
   return (
