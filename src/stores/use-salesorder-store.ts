@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
 import type { SalesOrder, SalesOrderStatus } from '@/types'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured, DEFAULT_TENANT_ID } from '@/lib/supabase/config'
@@ -105,7 +106,11 @@ export const useSalesOrderStore = create<SalesOrderStore>()((set) => ({
   addSalesOrder: (doc) => {
     set((s) => ({ salesOrders: [doc, ...s.salesOrders] }))
     void persistSalesOrder(doc).then((newId) => {
-      if (!newId) return
+      if (!newId) {
+        // Gagal simpan (mis. RLS masih nyala / koneksi) — jangan diam-diam: kasih tahu user.
+        if (isSupabaseConfigured()) toast.error('Surat pesanan GAGAL tersimpan ke server. Belum bisa dikonfirmasi — hubungi admin (cek RLS/koneksi), lalu buat ulang.')
+        return
+      }
       // Tukar id sementara → UUID DB, termasuk FK sales_order_id di tiap item (biar konsisten).
       set((s) => ({ salesOrders: s.salesOrders.map((d) => (d.id === doc.id ? { ...d, id: newId, items: d.items.map((it) => ({ ...it, sales_order_id: newId })) } : d)) }))
     })
