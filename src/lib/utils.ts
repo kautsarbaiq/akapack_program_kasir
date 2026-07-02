@@ -58,6 +58,26 @@ export function formatNumber(num: number): string {
   return new Intl.NumberFormat('id-ID').format(num)
 }
 
+/** Ubah angka rupiah ke kata (Bahasa Indonesia). mis. 14100000 → "empat belas juta seratus ribu". */
+export function terbilang(value: number): string {
+  const n = Math.floor(Math.abs(value || 0))
+  if (n === 0) return 'nol'
+  const satuan = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas']
+  const words = (x: number): string => {
+    if (x < 12) return satuan[x]
+    if (x < 20) return words(x - 10) + ' belas'
+    if (x < 100) return words(Math.floor(x / 10)) + ' puluh' + (x % 10 ? ' ' + satuan[x % 10] : '')
+    if (x < 200) return 'seratus' + (x - 100 ? ' ' + words(x - 100) : '')
+    if (x < 1000) return words(Math.floor(x / 100)) + ' ratus' + (x % 100 ? ' ' + words(x % 100) : '')
+    if (x < 2000) return 'seribu' + (x - 1000 ? ' ' + words(x - 1000) : '')
+    if (x < 1_000_000) return words(Math.floor(x / 1000)) + ' ribu' + (x % 1000 ? ' ' + words(x % 1000) : '')
+    if (x < 1_000_000_000) return words(Math.floor(x / 1_000_000)) + ' juta' + (x % 1_000_000 ? ' ' + words(x % 1_000_000) : '')
+    if (x < 1_000_000_000_000) return words(Math.floor(x / 1_000_000_000)) + ' miliar' + (x % 1_000_000_000 ? ' ' + words(x % 1_000_000_000) : '')
+    return words(Math.floor(x / 1_000_000_000_000)) + ' triliun' + (x % 1_000_000_000_000 ? ' ' + words(x % 1_000_000_000_000) : '')
+  }
+  return words(n).replace(/\s+/g, ' ').trim()
+}
+
 export function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat('id-ID', {
     day: 'numeric',
