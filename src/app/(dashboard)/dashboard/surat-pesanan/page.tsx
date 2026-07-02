@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { FileText, Plus, Eye, X, Trash2, Printer, CheckCircle2, Send } from 'lucide-react'
+import { FileText, Plus, Eye, X, Trash2, Printer, CheckCircle2, Send, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -87,6 +87,17 @@ export default function SuratPesananPage() {
     [branchOrders, filter]
   )
   const detail = detailNumber ? salesOrders.find((d) => d.number === detailNumber) ?? null : null
+
+  // Deteksi pesanan DOBEL: barang + jumlah persis sama (regardless nama/no HP pelanggan —
+  // kasus "1 customer chat dari 2 nomor, pesanan sama"). Ditandai di daftar & diperingatkan saat buat.
+  const itemsSig = (its: SalesOrder['items']) => its.map((i) => `${i.product_id}:${i.qty}`).sort().join('|')
+  const dupSigs = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const d of branchOrders) if (d.status !== 'cancelled' && d.items.length) { const s = itemsSig(d.items); m.set(s, (m.get(s) ?? 0) + 1) }
+    return m
+  }, [branchOrders])
+  const isDup = (d: SalesOrder) => d.status !== 'cancelled' && d.items.length > 0 && (dupSigs.get(itemsSig(d.items)) ?? 0) > 1
+
   const doneCount = branchOrders.filter((d) => d.status === 'done').length
   const totalValue = branchOrders.filter((d) => d.status !== 'cancelled').reduce((s, d) => s + d.total, 0)
   const activeEmployees = employees.filter((e) => e.is_active)
@@ -120,6 +131,13 @@ export default function SuratPesananPage() {
       return { id: generateId('soi'), sales_order_id: docId, product_id: pid, product_name: prod?.name ?? '-', qty, price, subtotal: qty * price }
     })
     const subtotal = docItems.reduce((s, i) => s + i.subtotal, 0)
+    // Peringatan dobel: cek surat pesanan aktif di cabang sama, 7 hari terakhir, barang+jumlah persis sama.
+    const outletForDoc = lockedOutlet ?? outletId
+    const sig = docItems.map((i) => `${i.product_id}:${i.qty}`).sort().join('|')
+    const weekAgo = Date.now() - 7 * 86400000
+    const twin = salesOrders.find((d) => d.status !== 'cancelled' && d.outlet_id === outletForDoc
+      && new Date(d.created_at).getTime() >= weekAgo && itemsSig(d.items) === sig)
+    if (twin && !confirm(`⚠ PESANAN MUNGKIN DOBEL\n\nSudah ada surat pesanan dengan barang & jumlah PERSIS SAMA:\n• ${twin.number} — ${twin.customer_name} (${formatDate(twin.order_date)})\n\nBisa jadi ini pesanan yang sama dari nomor berbeda. Tetap buat surat pesanan baru?`)) return
     const salesName = employees.find((e) => e.id === salesId)?.name || me?.name || undefined
     const doc: SalesOrder = {
       id: docId, number: genNo(salesOrders), outlet_id: lockedOutlet ?? outletId,
@@ -195,7 +213,12 @@ export default function SuratPesananPage() {
                     <td className="py-3 px-4 text-muted-foreground text-xs">{d.items.length} item</td>
                     <td className="py-3 px-4 font-bold">{formatRupiah(d.total)}</td>
                     <td className="py-3 px-4 text-xs text-muted-foreground">{formatDate(d.order_date)}</td>
-                    <td className="py-3 px-4"><Badge variant="outline" className={`text-xs ${STATUS_BADGE[d.status]}`}>{SALES_ORDER_STATUS[d.status].label}</Badge></td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="outline" className={`text-xs ${STATUS_BADGE[d.status]}`}>{SALES_ORDER_STATUS[d.status].label}</Badge>
+                        {isDup(d) && <Badge variant="outline" className="text-xs gap-1 bg-amber-100 text-amber-700 border-amber-300" title="Barang & jumlah sama dengan surat pesanan lain — cek jangan sampai dobel"><AlertTriangle size={10} /> Mungkin dobel</Badge>}
+                      </div>
+                    </td>
                     <td className="py-3 px-4"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetailNumber(d.number)}><Eye size={13} /></Button></td>
                   </tr>
                 ))}
