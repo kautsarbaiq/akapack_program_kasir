@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, BarChart3, CalendarCheck, LogIn, LogOut } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { ArrowLeft, BarChart3, CalendarCheck, Clock, AlertTriangle, Timer } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
@@ -16,6 +17,8 @@ function firstOfMonth(): string {
   const d = new Date()
   return localDay(new Date(d.getFullYear(), d.getMonth(), 1))
 }
+const mmToHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}.${String(Math.round(m % 60)).padStart(2, '0')}`
+const fmtHours = (h: number) => (h > 0 ? `${h.toFixed(1)} jam` : '—')
 
 export default function AnalisisAbsensiPage() {
   const employees = useEmployeeStore((s) => s.employees)
@@ -26,53 +29,112 @@ export default function AnalisisAbsensiPage() {
 
   const [from, setFrom] = useState(firstOfMonth())
   const [to, setTo] = useState(localDay(new Date()))
+  const [stdIn, setStdIn] = useState('08:00') // jam masuk standar → hitung telat
 
   const me = useCurrentUserStore((s) => s.user)
   const { isCashier } = useRole() // kasir hanya lihat absensi sendiri
 
+  const stdMinutes = useMemo(() => {
+    const [h, m] = stdIn.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }, [stdIn])
+
   const rows = useMemo(() => {
     const staff = employees.filter((e) => e.is_active && e.outlet_id === activeOutletId
-      && (!isCashier || e.id === me?.employeeId)) // kasir: hanya baris dirinya (match id, bukan nama)
+      && (!isCashier || e.id === me?.employeeId)) // kasir: hanya baris dirinya
     return staff.map((e) => {
       const recs = records.filter((r) => {
         if (r.employee_id !== e.id || r.outlet_id !== activeOutletId) return false
         const d = localDay(r.timestamp)
         return d >= from && d <= to
       })
-      const days = new Set(recs.filter((r) => r.type === 'in').map((r) => localDay(r.timestamp)))
-      const ins = recs.filter((r) => r.type === 'in').length
-      const outs = recs.filter((r) => r.type === 'out').length
-      const last = recs.length ? recs.reduce((a, b) => (a.timestamp > b.timestamp ? a : b)) : undefined
-      return { e, hadir: days.size, ins, outs, last }
+      // Kelompokkan per hari: jam masuk pertama & jam pulang terakhir.
+      const byDay = new Map<string, { ins: number[]; outs: number[] }>()
+      for (const r of recs) {
+        const day = localDay(r.timestamp)
+        const t = new Date(r.timestamp).getTime()
+        const g = byDay.get(day) ?? { ins: [], outs: [] }
+        if (r.type === 'in') g.ins.push(t); else g.outs.push(t)
+        byDay.set(day, g)
+      }
+      let hadir = 0, lateDays = 0, incompleteDays = 0, workMs = 0, inMinSum = 0, inDays = 0
+      byDay.forEach((g) => {
+        if (!g.ins.length) return
+        hadir++
+        const firstIn = Math.min(...g.ins)
+        const d = new Date(firstIn)
+        const inMin = d.getHours() * 60 + d.getMinutes()
+        inMinSum += inMin; inDays++
+        if (inMin > stdMinutes) lateDays++
+        if (g.outs.length) {
+          const lastOut = Math.max(...g.outs)
+          if (lastOut > firstIn) workMs += lastOut - firstIn
+        } else incompleteDays++
+      })
+      const last = recs.length ? recs.reduce((a, b) => (new Date(a.timestamp).getTime() > new Date(b.timestamp).getTime() ? a : b)) : undefined
+      return {
+        e, hadir, telat: lateDays, incomplete: incompleteDays,
+        jamKerja: workMs / 3_600_000,
+        avgIn: inDays ? mmToHHMM(inMinSum / inDays) : '—',
+        last,
+      }
     })
-  }, [employees, records, activeOutletId, from, to, isCashier, me])
+  }, [employees, records, activeOutletId, from, to, isCashier, me, stdMinutes])
 
   const totalHadir = rows.reduce((s, r) => s + r.hadir, 0)
+  const totalJam = rows.reduce((s, r) => s + r.jamKerja, 0)
+  const totalTelat = rows.reduce((s, r) => s + r.telat, 0)
+  const chartData = rows.filter((r) => r.hadir > 0).map((r) => ({ name: r.e.name.split(' ')[0], Hadir: r.hadir, Telat: r.telat }))
 
   return (
     <div className="space-y-6">
       <div>
         <Link href="/dashboard/karyawan/absensi" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"><ArrowLeft size={13} /> Absensi</Link>
         <h1 className="text-2xl font-bold flex items-center gap-2"><BarChart3 size={22} /> Analisis Absensi</h1>
-        <p className="text-muted-foreground text-sm mt-1">Rekap kehadiran karyawan — cabang <span className="font-medium text-foreground">{outletName}</span></p>
+        <p className="text-muted-foreground text-sm mt-1">Rekap kehadiran, jam kerja & keterlambatan — cabang <span className="font-medium text-foreground">{outletName}</span></p>
       </div>
 
       <div className="flex gap-3 flex-wrap items-end">
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Dari tanggal</label>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-44" />
+          <Input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="h-9 w-44" />
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Sampai tanggal</label>
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-44" />
+          <Input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="h-9 w-44" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Jam masuk standar (utk telat)</label>
+          <Input type="time" value={stdIn} onChange={(e) => setStdIn(e.target.value || '08:00')} className="h-9 w-36" />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card><CardContent className="p-4"><p className="text-2xl font-bold">{rows.length}</p><p className="text-xs text-muted-foreground mt-1">Karyawan</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-2xl font-bold">{totalHadir}</p><p className="text-xs text-muted-foreground mt-1">Total hari hadir</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-2xl font-bold flex items-center gap-1.5"><CalendarCheck size={20} className="text-emerald-600" />{rows.filter((r) => r.hadir > 0).length}</p><p className="text-xs text-muted-foreground mt-1">Pernah hadir</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-2xl font-bold flex items-center gap-1.5"><CalendarCheck size={18} className="text-emerald-600" />{totalHadir}</p><p className="text-xs text-muted-foreground mt-1">Total hari hadir</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-2xl font-bold flex items-center gap-1.5"><Timer size={18} className="text-blue-600" />{totalJam.toFixed(1)}</p><p className="text-xs text-muted-foreground mt-1">Total jam kerja</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-2xl font-bold flex items-center gap-1.5"><AlertTriangle size={18} className="text-amber-600" />{totalTelat}</p><p className="text-xs text-muted-foreground mt-1">Total telat (hari)</p></CardContent></Card>
       </div>
+
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><BarChart3 size={16} /> Kehadiran per Karyawan</CardTitle></CardHeader>
+          <CardContent>
+            <div style={{ width: '100%', height: Math.max(200, chartData.length * 34) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="Hadir" fill="oklch(0.65 0.18 160)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="Telat" fill="oklch(0.7 0.18 60)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -80,13 +142,13 @@ export default function AnalisisAbsensiPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Karyawan', 'Hari Hadir', 'Clock-in', 'Clock-out', 'Aktivitas Terakhir'].map((h) => (
+                  {['Karyawan', 'Hari Hadir', 'Jam Kerja', 'Rata2 Masuk', 'Telat', 'Tak Lengkap', 'Aktivitas Terakhir'].map((h) => (
                     <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ e, hadir, ins, outs, last }) => (
+                {rows.map(({ e, hadir, jamKerja, avgIn, telat, incomplete, last }) => (
                   <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-muted/30">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2.5">
@@ -95,15 +157,20 @@ export default function AnalisisAbsensiPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4"><span className="font-bold">{hadir}</span> <span className="text-xs text-muted-foreground">hari</span></td>
-                    <td className="py-3 px-4 text-emerald-600"><span className="inline-flex items-center gap-1"><LogIn size={12} />{ins}</span></td>
-                    <td className="py-3 px-4 text-amber-600"><span className="inline-flex items-center gap-1"><LogOut size={12} />{outs}</span></td>
+                    <td className="py-3 px-4">{fmtHours(jamKerja)}</td>
+                    <td className="py-3 px-4 inline-flex items-center gap-1 text-muted-foreground"><Clock size={12} />{avgIn}</td>
+                    <td className="py-3 px-4">{telat > 0 ? <span className="text-amber-600 font-semibold">{telat} hari</span> : <span className="text-muted-foreground">0</span>}</td>
+                    <td className="py-3 px-4">{incomplete > 0 ? <span className="text-destructive">{incomplete} hari</span> : <span className="text-muted-foreground">0</span>}</td>
                     <td className="py-3 px-4 text-muted-foreground text-xs">{last ? `${localDay(last.timestamp)} · ${formatTime(last.timestamp)} (${last.type === 'in' ? 'masuk' : 'pulang'})` : '—'}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">Belum ada karyawan di cabang ini. Tetapkan cabang karyawan di menu Karyawan.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-muted-foreground">Belum ada karyawan di cabang ini. Tetapkan cabang karyawan di menu Karyawan.</td></tr>}
               </tbody>
             </table>
           </div>
+          <p className="px-4 py-3 text-xs text-muted-foreground border-t">
+            <b>Telat</b> = jam masuk pertama lewat {stdIn}. <b>Tak Lengkap</b> = ada absen masuk tapi tak absen pulang. <b>Jam Kerja</b> = selisih masuk pertama → pulang terakhir per hari.
+          </p>
         </CardContent>
       </Card>
     </div>
