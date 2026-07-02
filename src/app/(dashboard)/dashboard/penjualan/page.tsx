@@ -11,8 +11,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { useSettingsStore } from '@/stores/use-settings-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
+import { printReceipt } from '@/lib/print-receipt'
 import { formatRupiah, formatDateTime, rankedSearch, localDay } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
@@ -22,6 +24,10 @@ export default function PenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const voidTransaction = useTransactionStore((s) => s.voidTransaction)
   const outlets = useOutletStore((s) => s.outlets)
+  const storeName = useSettingsStore((s) => s.storeName)
+  const storeAddress = useSettingsStore((s) => s.storeAddress)
+  const storePhone = useSettingsStore((s) => s.storePhone)
+  const receiptFooter = useSettingsStore((s) => s.receiptFooter)
   const [outletFilter, setOutletFilter] = useState('all')
   const [methodFilter, setMethodFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -197,7 +203,10 @@ export default function PenjualanPage() {
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button variant="outline" className="flex-1 gap-2" onClick={() => toast.info('Fitur cetak struk')}>
+                  <Button variant="outline" className="flex-1 gap-2" onClick={() => {
+                    const o = outlets.find((x) => x.id === selected.outlet_id)
+                    printReceipt(selected, { name: o?.name || storeName || 'AKAPACK', address: o?.address || storeAddress, phone: o?.phone || storePhone, footer: receiptFooter })
+                  }}>
                     <FileText size={14} /> Cetak Struk
                   </Button>
                   {canEditTx && selected.status === 'completed' && (
