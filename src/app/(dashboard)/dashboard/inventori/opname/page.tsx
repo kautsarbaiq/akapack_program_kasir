@@ -21,6 +21,9 @@ export default function StockOpnamePage() {
 
   const [search, setSearch] = useState('')
   const [actual, setActual] = useState<Record<string, string>>({})
+  // Ganti cabang di tengah opname → buang hitungan tertunda (jangan sampai angka fisik
+  // cabang A tertulis ke stok cabang B).
+  useEffect(() => { setActual({}) }, [activeOutletId])
 
   const filtered = useMemo(
     () => rankedSearch(products, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name),
