@@ -77,6 +77,7 @@ export default function SuratPesananPage() {
   const [customerPhone, setCustomerPhone] = useState('')
   const [sourcePhone, setSourcePhone] = useState('') // No. HP asal pesanan (nomor yang chat)
   const [salesId, setSalesId] = useState(me?.employeeId ?? '')
+  const [salesPhone, setSalesPhone] = useState('') // No. HP sales — auto dari data karyawan, bisa diedit
   const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10))
   const [bankName, setBankName] = useState('')
   const [bankRef, setBankRef] = useState('')
@@ -129,7 +130,9 @@ export default function SuratPesananPage() {
 
   const openNew = () => {
     setOutletId(lockedOutlet ?? activeOutletId); setCustomerName(''); setCustomerAddress(''); setCustomerPhone(''); setSourcePhone('')
-    setSalesId(me?.employeeId ?? ''); setOrderDate(new Date().toISOString().slice(0, 10))
+    setSalesId(me?.employeeId ?? '')
+    setSalesPhone(employees.find((x) => x.id === me?.employeeId)?.phone ?? '')
+    setOrderDate(new Date().toISOString().slice(0, 10))
     setBankName(''); setBankRef(''); setShippingCost(0); setNotes('')
     setItems([{ product_id: '', qty: 1 }]); setOpen(true)
   }
@@ -166,6 +169,7 @@ export default function SuratPesananPage() {
       customer_phone: customerPhone.trim() || undefined,
       order_date: od.toISOString(),
       sales_name: salesName, sales_id: salesId || undefined,
+      sales_phone: salesPhone.trim() || undefined,
       source_phone: sourcePhone.trim() || undefined,
       created_by_name: me?.name || undefined,
       bank_name: bankName.trim() || undefined, bank_ref: bankRef.trim() || undefined,
@@ -310,10 +314,18 @@ export default function SuratPesananPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Sales</Label>
-                <select value={salesId} onChange={(e) => setSalesId(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                <select value={salesId}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setSalesId(v)
+                    // pilih sales → nomor HP-nya ikut terisi (tetap bisa diedit manual)
+                    setSalesPhone(employees.find((x) => x.id === v)?.phone ?? '')
+                  }}
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                   <option value="">— pilih —</option>
                   {activeEmployees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
+                <Input value={salesPhone} onChange={(e) => setSalesPhone(e.target.value)} placeholder="No. HP sales" inputMode="tel" className="h-8 text-xs" />
               </div>
               <div className="space-y-2">
                 <Label>Outlet</Label>

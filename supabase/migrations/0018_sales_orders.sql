@@ -16,6 +16,7 @@ create table if not exists sales_orders (
   order_date timestamptz not null default now(),
   sales_name text,
   sales_id uuid references employees(id),
+  sales_phone text,                           -- No. HP sales (snapshot, tampil di dokumen)
   source_phone text,                          -- No. HP ASAL pesanan (nomor yang chat/memesan)
   created_by_name text,                       -- staf penginput (kasir/sales)
   bank_name text,                             -- nama bank

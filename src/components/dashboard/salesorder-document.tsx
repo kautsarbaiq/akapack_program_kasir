@@ -69,6 +69,7 @@ export function SalesOrderDocument({ doc }: { doc: SalesOrder }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {metaRow('Tanggal', formatDate(doc.order_date))}
           {metaRow('Sales', doc.sales_name || '—')}
+          {doc.sales_phone ? metaRow('No. HP Sales', doc.sales_phone) : null}
           {metaRow('Outlet', outletName)}
           {doc.source_phone ? metaRow('Asal Pesanan', doc.source_phone) : null}
           {doc.created_by_name ? metaRow('Diinput oleh', doc.created_by_name) : null}

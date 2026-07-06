@@ -417,6 +417,7 @@ export interface SalesOrder {
   order_date: string
   sales_name?: string
   sales_id?: string
+  sales_phone?: string     // No. HP sales (snapshot; tampil di bawah nama sales pada dokumen)
   source_phone?: string    // No. HP ASAL pesanan (nomor yang chat/memesan — bisa beda dari HP customer)
   created_by_name?: string // staf yang menginput (kasir/sales)
   bank_name?: string
