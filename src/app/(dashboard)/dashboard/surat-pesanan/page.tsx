@@ -73,6 +73,7 @@ export default function SuratPesananPage() {
   const [customerName, setCustomerName] = useState('')
   const [customerAddress, setCustomerAddress] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
+  const [sourcePhone, setSourcePhone] = useState('') // No. HP asal pesanan (nomor yang chat)
   const [salesId, setSalesId] = useState(me?.employeeId ?? '')
   const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10))
   const [bankName, setBankName] = useState('')
@@ -111,7 +112,7 @@ export default function SuratPesananPage() {
   const removeItem = (idx: number) => setItems((ls) => (ls.length <= 1 ? ls : ls.filter((_, i) => i !== idx)))
 
   const openNew = () => {
-    setOutletId(lockedOutlet ?? activeOutletId); setCustomerName(''); setCustomerAddress(''); setCustomerPhone('')
+    setOutletId(lockedOutlet ?? activeOutletId); setCustomerName(''); setCustomerAddress(''); setCustomerPhone(''); setSourcePhone('')
     setSalesId(me?.employeeId ?? ''); setOrderDate(new Date().toISOString().slice(0, 10))
     setBankName(''); setBankRef(''); setShippingCost(0); setNotes('')
     setItems([{ product_id: '', qty: 1 }]); setOpen(true)
@@ -137,7 +138,7 @@ export default function SuratPesananPage() {
     const weekAgo = Date.now() - 7 * 86400000
     const twin = salesOrders.find((d) => d.status !== 'cancelled' && d.outlet_id === outletForDoc
       && new Date(d.created_at).getTime() >= weekAgo && itemsSig(d.items) === sig)
-    if (twin && !confirm(`⚠ PESANAN MUNGKIN DOBEL\n\nSudah ada surat pesanan dengan barang & jumlah PERSIS SAMA:\n• ${twin.number} — ${twin.customer_name} (${formatDate(twin.order_date)})\n\nBisa jadi ini pesanan yang sama dari nomor berbeda. Tetap buat surat pesanan baru?`)) return
+    if (twin && !confirm(`⚠ PESANAN MUNGKIN DOBEL\n\nSudah ada surat pesanan dengan barang & jumlah PERSIS SAMA:\n• ${twin.number} — ${twin.customer_name} (${formatDate(twin.order_date)})\n  HP: ${twin.customer_phone || '-'}${twin.source_phone ? ` · asal pesanan: ${twin.source_phone}` : ''}${twin.created_by_name ? ` · diinput: ${twin.created_by_name}` : ''}\n\nBisa jadi ini pesanan yang sama dari nomor berbeda. Tetap buat surat pesanan baru?`)) return
     const salesName = employees.find((e) => e.id === salesId)?.name || me?.name || undefined
     const doc: SalesOrder = {
       id: docId, number: genNo(salesOrders), outlet_id: lockedOutlet ?? outletId,
@@ -146,6 +147,8 @@ export default function SuratPesananPage() {
       customer_phone: customerPhone.trim() || undefined,
       order_date: new Date(orderDate).toISOString(),
       sales_name: salesName, sales_id: salesId || undefined,
+      source_phone: sourcePhone.trim() || undefined,
+      created_by_name: me?.name || undefined,
       bank_name: bankName.trim() || undefined, bank_ref: bankRef.trim() || undefined,
       shipping_cost: Number(shippingCost) || 0, subtotal, total: subtotal + (Number(shippingCost) || 0),
       items: docItems, status: 'draft', notes: notes.trim() || undefined,
@@ -275,7 +278,14 @@ export default function SuratPesananPage() {
               <div className="space-y-2"><Label>Nama Customer *</Label><Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama pelanggan" /></div>
               <div className="space-y-2"><Label>No. HP</Label><Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxx" inputMode="tel" /></div>
             </div>
-            <div className="space-y-2"><Label>Alamat Penerima</Label><Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Alamat pengiriman" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Alamat Penerima</Label><Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Alamat pengiriman" /></div>
+              <div className="space-y-2">
+                <Label>No. HP Asal Pesanan</Label>
+                <Input value={sourcePhone} onChange={(e) => setSourcePhone(e.target.value)} placeholder="Nomor yang dipakai memesan/chat" inputMode="tel" />
+                <p className="text-[11px] text-muted-foreground">Isi bila beda dari No. HP customer — membantu melacak pesanan dobel dari 2 nomor.</p>
+              </div>
+            </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">

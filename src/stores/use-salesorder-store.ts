@@ -16,6 +16,7 @@ interface SalesOrderRow {
   id: string; number: string; outlet_id: string | null
   customer_name: string; customer_address: string | null; customer_phone: string | null
   order_date: string; sales_name: string | null; sales_id: string | null
+  source_phone?: string | null; created_by_name?: string | null
   bank_name: string | null; bank_ref: string | null
   shipping_cost: number; subtotal: number; total: number
   status: SalesOrderStatus; notes: string | null; created_at: string
@@ -26,7 +27,7 @@ async function persistSalesOrder(doc: SalesOrder): Promise<string | null> {
   if (!isSupabaseConfigured()) return null
   try {
     const sb = getSupabaseBrowser()
-    const { data, error } = await sb.from('sales_orders').insert({
+    const base = {
       tenant_id: DEFAULT_TENANT_ID,
       number: doc.number,
       outlet_id: isUuid(doc.outlet_id) ? doc.outlet_id : null,
@@ -43,7 +44,13 @@ async function persistSalesOrder(doc: SalesOrder): Promise<string | null> {
       total: doc.total,
       status: doc.status,
       notes: doc.notes ?? null,
-    }).select('id').single()
+    }
+    const full = { ...base, source_phone: doc.source_phone ?? null, created_by_name: doc.created_by_name ?? null }
+    let { data, error } = await sb.from('sales_orders').insert(full).select('id').single()
+    // Fallback: kolom source_phone/created_by_name belum dimigrasi → simpan tanpa kolom itu.
+    if (error && /source_phone|created_by_name/i.test(error.message || '')) {
+      ({ data, error } = await sb.from('sales_orders').insert(base).select('id').single())
+    }
     if (error || !data) { console.warn('[akapack] gagal simpan surat pesanan:', error?.message); return null }
     const docId = (data as { id: string }).id
     if (doc.items.length) {
@@ -91,6 +98,7 @@ export const useSalesOrderStore = create<SalesOrderStore>()((set) => ({
         id: r.id, number: r.number, outlet_id: r.outlet_id ?? '',
         customer_name: r.customer_name, customer_address: r.customer_address ?? undefined, customer_phone: r.customer_phone ?? undefined,
         order_date: r.order_date, sales_name: r.sales_name ?? undefined, sales_id: r.sales_id ?? undefined,
+        source_phone: r.source_phone ?? undefined, created_by_name: r.created_by_name ?? undefined,
         bank_name: r.bank_name ?? undefined, bank_ref: r.bank_ref ?? undefined,
         shipping_cost: r.shipping_cost, subtotal: r.subtotal, total: r.total,
         status: r.status, notes: r.notes ?? undefined, created_at: r.created_at,
