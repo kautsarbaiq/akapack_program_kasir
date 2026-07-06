@@ -11,6 +11,7 @@ import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { generateId } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem } from '@/types'
@@ -34,7 +35,8 @@ function pickKey(obj: Record<string, unknown>, names: string[]) {
 const num = (v: unknown) => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return Number.isFinite(n) ? Math.max(0, n) : 0 }
 
 function genIN(dateStr: string, seq: number) {
-  const d = new Date(dateStr || Date.now())
+  const parsed = new Date(dateStr || Date.now())
+  const d = Number.isNaN(parsed.getTime()) ? new Date() : parsed // tanggal non-ISO → hari ini
   const yy = String(d.getFullYear()).slice(-2)
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
@@ -78,7 +80,8 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
     if (!file) return
     setFileName(file.name)
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      // cellDates: sel tanggal Excel jadi Date (bukan angka serial 45xxx) → parse tanggal benar.
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
       if (!json.length) { toast.error('File kosong'); return }
@@ -130,21 +133,28 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       let createdDocs = 0
       let skipped = 0
       // Akumulasi delta stok & nilai per-produk (lintas semua dokumen) → 1x batch ke DB.
-      const acc = new Map<string, { qty: number; costSum: number }>()
+      const acc = new Map<string, { qty: number; costSum: number; costQty: number }>()
 
       for (const d of docs) {
         const poId = generateId('po')
         const poItems: PurchaseItem[] = []
         for (const it of d.items) {
           const prod = match(it)
-          if (!prod) { skipped++; continue }
+          if (!prod || it.qty <= 0) { skipped++; continue } // qty 0 dilewati (samakan dgn form manual)
           poItems.push({ id: generateId('poi'), purchase_id: poId, product_id: prod.id, product_name: prod.name, qty: it.qty, cost: it.cost, subtotal: it.qty * it.cost })
-          const a = acc.get(prod.id) ?? { qty: 0, costSum: 0 }
-          a.qty += it.qty; a.costSum += it.qty * it.cost; acc.set(prod.id, a)
+          const a = acc.get(prod.id) ?? { qty: 0, costSum: 0, costQty: 0 }
+          a.qty += it.qty
+          // Moving-average hanya dari baris yang PUNYA harga beli (cost>0) — file tanpa kolom harga
+          // tidak boleh mengencerkan/menolkan modal produk.
+          if (it.cost > 0) { a.costSum += it.qty * it.cost; a.costQty += it.qty }
+          acc.set(prod.id, a)
         }
         if (!poItems.length) continue
         base += 1
-        const isoDate = d.date ? new Date(d.date).toISOString() : new Date().toISOString()
+        // Parse tanggal defensif: format non-ISO (mis. "13/06/2026") tidak boleh melempar RangeError
+        // di tengah loop (dokumen awal tersimpan tapi stok batal masuk = import setengah jalan).
+        const parsed = d.date ? new Date(d.date) : new Date()
+        const isoDate = Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
         const po: PurchaseOrder = {
           id: poId, number: genIN(d.date, base), outlet_id: outlet, supplier_id: undefined, supplier: undefined,
           items: poItems, total: poItems.reduce((s, i) => s + i.subtotal, 0),
@@ -159,20 +169,29 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       // Posting massal: tambah stok (current + delta) + moving-average cost, dalam batch.
       const stockEntries: { productId: string; stock: number }[] = []
       const costPatches: { id: string; cost_price: number }[] = []
+      const mv = useStockMovementStore.getState()
       for (const [pid, a] of acc) {
         const prod = prodStore.products.find((p) => p.id === pid)
         const before = inv.stockAt(outlet, pid) ?? prod?.stock ?? 0
         stockEntries.push({ productId: pid, stock: before + a.qty })
-        const beforeCost = prod?.cost_price ?? 0
-        const denom = before + a.qty
-        const newCost = denom > 0 ? Math.round((before * beforeCost + a.costSum) / denom) : Math.round(a.costSum / Math.max(1, a.qty))
-        costPatches.push({ id: pid, cost_price: newCost })
+        // Jejak audit: catat pergerakan 'in' per produk (samakan dgn posting manual).
+        mv.addMovement({ product_id: pid, type: 'in', quantity: a.qty, before_stock: before, after_stock: before + a.qty, notes: 'Import Stok Masuk', created_by_name: me, outlet_id: outlet })
+        // Update modal HANYA bila ada harga beli di file (costSum>0) — jangan menolkan modal.
+        if (a.costSum > 0 && a.costQty > 0) {
+          const beforeCost = prod?.cost_price ?? 0
+          const denom = before + a.costQty
+          const newCost = denom > 0 ? Math.round((before * beforeCost + a.costSum) / denom) : Math.round(a.costSum / a.costQty)
+          costPatches.push({ id: pid, cost_price: newCost })
+        }
       }
       let failed = 0
       if (stockEntries.length) failed += await inv.bulkUpsert(outlet, stockEntries)
       if (costPatches.length) failed += await prodStore.bulkPatch(costPatches)
-      prodStore.projectStock(outlet)
-      useVariantStore.getState().projectVariantStock(outlet)
+      // Proyeksikan tampilan ke CABANG AKTIF (bukan cabang tujuan) — import ke Garut saat melihat
+      // Bandung tidak boleh menukar seluruh angka stok layar ke milik Garut.
+      const viewOutlet = useActiveOutletStore.getState().activeOutletId
+      prodStore.projectStock(viewOutlet)
+      useVariantStore.getState().projectVariantStock(viewOutlet)
 
       const tail = skipped > 0 ? ` (${skipped} item dilewati — produk tak ada di katalog)` : ''
       if (failed > 0) toast.warning(`${createdDocs} dokumen dibuat, tapi ${failed} update stok GAGAL ke server — muat ulang & cek.${tail}`)
