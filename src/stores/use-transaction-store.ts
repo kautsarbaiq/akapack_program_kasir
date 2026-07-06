@@ -36,6 +36,7 @@ interface TxnRow {
   paid_amount: number
   change_amount: number
   payment_method: PaymentMethod
+  payment_details: Record<string, number> | null
   status: TransactionStatus
   notes: string | null
   source: string | null
@@ -72,6 +73,8 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         paid_amount: txn.paid_amount,
         change_amount: txn.change_amount,
         payment_method: txn.payment_method,
+        payment_details: txn.payment_details ?? null, // rincian split (mis. {cash: X, qris: Y}) — dipakai hitung kas laci
+
         status: txn.status,
         notes: txn.notes ?? null,
         source: txn.source ?? 'pos',
@@ -172,6 +175,7 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
           paid_amount: r.paid_amount,
           change_amount: r.change_amount,
           payment_method: r.payment_method,
+          payment_details: r.payment_details ?? undefined,
           status: r.status,
           notes: r.notes ?? undefined,
           source: (r.source as 'pos' | 'online') ?? undefined,
