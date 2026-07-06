@@ -16,13 +16,19 @@ async function maintenanceFromDB(): Promise<boolean> {
       headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${SUPABASE_ANON_KEY}` },
       cache: 'no-store',
     })
-    if (!res.ok) return maintCache.on
+    if (!res.ok) {
+      // Gagal (mis. tabel app_config belum dimigrasi → 404) juga DICATAT ke cache —
+      // tanpa ini tiap request bayar round-trip DB selama tabel belum ada.
+      maintCache = { on: maintCache.on, ts: now }
+      return maintCache.on
+    }
     const rows = (await res.json()) as Array<{ maintenance_mode?: boolean }>
     const on = Array.isArray(rows) && rows[0]?.maintenance_mode === true
     maintCache = { on, ts: now }
     return on
   } catch {
-    return maintCache.on // fail-open: pertahankan nilai terakhir (default mati)
+    maintCache = { on: maintCache.on, ts: now } // fail-open + throttle: nilai terakhir dipertahankan
+    return maintCache.on
   }
 }
 
@@ -35,18 +41,19 @@ export async function proxy(request: NextRequest) {
   // Saat aktif, semua pengunjung diarahkan ke halaman "Sedang Maintenance".
   // Owner (punya cookie peran 'owner') TETAP bisa masuk untuk mengelola. Halaman login & /maintenance
   // tetap terbuka agar owner bisa login dulu. Aset Next & API dibiarkan lewat agar halaman tampil benar.
-  const maintenanceOn = MAINTENANCE_ENV || (supaOk ? await maintenanceFromDB() : false)
-  if (maintenanceOn) {
-    const role = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
-    const exempt =
-      path === '/maintenance' ||
-      path.startsWith('/login') ||
-      path.startsWith('/api') ||
-      path.startsWith('/auth') ||
-      path.startsWith('/_next') ||
-      path === '/favicon.ico' ||
-      /\.(?:png|jpg|jpeg|gif|svg|webp|ico|webmanifest|woff2?)$/i.test(path)
-    if (role !== 'owner' && !exempt) {
+  const maintExempt =
+    path === '/maintenance' ||
+    path.startsWith('/login') ||
+    path.startsWith('/api') ||
+    path.startsWith('/auth') ||
+    path.startsWith('/_next') ||
+    path === '/favicon.ico' ||
+    /\.(?:png|jpg|jpeg|gif|svg|webp|ico|webmanifest|woff2?)$/i.test(path)
+  const roleCookie = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
+  // Cek exempt & owner DULU — path yang lolos tak perlu bayar query flag maintenance sama sekali.
+  if (!maintExempt && roleCookie !== 'owner') {
+    const maintenanceOn = MAINTENANCE_ENV || (supaOk ? await maintenanceFromDB() : false)
+    if (maintenanceOn) {
       return NextResponse.rewrite(new URL('/maintenance', request.url))
     }
   }
