@@ -19,6 +19,7 @@ import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useShiftStore } from '@/stores/use-shift-store'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -64,6 +65,9 @@ export function Header({ onMenuClick }: HeaderProps) {
     // Proyeksikan ulang stok produk/varian ke outlet yang dipilih
     useProductStore.getState().projectStock(id)
     useVariantStore.getState().projectVariantStock(id)
+    // Rescope shift ke cabang baru — tanpa ini, penjualan cabang B tercatat ke shift cabang A.
+    useShiftStore.setState({ currentShift: null })
+    void useShiftStore.getState().fetch()
     toast.success(`Outlet aktif: ${outlets.find((o) => o.id === id)?.name ?? ''}`)
   }
 

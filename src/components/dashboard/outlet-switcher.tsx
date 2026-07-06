@@ -11,6 +11,7 @@ import { useOutletStore } from '@/stores/use-outlet-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
+import { useShiftStore } from '@/stores/use-shift-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 
 /** Pemilih cabang/outlet aktif. Ganti cabang → proyeksikan ulang stok produk/varian.
@@ -28,6 +29,9 @@ export function OutletSwitcher({ className }: { className?: string }) {
     setActiveOutlet(id)
     useProductStore.getState().projectStock(id)
     useVariantStore.getState().projectVariantStock(id)
+    // Rescope shift ke cabang baru — tanpa ini, penjualan cabang B tercatat ke shift cabang A.
+    useShiftStore.setState({ currentShift: null })
+    void useShiftStore.getState().fetch()
     toast.success(`Cabang aktif: ${outlets.find((o) => o.id === id)?.name ?? ''}`)
   }
 

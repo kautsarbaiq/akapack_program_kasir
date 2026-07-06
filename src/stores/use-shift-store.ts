@@ -86,17 +86,20 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
         return
       }
       const rows = data as unknown as ShiftRow[]
-      // Auto-close shift yang dibuka SEBELUM hari ini (kasir lupa "Tutup Shift") → 1 hari = 1 shift,
-      // shift lama tak menumpuk. Hanya menandai status; data shift & transaksi tetap utuh.
+      // Auto-close shift yang dibuka SEBELUM hari ini DAN sudah >12 jam (kasir lupa "Tutup Shift")
+      // → shift lama tak menumpuk, TAPI shift lembur yang lewat tengah malam tidak ikut tertutup.
+      // Hanya menandai status; data shift & transaksi tetap utuh.
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
       const todayMs = todayStart.getTime()
+      const staleMs = Date.now() - 12 * 3600_000
+      const isStale = (s: ShiftRow) => { const t = new Date(s.opened_at).getTime(); return t < todayMs && t < staleMs }
       for (const s of rows) {
-        if (new Date(s.opened_at).getTime() < todayMs && isUuid(s.id)) {
+        if (isStale(s) && isUuid(s.id)) {
           void updateRow('shifts', s.id, { status: 'closed', closed_at: new Date().toISOString() })
         }
       }
-      // Shift berjalan = shift open TERBARU yang dibuka HARI INI (kalau tak ada, kasir buka shift baru).
-      const r = rows.find((s) => new Date(s.opened_at).getTime() >= todayMs)
+      // Shift berjalan = shift open TERBARU yang belum basi (hari ini, atau lembur lewat tengah malam).
+      const r = rows.find((s) => !isStale(s))
       if (!r) {
         set({ currentShift: null, loaded: true })
         return
