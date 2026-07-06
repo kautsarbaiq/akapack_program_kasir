@@ -19,6 +19,8 @@ import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
+import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { formatRupiah, formatDate, generateId, localDay, rankedSearch } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem, PurchaseStatus } from '@/types'
@@ -62,15 +64,21 @@ export default function StokMasukPage() {
   const [open, setOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
 
+  const outlets = useOutletStore((s) => s.outlets)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const outletName = (id?: string) => outlets.find((o) => o.id === id)?.name ?? '—'
+
   // filter & paginasi
   const today = new Date()
   const [dateFrom, setDateFrom] = useState(`${today.getFullYear()}-01-01`)
   const [dateTo, setDateTo] = useState(localDay(today))
   const [search, setSearch] = useState('')
+  const [outletFilter, setOutletFilter] = useState('all')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
 
   // form
+  const [formOutletId, setFormOutletId] = useState(activeOutletId) // cabang tujuan stok
   const [supplierId, setSupplierId] = useState('')
   const [receivedFrom, setReceivedFrom] = useState('')
   const [date, setDate] = useState(localDay(today))
@@ -82,10 +90,11 @@ export default function StokMasukPage() {
       const day = (p.date || '').slice(0, 10)
       if (dateFrom && day < dateFrom) return false
       if (dateTo && day > dateTo) return false
+      if (outletFilter !== 'all' && p.outlet_id !== outletFilter) return false
       return true
     })
     return rankedSearch(base, search, (p) => [p.number, p.received_from], (p) => p.number)
-  }, [purchases, dateFrom, dateTo, search])
+  }, [purchases, dateFrom, dateTo, search, outletFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const curPage = Math.min(page, totalPages)
@@ -101,6 +110,7 @@ export default function StokMasukPage() {
   const removeItem = (idx: number) => setItems((ls) => (ls.length <= 1 ? ls : ls.filter((_, i) => i !== idx)))
 
   const openNew = () => {
+    setFormOutletId(activeOutletId) // default cabang aktif — bisa diganti di form
     setSupplierId(''); setReceivedFrom(''); setDate(localDay(new Date())); setNotes('')
     setItems([{ product_id: '', qty: 1, cost: 0 }]); setOpen(true)
   }
@@ -152,7 +162,7 @@ export default function StokMasukPage() {
     }, 0) + 1
     const po: PurchaseOrder = {
       id: poId, number: genIN(date, nextSeq),
-      outlet_id: useActiveOutletStore.getState().activeOutletId, // kunci cabang dokumen saat dibuat
+      outlet_id: formOutletId, // cabang tujuan stok dipilih EKSPLISIT di form (Bandung/Garut terpisah)
       supplier_id: supplierId || undefined, supplier,
       items: poItems, total: poItems.reduce((s, i) => s + i.subtotal, 0),
       status: postNow ? 'received' : 'ordered', payment: 'credit', paid: false,
@@ -161,7 +171,7 @@ export default function StokMasukPage() {
     }
     addPurchase(po)
     if (postNow) applyStock(po)
-    toast.success(postNow ? `Stok Masuk ${po.number} diposting — stok bertambah` : `Stok Masuk ${po.number} disimpan (draft)`)
+    toast.success(postNow ? `Stok Masuk ${po.number} diposting — stok ${outletName(formOutletId)} bertambah` : `Stok Masuk ${po.number} disimpan (draft) — cabang ${outletName(formOutletId)}`)
     setOpen(false)
   }
 
@@ -254,9 +264,12 @@ export default function StokMasukPage() {
           className="h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
           {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n} Baris</option>)}
         </select>
-        <div className="relative w-72 max-w-full">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Cari No. Stok Masuk" className="pl-9 h-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <OutletFilter value={outletFilter} onChange={(v) => { setOutletFilter(v); setPage(1) }} />
+          <div className="relative w-72 max-w-full">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Cari No. Stok Masuk" className="pl-9 h-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
+          </div>
         </div>
       </div>
 
@@ -267,7 +280,7 @@ export default function StokMasukPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['No.', 'Diterima dari', 'Supplier', 'Tanggal', 'Catatan', 'Status', 'Diterima Oleh'].map((h) => (
+                  {['No.', 'Cabang', 'Diterima dari', 'Supplier', 'Tanggal', 'Catatan', 'Status', 'Diterima Oleh'].map((h) => (
                     <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -278,6 +291,7 @@ export default function StokMasukPage() {
                     <td className="py-3 px-4">
                       <button onClick={() => setDetail(p)} className="font-mono text-xs font-semibold text-primary hover:underline">{p.number}</button>
                     </td>
+                    <td className="py-3 px-4 text-xs whitespace-nowrap">{outletName(p.outlet_id)}</td>
                     <td className="py-3 px-4 text-sm">{p.received_from || '-'}</td>
                     <td className="py-3 px-4 text-sm">{p.supplier?.name ?? ''}</td>
                     <td className="py-3 px-4 text-xs text-muted-foreground whitespace-nowrap">{formatDate(p.date)}</td>
@@ -345,6 +359,13 @@ export default function StokMasukPage() {
           <DialogHeader><DialogTitle>Tambah Stok Masuk</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Cabang Tujuan Stok *</Label>
+                <select value={formOutletId} onChange={(e) => setFormOutletId(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring">
+                  {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
               <div className="space-y-2"><Label>Tanggal</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
               <div className="space-y-2">
                 <Label>Supplier (opsional)</Label>
