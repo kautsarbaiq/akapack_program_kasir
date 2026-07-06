@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { Upload, FileSpreadsheet, Loader2, CheckCircle2, PackagePlus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -10,6 +10,7 @@ import { usePurchaseStore } from '@/stores/use-purchase-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { generateId } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem } from '@/types'
@@ -45,10 +46,15 @@ type ParsedDoc = { key: string; date: string; note: string; from: string; items:
 
 export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const products = useProductStore((s) => s.products)
+  const outlets = useOutletStore((s) => s.outlets)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState('')
   const [docs, setDocs] = useState<ParsedDoc[] | null>(null)
   const [busy, setBusy] = useState(false)
+  // Cabang tujuan stok — EKSPLISIT dipilih (default cabang aktif), sama seperti form manual.
+  const [targetOutletId, setTargetOutletId] = useState(activeOutletId)
+  useEffect(() => { if (open) setTargetOutletId(activeOutletId) }, [open, activeOutletId])
 
   const bySku = useMemo(() => {
     const m = new Map<string, (typeof products)[number]>()
@@ -114,7 +120,7 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       const ps = usePurchaseStore.getState()
       const prodStore = useProductStore.getState()
       const inv = useInventoryStore.getState()
-      const outlet = useActiveOutletStore.getState().activeOutletId
+      const outlet = targetOutletId // cabang tujuan yang DIPILIH, bukan diam-diam cabang aktif
       const me = useCurrentUserStore.getState().user?.email || useCurrentUserStore.getState().user?.name || 'Import'
       let base = ps.purchases.length
       let createdDocs = 0
@@ -166,7 +172,7 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
 
       const tail = skipped > 0 ? ` (${skipped} item dilewati — produk tak ada di katalog)` : ''
       if (failed > 0) toast.warning(`${createdDocs} dokumen dibuat, tapi ${failed} update stok GAGAL ke server — muat ulang & cek.${tail}`)
-      else toast.success(`${createdDocs} dokumen Stok Masuk dibuat & stok ditambahkan${tail}`)
+      else toast.success(`${createdDocs} dokumen Stok Masuk dibuat — stok ${outlets.find((o) => o.id === targetOutletId)?.name ?? 'cabang'} bertambah${tail}`)
       reset()
       onOpenChange(false)
     } catch (e) {
@@ -182,6 +188,13 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><PackagePlus size={18} /> Import Stok Masuk (banyak dokumen)</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          <div className="flex items-center gap-2 rounded-lg border bg-amber-50/50 px-3 py-2">
+            <span className="text-xs font-semibold whitespace-nowrap">Cabang Tujuan Stok:</span>
+            <select value={targetOutletId} onChange={(e) => setTargetOutletId(e.target.value)}
+              className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring">
+              {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFile} />
           {!docs ? (
             <button onClick={() => fileRef.current?.click()} className="w-full rounded-xl border-2 border-dashed py-10 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-muted/30 transition-colors">
