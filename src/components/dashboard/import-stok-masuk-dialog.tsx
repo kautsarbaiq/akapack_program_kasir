@@ -122,7 +122,11 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       const inv = useInventoryStore.getState()
       const outlet = targetOutletId // cabang tujuan yang DIPILIH, bukan diam-diam cabang aktif
       const me = useCurrentUserStore.getState().user?.email || useCurrentUserStore.getState().user?.name || 'Import'
-      let base = ps.purchases.length
+      // Urutan nomor dari MAX nomor yang ada (bukan panjang array) → tak bentrok walau ada dokumen terhapus.
+      let base = ps.purchases.reduce((mx, p) => {
+        const m = /(\d{8})$/.exec(p.number || '')
+        return m ? Math.max(mx, parseInt(m[1], 10)) : mx
+      }, 0)
       let createdDocs = 0
       let skipped = 0
       // Akumulasi delta stok & nilai per-produk (lintas semua dokumen) → 1x batch ke DB.
