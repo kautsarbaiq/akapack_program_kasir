@@ -306,7 +306,7 @@ export default function LaporanPenjualanPage() {
               <div className="flex justify-between"><span className="text-muted-foreground">Penjualan Bersih</span><span className="font-medium">{formatRupiah(report.netSales)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">HPP</span><span className="font-medium text-red-500">−{formatRupiah(report.cogs)}</span></div>
               <div className="flex justify-between font-bold border-t pt-2"><span>Laba Kotor</span><span className="text-emerald-600">{formatRupiah(report.grossProfit)}</span></div>
-              <p className="text-xs text-muted-foreground pt-1">*HPP dihitung dari harga modal produk saat ini (perkiraan). Pajak & service charge tidak dihitung sebagai laba.</p>
+              <p className="text-xs text-muted-foreground pt-1">*HPP dari harga modal SAAT TRANSAKSI (snapshot); transaksi lama tanpa snapshot memakai modal saat ini. Pajak & service charge tidak dihitung sebagai laba.</p>
             </CardContent>
           </Card>
         </TabsContent>}

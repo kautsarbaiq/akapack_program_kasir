@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useBooks } from '@/lib/use-books'
 import { useClosingStore } from '@/stores/use-closing-store'
 import { buildJournalEntries, computeLedger, computeProfitLoss } from '@/lib/accounting'
-import { formatRupiah, formatDate } from '@/lib/utils'
+import { formatRupiah, formatDate, localDay } from '@/lib/utils'
 import { toast } from 'sonner'
 
 export default function TutupBukuPage() {
@@ -21,7 +21,7 @@ export default function TutupBukuPage() {
 
   const [date, setDate] = useState(() => {
     const d = new Date()
-    return new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10) // akhir bulan lalu
+    return localDay(new Date(d.getFullYear(), d.getMonth(), 0)) // akhir bulan lalu (LOKAL — toISOString mundur 1 hari di WIB)
   })
 
   const summary = useMemo(() => {

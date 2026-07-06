@@ -13,7 +13,7 @@ import { useBooks } from '@/lib/use-books'
 import { useJournalStore } from '@/stores/use-journal-store'
 import { useAccountStore } from '@/stores/use-account-store'
 import { useClosingStore } from '@/stores/use-closing-store'
-import { formatRupiah, formatDate } from '@/lib/utils'
+import { formatRupiah, formatDate, localDay } from '@/lib/utils'
 import type { JournalEntry, JournalLine, JournalSource } from '@/types'
 import { toast } from 'sonner'
 
@@ -29,7 +29,7 @@ const entryTotal = (e: JournalEntry) => e.lines.reduce((s, l) => s + l.debit, 0)
 
 function genNumber() {
   const d = new Date()
-  const ymd = d.toISOString().slice(0, 10).replace(/-/g, '')
+  const ymd = localDay(d).replace(/-/g, '') // tanggal LOKAL (UTC bikin nomor kemarin utk trx dini hari)
   return `JV-${ymd}-${Math.floor(Math.random() * 900 + 100)}`
 }
 

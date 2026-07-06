@@ -138,7 +138,7 @@ export default function PenjualanPage() {
                     <td className="py-3 px-4 font-bold">{formatRupiah(t.total)}</td>
                     <td className="py-3 px-4">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PAYMENT_COLORS[t.payment_method] ?? ''}`}>
-                        {PAYMENT_LABELS[t.payment_method]}
+                        {PAYMENT_LABELS[t.payment_method] ?? t.payment_method}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-sm text-muted-foreground">{t.cashier?.full_name ?? '-'}</td>

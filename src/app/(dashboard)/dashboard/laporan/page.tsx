@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { BarChart3, Download, TrendingUp, ShoppingCart, Package, Users } from 'lucide-react'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
-import { formatRupiah, formatNumber } from '@/lib/utils'
+import { formatRupiah, formatNumber, localDay } from '@/lib/utils'
 import Link from 'next/link'
 
 export default function LaporanPage() {
@@ -19,10 +19,10 @@ export default function LaporanPage() {
     const completed = transactions.filter((t) => t.status === 'completed')
     const now = new Date()
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const monthTrx = completed.filter((t) => (t.created_at || '').slice(0, 7) === ym)
+    const monthTrx = completed.filter((t) => (t.created_at ? localDay(t.created_at) : '').slice(0, 7) === ym) // bulan LOKAL, bukan UTC
     const revenue = monthTrx.reduce((s, t) => s + t.total, 0)
     const itemsSold = monthTrx.reduce((s, t) => s + t.items.reduce((a, i) => a + i.quantity, 0), 0)
-    const newCust = customers.filter((c) => (c.created_at || '').slice(0, 7) === ym).length
+    const newCust = customers.filter((c) => (c.created_at ? localDay(c.created_at) : '').slice(0, 7) === ym).length
 
     const agg: Record<string, { name: string; sold: number; rev: number }> = {}
     monthTrx.forEach((t) => t.items.forEach((it) => {
@@ -74,7 +74,7 @@ export default function LaporanPage() {
             <Card key={s.label}>
               <CardContent className="p-5">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
-                  style={{ background: `${s.color} / 0.1` }}>
+                  style={{ background: s.color.replace(')', ' / 0.1)') }}>
                   <Icon size={18} style={{ color: s.color }} />
                 </div>
                 <p className="text-xl font-bold">{s.value}</p>
