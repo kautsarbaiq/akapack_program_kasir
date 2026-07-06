@@ -11,17 +11,35 @@ export function cn(...inputs: ClassValue[]) {
  *   100 = sama persis · 80 = diawali query · 60 = ada kata yang diawali query · 40 = mengandung query.
  * Dipakai untuk MENGURUTKAN hasil pencarian agar yang paling cocok muncul di ATAS.
  */
+const WORD_SPLIT = /[\s\-/.,()|×x*]+/
+
 export function matchScore(query: string, ...fields: Array<string | null | undefined>): number {
   const q = query.trim().toLowerCase()
   if (!q) return 1
+  const tokens = q.split(/\s+/) // untuk pencarian multi-kata (urutan bebas, boleh terpisah)
   let best = 0
-  for (const raw of fields) {
-    const s = (raw ?? '').toString().toLowerCase()
+  for (let fi = 0; fi < fields.length; fi++) {
+    const s = (fields[fi] ?? '').toString().toLowerCase()
     if (!s) continue
+    // Bonus kecil bila cocok di field PERTAMA (nama produk) — "sesuai nama" naik duluan.
+    const bonus = fi === 0 ? 4 : 0
     if (s === q) return 100
-    if (s.startsWith(q)) { best = Math.max(best, 80); continue }
-    if (s.split(/[\s\-/.,()|]+/).some((w) => w.startsWith(q))) { best = Math.max(best, 60); continue }
-    if (s.includes(q)) best = Math.max(best, 40)
+    if (s.startsWith(q)) { best = Math.max(best, 88 + bonus); continue }
+    const words = s.split(WORD_SPLIT)
+    if (words.some((w) => w.startsWith(q))) { best = Math.max(best, 70 + bonus); continue }
+    if (s.includes(q)) { best = Math.max(best, 55 + bonus); continue }
+    // Multi-kata: SEMUA kata query harus ada di field ini (urutan bebas, boleh terpencar) —
+    // mis. "alba 250" tetap menemukan "Botol Alba Almon 250Ml".
+    if (tokens.length > 1) {
+      let allWordStart = true
+      let allFound = true
+      for (const t of tokens) {
+        if (words.some((w) => w.startsWith(t))) continue
+        allWordStart = false
+        if (!s.includes(t)) { allFound = false; break }
+      }
+      if (allFound) best = Math.max(best, (allWordStart ? 45 : 35) + bonus)
+    }
   }
   return best
 }
@@ -39,9 +57,10 @@ export function rankedSearch<T>(
 ): T[] {
   if (!query.trim()) return items
   return items
-    .map((item) => ({ item, s: matchScore(query, ...getFields(item)) }))
+    .map((item) => ({ item, s: matchScore(query, ...getFields(item)), n: getName ? getName(item) : '' }))
     .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s || (getName ? getName(a.item).localeCompare(getName(b.item)) : 0))
+    // Skor desc → nama TERPENDEK dulu (paling spesifik/pas) → alfabetis.
+    .sort((a, b) => b.s - a.s || a.n.length - b.n.length || a.n.localeCompare(b.n))
     .map((x) => x.item)
 }
 
