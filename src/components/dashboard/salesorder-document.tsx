@@ -22,7 +22,13 @@ export function SalesOrderDocument({ doc }: { doc: SalesOrder }) {
   const storePhone = useSettingsStore((s) => s.storePhone)
 
   const st = SALES_ORDER_STATUS[doc.status]
-  const outletName = outlets.find((o) => o.id === doc.outlet_id)?.name ?? '—'
+  // Kop surat ikut CABANG DOKUMEN (nama+alamat+telp outlet), fallback ke pengaturan global —
+  // dokumen Garut berkop Garut, Bandung berkop Bandung (sama seperti struk).
+  const outlet = outlets.find((o) => o.id === doc.outlet_id)
+  const outletName = outlet?.name ?? '—'
+  const headerName = outlet?.name || storeName || 'AKAPACK'
+  const headerAddress = outlet?.address || storeAddress
+  const headerPhone = outlet?.phone || storePhone
   const totalQty = doc.items.reduce((s, it) => s + (it.qty || 0), 0)
   const prodOf = (pid: string) => products.find((p) => p.id === pid)
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -42,9 +48,9 @@ export function SalesOrderDocument({ doc }: { doc: SalesOrder }) {
       {/* Header: penjual (kiri) + judul & no (kanan) */}
       <div className="flex items-start justify-between" style={{ borderBottom: '2px solid #111', paddingBottom: 12, marginBottom: 12 }}>
         <div>
-          <p style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>{storeName || 'AKAPACK'}</p>
-          {storeAddress && <p style={{ color: '#555', fontSize: 11, marginTop: 2, maxWidth: 340 }}>{storeAddress}</p>}
-          {storePhone && <p style={{ color: '#555', fontSize: 11 }}>{storePhone}</p>}
+          <p style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>{headerName}</p>
+          {headerAddress && <p style={{ color: '#555', fontSize: 11, marginTop: 2, maxWidth: 340 }}>{headerAddress}</p>}
+          {headerPhone && <p style={{ color: '#555', fontSize: 11 }}>{headerPhone}</p>}
         </div>
         <div style={{ textAlign: 'right' }}>
           <p style={{ fontSize: 16, fontWeight: 800, color: '#111' }}>SURAT PESANAN</p>
