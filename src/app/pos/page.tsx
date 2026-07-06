@@ -121,8 +121,9 @@ export default function POSPage() {
     const base = products.filter((p) => p.is_active && (selectedCategory === 'all' || p.category_id === selectedCategory))
     const ranked = rankedSearch(base, deferredSearch, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
     // Stok HABIS ditaruh paling BAWAH — kasir langsung lihat barang yang bisa dijual.
-    const stockOf = (p: (typeof products)[number]) =>
-      p.has_variants ? variants.filter((v) => v.product_id === p.id).reduce((s, v) => s + v.stock, 0) : p.stock
+    const varStock = new Map<string, number>()
+    for (const v of variants) varStock.set(v.product_id, (varStock.get(v.product_id) ?? 0) + v.stock)
+    const stockOf = (p: (typeof products)[number]) => (p.has_variants ? varStock.get(p.id) ?? 0 : p.stock)
     const ready: typeof ranked = []
     const out: typeof ranked = []
     for (const p of ranked) (stockOf(p) > 0 ? ready : out).push(p)
@@ -155,7 +156,8 @@ export default function POSPage() {
     setCart((prev) => {
       const existing = prev.find((i) => i.key === product.id)
       if (existing) {
-        if (existing.quantity * (existing.factor || 1) >= product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
+        // Cek pemakaian SETELAH tambah (bukan sebelum) — cegah oversell saat satuan besar (faktor>1).
+        if ((existing.quantity + 1) * (existing.factor || 1) > product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
         const q = existing.quantity + 1
         const pr = linePriceFor(product, existing.unit, q)
         return prev.map((i) => (i.key === product.id ? { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) } : i))
@@ -271,8 +273,16 @@ export default function POSPage() {
       const product = products.find((p) => p.id === i.product_id)
       if (!product) return i
       const factor = unitName === product.unit ? 1 : (product.units?.find((x) => x.name === unitName)?.factor ?? 1)
-      const price = linePriceFor(product, unitName, i.quantity)
-      return { ...i, unit: unitName, factor, price, discount: 0, subtotal: i.quantity * price }
+      // Ganti satuan bisa melipatgandakan kebutuhan stok (qty × faktor) — clamp qty bila melebihi stok.
+      let q = i.quantity
+      if (q * factor > product.stock) {
+        const maxQ = Math.max(1, Math.floor(product.stock / factor))
+        if (maxQ * factor > product.stock) { toast.error(`Stok ${product.name} tidak cukup untuk satuan ${unitName}`); return i }
+        toast.error(`Stok ${product.name} hanya ${product.stock} — qty disesuaikan ke ${maxQ}`)
+        q = maxQ
+      }
+      const price = linePriceFor(product, unitName, q)
+      return { ...i, unit: unitName, factor, quantity: q, price, discount: 0, subtotal: q * price }
     }))
   }
 
@@ -358,8 +368,11 @@ export default function POSPage() {
       product_id: c.product_id,
       product_name: c.factor !== 1 ? `${c.product_name} (${c.unit})` : c.product_name,
       product_price: c.price,
-      // snapshot HPP saat jual (varian→modal varian, else modal produk) → laba historis akurat
-      cost_price: (c.variant_id ? variants.find((x) => x.id === c.variant_id)?.cost_price : products.find((p) => p.id === c.product_id)?.cost_price) ?? 0,
+      // snapshot HPP saat jual (varian→modal varian, else modal produk × FAKTOR satuan —
+      // qty & harga dicatat per satuan besar, jadi modal juga harus per satuan besar)
+      cost_price: c.variant_id
+        ? (variants.find((x) => x.id === c.variant_id)?.cost_price ?? 0)
+        : ((products.find((p) => p.id === c.product_id)?.cost_price ?? 0) * (c.factor || 1)),
       quantity: c.quantity,
       discount: c.discount,
       subtotal: c.subtotal,
