@@ -45,7 +45,7 @@ export const useAttendanceStore = create<AttendanceStore>()((set, get) => ({
         const { data: page, error } = await getSupabaseBrowser()
           .from('attendance')
           .select('*')
-          .order('timestamp', { ascending: false })
+          .order('timestamp', { ascending: false }).order('id', { ascending: true })
           .range(from, from + 999)
         if (error) { if (from === 0) { set({ loaded: true }); return } break }
         const rows = (page ?? []) as AttendanceRow[]

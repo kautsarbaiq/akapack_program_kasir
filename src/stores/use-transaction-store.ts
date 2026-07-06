@@ -137,7 +137,7 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
         const { data, error } = await sb
           .from('transactions')
           .select('*, transaction_items(*)')
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }).order('id', { ascending: true }) // tie-break unik: created_at bisa kembar (batch insert)
           .range(from, from + 999)
         if (error) { if (from === 0) { set({ loaded: true }); return } break }
         const page = (data ?? []) as unknown as TxnRow[]

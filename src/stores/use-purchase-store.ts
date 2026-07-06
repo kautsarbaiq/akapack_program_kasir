@@ -58,9 +58,10 @@ async function persistPurchase(po: PurchaseOrder): Promise<string | null> {
     }
     const payload = isUuid(po.outlet_id) ? { ...base, outlet_id: po.outlet_id } : base
     let { data, error } = await sb.from('purchase_orders').insert(payload).select('id').single()
-    // Fallback: kalau kolom outlet_id belum dibuat (migrasi belum dijalankan), simpan tanpa kolom itu
-    // supaya dokumen tetap tersimpan. Per-cabang penuh aktif setelah migrasi dijalankan.
-    if (error && payload !== base && /outlet_id/i.test(error.message || '')) {
+    // Fallback HANYA untuk error "kolom tidak ada" (PGRST204/schema cache) — bukan FK/constraint
+    // yang kebetulan menyebut outlet_id (fallback membabi-buta = cabang hilang diam-diam).
+    const colMissing = error && ((error as { code?: string }).code === 'PGRST204' || /schema cache/i.test(error.message || ''))
+    if (colMissing && payload !== base) {
       ({ data, error } = await sb.from('purchase_orders').insert(base).select('id').single())
     }
     if (error || !data) {
@@ -114,7 +115,7 @@ export const usePurchaseStore = create<PurchaseStore>()((set) => ({
         const { data: page, error } = await sb
           .from('purchase_orders')
           .select('*, purchase_order_items(*)')
-          .order('date', { ascending: false })
+          .order('date', { ascending: false }).order('id', { ascending: true })
           .range(from, from + 999)
         if (error) { if (from === 0) { set({ loaded: true }); return } break }
         const rows = (page ?? []) as unknown as PurchaseRow[]

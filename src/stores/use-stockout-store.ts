@@ -102,7 +102,7 @@ export const useStockOutStore = create<StockOutStore>()((set) => ({
         const { data: page, error } = await sb
           .from('stock_outs')
           .select('*, stock_out_items(*)')
-          .order('date', { ascending: false })
+          .order('date', { ascending: false }).order('id', { ascending: true })
           .range(from, from + 999)
         if (error) { if (from === 0) { set({ loaded: true }); return } break }
         const rows = (page ?? []) as unknown as StockOutRow[]

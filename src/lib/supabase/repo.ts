@@ -21,7 +21,7 @@ export async function fetchAll<T>(
       const { data, error } = await sb
         .from(table)
         .select('*')
-        .order(orderBy, { ascending })
+        .order(orderBy, { ascending }).order('id', { ascending: true }) // tie-break unik agar paginasi deterministik
         .range(from, from + PAGE - 1)
       if (error) {
         console.warn(`[akapack] gagal load ${table}:`, error.message)

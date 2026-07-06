@@ -91,7 +91,7 @@ export const useJournalStore = create<JournalStore>()((set) => ({
           .from('journal_entries')
           .select('*, journal_lines(*)')
           .eq('source', 'manual')
-          .order('date', { ascending: false })
+          .order('date', { ascending: false }).order('id', { ascending: true })
           .range(from, from + 999)
         if (error) { if (from === 0) { set({ loaded: true }); return } break }
         const rows = (page ?? []) as unknown as JournalEntryRow[]

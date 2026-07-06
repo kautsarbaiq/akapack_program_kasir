@@ -47,8 +47,10 @@ async function persistSalesOrder(doc: SalesOrder): Promise<string | null> {
     }
     const full = { ...base, source_phone: doc.source_phone ?? null, created_by_name: doc.created_by_name ?? null }
     let { data, error } = await sb.from('sales_orders').insert(full).select('id').single()
-    // Fallback: kolom source_phone/created_by_name belum dimigrasi → simpan tanpa kolom itu.
-    if (error && /source_phone|created_by_name/i.test(error.message || '')) {
+    // Fallback HANYA untuk error "kolom tidak ada" (PGRST204/schema cache) — bukan constraint lain
+    // yang kebetulan menyebut nama kolom (jangan buang source_phone/created_by_name diam-diam).
+    const colMissing = error && ((error as { code?: string }).code === 'PGRST204' || /schema cache/i.test(error.message || ''))
+    if (colMissing) {
       ({ data, error } = await sb.from('sales_orders').insert(base).select('id').single())
     }
     if (error || !data) { console.warn('[akapack] gagal simpan surat pesanan:', error?.message); return null }
@@ -88,7 +90,7 @@ export const useSalesOrderStore = create<SalesOrderStore>()((set) => ({
       for (let from = 0; ; from += 1000) {
         const { data: page, error } = await sb
           .from('sales_orders').select('*, sales_order_items(*)')
-          .order('order_date', { ascending: false }).range(from, from + 999)
+          .order('order_date', { ascending: false }).order('id', { ascending: true }).range(from, from + 999)
         if (error) { if (from === 0) { set({ loaded: true }); return } break }
         const rows = (page ?? []) as unknown as SalesOrderRow[]
         data.push(...rows)
