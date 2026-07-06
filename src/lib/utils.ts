@@ -8,15 +8,18 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Skor relevansi `query` terhadap beberapa field (nama, sku, barcode, dll).
  * 0 = tidak cocok. Makin besar makin relevan:
- *   100 = sama persis · 80 = diawali query · 60 = ada kata yang diawali query · 40 = mengandung query.
+ *   100 sama persis · 88 diawali query · 70 ada kata diawali query · 55 mengandung query ·
+ *   45 semua kata query di awal kata · 35 semua kata query terkandung — +4 bila cocok di field pertama (nama).
  * Dipakai untuk MENGURUTKAN hasil pencarian agar yang paling cocok muncul di ATAS.
  */
-const WORD_SPLIT = /[\s\-/.,()|×x*]+/
+const WORD_SPLIT = /[\s\-/.,()|*]+/
+// "15x20"/"15×20" → "15 20" (pisah dimensi), TANPA merusak kata ber-x seperti "box"/"mixer".
+const splitDims = (s: string) => s.replace(/(\d)\s*[x×]\s*(\d)/gi, '$1 $2')
 
 export function matchScore(query: string, ...fields: Array<string | null | undefined>): number {
   const q = query.trim().toLowerCase()
   if (!q) return 1
-  const tokens = q.split(/\s+/) // untuk pencarian multi-kata (urutan bebas, boleh terpisah)
+  const tokens = splitDims(q).split(/\s+/) // multi-kata (urutan bebas); "15x20" ikut terpecah 15 & 20
   let best = 0
   for (let fi = 0; fi < fields.length; fi++) {
     const s = (fields[fi] ?? '').toString().toLowerCase()
@@ -25,7 +28,7 @@ export function matchScore(query: string, ...fields: Array<string | null | undef
     const bonus = fi === 0 ? 4 : 0
     if (s === q) return 100
     if (s.startsWith(q)) { best = Math.max(best, 88 + bonus); continue }
-    const words = s.split(WORD_SPLIT)
+    const words = splitDims(s).split(WORD_SPLIT)
     if (words.some((w) => w.startsWith(q))) { best = Math.max(best, 70 + bonus); continue }
     if (s.includes(q)) { best = Math.max(best, 55 + bonus); continue }
     // Multi-kata: SEMUA kata query harus ada di field ini (urutan bebas, boleh terpencar) —
