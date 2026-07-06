@@ -17,7 +17,7 @@ function firstOfMonth(): string {
   const d = new Date()
   return localDay(new Date(d.getFullYear(), d.getMonth(), 1))
 }
-const mmToHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}.${String(Math.round(m % 60)).padStart(2, '0')}`
+const mmToHHMM = (m: number) => { const t = Math.round(m); return `${String(Math.floor(t / 60)).padStart(2, '0')}.${String(t % 60).padStart(2, '0')}` } // bulatkan total dulu (539.5 → 09.00, bukan 08.60)
 const fmtHours = (h: number) => (h > 0 ? `${h.toFixed(1)} jam` : '—')
 
 export default function AnalisisAbsensiPage() {
@@ -48,34 +48,35 @@ export default function AnalisisAbsensiPage() {
         const d = localDay(r.timestamp)
         return d >= from && d <= to
       })
-      // Kelompokkan per hari: jam masuk pertama & jam pulang terakhir.
-      const byDay = new Map<string, { ins: number[]; outs: number[] }>()
-      for (const r of recs) {
-        const day = localDay(r.timestamp)
+      // Pasangkan KRONOLOGIS: tiap "masuk" ditutup "pulang" berikutnya — shift lembur yang
+      // lewat tengah malam tetap terhitung jam kerjanya (bukan 0 + salah "tak lengkap").
+      const sorted = [...recs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      const firstInByDay = new Map<string, number>() // hari → menit jam masuk PERTAMA (utk telat & rata2)
+      let openIn: number | null = null
+      let workMs = 0, incompleteDays = 0
+      for (const r of sorted) {
         const t = new Date(r.timestamp).getTime()
-        const g = byDay.get(day) ?? { ins: [], outs: [] }
-        if (r.type === 'in') g.ins.push(t); else g.outs.push(t)
-        byDay.set(day, g)
+        if (r.type === 'in') {
+          if (openIn !== null) incompleteDays++ // masuk sebelumnya tak pernah ditutup
+          openIn = t
+          const day = localDay(r.timestamp)
+          if (!firstInByDay.has(day)) {
+            const d = new Date(t)
+            firstInByDay.set(day, d.getHours() * 60 + d.getMinutes())
+          }
+        } else if (openIn !== null && t > openIn) {
+          workMs += t - openIn
+          openIn = null
+        }
       }
-      let hadir = 0, lateDays = 0, incompleteDays = 0, workMs = 0, inMinSum = 0, inDays = 0
-      byDay.forEach((g) => {
-        if (!g.ins.length) return
-        hadir++
-        const firstIn = Math.min(...g.ins)
-        const d = new Date(firstIn)
-        const inMin = d.getHours() * 60 + d.getMinutes()
-        inMinSum += inMin; inDays++
-        if (inMin > stdMinutes) lateDays++
-        if (g.outs.length) {
-          const lastOut = Math.max(...g.outs)
-          if (lastOut > firstIn) workMs += lastOut - firstIn
-        } else incompleteDays++
-      })
-      const last = recs.length ? recs.reduce((a, b) => (new Date(a.timestamp).getTime() > new Date(b.timestamp).getTime() ? a : b)) : undefined
+      if (openIn !== null) incompleteDays++ // masuk terakhir belum pulang (termasuk shift yang masih jalan)
+      let lateDays = 0, inMinSum = 0
+      firstInByDay.forEach((min) => { inMinSum += min; if (min > stdMinutes) lateDays++ })
+      const last = sorted.length ? sorted[sorted.length - 1] : undefined
       return {
-        e, hadir, telat: lateDays, incomplete: incompleteDays,
+        e, hadir: firstInByDay.size, telat: lateDays, incomplete: incompleteDays,
         jamKerja: workMs / 3_600_000,
-        avgIn: inDays ? mmToHHMM(inMinSum / inDays) : '—',
+        avgIn: firstInByDay.size ? mmToHHMM(inMinSum / firstInByDay.size) : '—',
         last,
       }
     })
