@@ -10,10 +10,14 @@ import { useOutletStore } from '@/stores/use-outlet-store'
  * Beda dari OutletSwitcher (yang mengubah outlet AKTIF global + proyeksi stok) —
  * ini hanya filter tampilan data di satu halaman.
  */
-export function OutletFilter({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+export function OutletFilter({ value, onChange, className, includeNone }: {
+  value: string; onChange: (v: string) => void; className?: string
+  /** Tampilkan opsi "Tanpa Cabang" (value 'none') — untuk dokumen lama yang belum punya outlet. */
+  includeNone?: boolean
+}) {
   const outlets = useOutletStore((s) => s.outlets)
   // base-ui SelectValue menampilkan value mentah (UUID), jadi label cabang dirender manual di trigger.
-  const label = value === 'all' ? 'Semua Cabang' : (outlets.find((o) => o.id === value)?.name ?? 'Pilih cabang')
+  const label = value === 'all' ? 'Semua Cabang' : value === 'none' ? 'Tanpa Cabang' : (outlets.find((o) => o.id === value)?.name ?? 'Pilih cabang')
   return (
     <Select value={value} onValueChange={(v) => { if (v) onChange(v) }}>
       <SelectTrigger className={className ?? 'w-48 h-9 text-sm'}>
@@ -23,6 +27,7 @@ export function OutletFilter({ value, onChange, className }: { value: string; on
       <SelectContent>
         <SelectItem value="all">Semua Cabang</SelectItem>
         {outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+        {includeNone && <SelectItem value="none">Tanpa Cabang</SelectItem>}
       </SelectContent>
     </Select>
   )

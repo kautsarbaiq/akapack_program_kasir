@@ -90,7 +90,8 @@ export default function StokMasukPage() {
       const day = (p.date || '').slice(0, 10)
       if (dateFrom && day < dateFrom) return false
       if (dateTo && day > dateTo) return false
-      if (outletFilter !== 'all' && p.outlet_id !== outletFilter) return false
+      if (outletFilter === 'none') { if (p.outlet_id) return false } // dokumen lama tanpa cabang
+      else if (outletFilter !== 'all' && p.outlet_id !== outletFilter) return false
       return true
     })
     return rankedSearch(base, search, (p) => [p.number, p.received_from], (p) => p.number)
@@ -213,6 +214,7 @@ export default function StokMasukPage() {
     const XLSX = await import('xlsx')
     const rows = filtered.map((p) => ({
       'No. Stok Masuk': p.number,
+      'Cabang': outletName(p.outlet_id),
       'Diterima dari': p.received_from ?? '',
       'Supplier': p.supplier?.name ?? '',
       'Tanggal': formatDate(p.date),
@@ -265,7 +267,7 @@ export default function StokMasukPage() {
           {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n} Baris</option>)}
         </select>
         <div className="flex items-center gap-2 flex-wrap">
-          <OutletFilter value={outletFilter} onChange={(v) => { setOutletFilter(v); setPage(1) }} />
+          <OutletFilter value={outletFilter} onChange={(v) => { setOutletFilter(v); setPage(1) }} includeNone />
           <div className="relative w-72 max-w-full">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Cari No. Stok Masuk" className="pl-9 h-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
