@@ -28,8 +28,15 @@ export default function TokoCatalog() {
 
   const list = useMemo(() => {
     const base = products.filter((p) => p.is_active && (cat === 'all' || p.category_id === cat))
-    return rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
-  }, [products, cat, search])
+    const ranked = rankedSearch(base, search, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
+    // Stok HABIS ditaruh paling BAWAH (urutan relevansi di tiap kelompok tetap terjaga).
+    const stockOf = (p: (typeof products)[number]) =>
+      p.has_variants ? variants.filter((v) => v.product_id === p.id).reduce((s, v) => s + v.stock, 0) : p.stock
+    const ready: typeof ranked = []
+    const out: typeof ranked = []
+    for (const p of ranked) (stockOf(p) > 0 ? ready : out).push(p)
+    return [...ready, ...out]
+  }, [products, cat, search, variants])
 
   // Batasi jumlah kartu yang dirender (katalog bisa ribuan). Reset saat filter berubah.
   const [shown, setShown] = useState(60)

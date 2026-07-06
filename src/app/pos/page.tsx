@@ -119,8 +119,15 @@ export default function POSPage() {
 
   const filteredProducts = useMemo(() => {
     const base = products.filter((p) => p.is_active && (selectedCategory === 'all' || p.category_id === selectedCategory))
-    return rankedSearch(base, deferredSearch, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
-  }, [products, deferredSearch, selectedCategory])
+    const ranked = rankedSearch(base, deferredSearch, (p) => [p.name, p.sku, p.barcode], (p) => p.name)
+    // Stok HABIS ditaruh paling BAWAH — kasir langsung lihat barang yang bisa dijual.
+    const stockOf = (p: (typeof products)[number]) =>
+      p.has_variants ? variants.filter((v) => v.product_id === p.id).reduce((s, v) => s + v.stock, 0) : p.stock
+    const ready: typeof ranked = []
+    const out: typeof ranked = []
+    for (const p of ranked) (stockOf(p) > 0 ? ready : out).push(p)
+    return [...ready, ...out]
+  }, [products, deferredSearch, selectedCategory, variants])
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
   const promoDiscount = 0
