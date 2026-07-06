@@ -118,6 +118,16 @@ export default function StokKeluarPage() {
     const live = useStockOutStore.getState().stockOuts.find((d) => d.id === doc.id)
     if (!live || live.status !== 'draft') return
     const inv = useInventoryStore.getState()
+    // Tolak posting bila ada qty > stok tersedia — kalau dibiarkan, stok di-clamp ke 0 tapi
+    // movement mencatat qty penuh, dan MENGHAPUS dokumen itu mengembalikan qty penuh = stok hantu.
+    const short = live.items.find((it) => {
+      const avail = inv.stockAt(live.outlet_id, it.product_id) ?? products.find((p) => p.id === it.product_id)?.stock ?? 0
+      return it.qty > avail
+    })
+    if (short) {
+      toast.error(`Stok ${short.product_name} tidak cukup (butuh ${short.qty}). Sesuaikan qty dokumen dulu.`)
+      return
+    }
     live.items.forEach((it) => {
       const before = inv.stockAt(live.outlet_id, it.product_id) ?? 0
       const { after } = inv.applyDelta(live.outlet_id, it.product_id, undefined, -it.qty)
