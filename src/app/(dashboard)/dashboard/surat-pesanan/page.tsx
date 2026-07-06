@@ -60,12 +60,14 @@ export default function SuratPesananPage() {
   // Kasir = lihat saja (tak bisa buat/ubah). Owner/manager/sales = boleh kelola.
   const canManage = !isCashier
   // Kasir & sales dikunci ke cabangnya; owner/manager lihat semua.
-  const lockedOutlet = (!isOwner && !isManager) && me?.outletId ? me.outletId : null
+  // Kasir/sales TANPA cabang = fail-closed ('__none__' → tak lihat apa pun), bukan lihat semua.
+  const lockedOutlet = (!isOwner && !isManager) ? (me?.outletId ?? '__none__') : null
 
   const [filter, setFilter] = useState<'all' | SalesOrderStatus>('all')
-  // Simpan NOMOR (stabil per sesi), bukan objek — supaya detail selalu baca dok LIVE dari store
-  // (id sementara ditukar ke UUID setelah tersimpan; snapshot beku bikin tombol nyangkut & update DB terlewat).
-  const [detailNumber, setDetailNumber] = useState<string | null>(null)
+  // Simpan {id, nomor} baris yang diklik — diresolve ke dok LIVE di CABANG SENDIRI (branchOrders),
+  // utamakan id (nomor duplikat legacy tak boleh membuka dokumen cabang lain); fallback nomor
+  // menjaga dialog tetap hidup saat id sementara ditukar UUID setelah tersimpan.
+  const [detailSel, setDetailSel] = useState<{ id: string; number: string } | null>(null)
   const [open, setOpen] = useState(false)
 
   // form
@@ -82,22 +84,36 @@ export default function SuratPesananPage() {
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState<DraftItem[]>([{ product_id: '', qty: 1 }])
 
-  const branchOrders = lockedOutlet ? salesOrders.filter((d) => d.outlet_id === lockedOutlet) : salesOrders
+  const branchOrders = useMemo(
+    () => (lockedOutlet ? salesOrders.filter((d) => d.outlet_id === lockedOutlet) : salesOrders),
+    [salesOrders, lockedOutlet]
+  )
   const filtered = useMemo(
     () => (filter === 'all' ? branchOrders : branchOrders.filter((d) => d.status === filter)),
     [branchOrders, filter]
   )
-  const detail = detailNumber ? salesOrders.find((d) => d.number === detailNumber) ?? null : null
+  // Resolve HANYA di cabang sendiri; utamakan id, fallback nomor (untuk swap id sementara→UUID).
+  const detail = detailSel
+    ? branchOrders.find((d) => d.id === detailSel.id) ?? branchOrders.find((d) => d.number === detailSel.number) ?? null
+    : null
 
   // Deteksi pesanan DOBEL: barang + jumlah persis sama (regardless nama/no HP pelanggan —
   // kasus "1 customer chat dari 2 nomor, pesanan sama"). Ditandai di daftar & diperingatkan saat buat.
   const itemsSig = (its: SalesOrder['items']) => its.map((i) => `${i.product_id}:${i.qty}`).sort().join('|')
-  const dupSigs = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const d of branchOrders) if (d.status !== 'cancelled' && d.items.length) { const s = itemsSig(d.items); m.set(s, (m.get(s) ?? 0) + 1) }
-    return m
+  const dupById = useMemo(() => {
+    const count = new Map<string, number>()
+    const sigOf = new Map<string, string>()
+    for (const d of branchOrders) {
+      if (d.status === 'cancelled' || !d.items.length) continue
+      const s = itemsSig(d.items)
+      sigOf.set(d.id, s)
+      count.set(s, (count.get(s) ?? 0) + 1)
+    }
+    const dup = new Set<string>()
+    sigOf.forEach((s, id) => { if ((count.get(s) ?? 0) > 1) dup.add(id) })
+    return dup
   }, [branchOrders])
-  const isDup = (d: SalesOrder) => d.status !== 'cancelled' && d.items.length > 0 && (dupSigs.get(itemsSig(d.items)) ?? 0) > 1
+  const isDup = (d: SalesOrder) => dupById.has(d.id)
 
   const doneCount = branchOrders.filter((d) => d.status === 'done').length
   const totalValue = branchOrders.filter((d) => d.status !== 'cancelled').reduce((s, d) => s + d.total, 0)
@@ -119,7 +135,10 @@ export default function SuratPesananPage() {
   }
 
   const create = () => {
+    if (lockedOutlet === '__none__') { toast.error('Akun kamu belum ditetapkan cabangnya — hubungi owner.'); return }
     if (!customerName.trim()) { toast.error('Nama customer wajib diisi'); return }
+    const od = new Date(orderDate)
+    if (!orderDate || Number.isNaN(od.getTime())) { toast.error('Tanggal wajib diisi'); return }
     const valid = items.filter((i) => i.product_id && i.qty > 0)
     if (!valid.length) { toast.error('Tambah minimal 1 barang dengan qty > 0'); return }
     // gabung qty bila produk sama dipilih dua kali
@@ -145,7 +164,7 @@ export default function SuratPesananPage() {
       customer_name: customerName.trim(),
       customer_address: customerAddress.trim() || undefined,
       customer_phone: customerPhone.trim() || undefined,
-      order_date: new Date(orderDate).toISOString(),
+      order_date: od.toISOString(),
       sales_name: salesName, sales_id: salesId || undefined,
       source_phone: sourcePhone.trim() || undefined,
       created_by_name: me?.name || undefined,
@@ -159,10 +178,10 @@ export default function SuratPesananPage() {
     setOpen(false)
   }
 
-  const changeStatus = (doc: SalesOrder, status: SalesOrderStatus, msg: string) => { setStatus(doc.id, status); toast.success(msg); setDetailNumber(null) }
+  const changeStatus = (doc: SalesOrder, status: SalesOrderStatus, msg: string) => { setStatus(doc.id, status); toast.success(msg); setDetailSel(null) }
   const remove = (doc: SalesOrder) => {
     if (!confirm(`Hapus Surat Pesanan ${doc.number}?`)) return
-    deleteSalesOrder(doc.id); toast.success('Surat Pesanan dihapus'); setDetailNumber(null)
+    deleteSalesOrder(doc.id); toast.success('Surat Pesanan dihapus'); setDetailSel(null)
   }
   const handlePrint = () => { if (typeof window !== 'undefined') window.print() }
 
@@ -222,7 +241,7 @@ export default function SuratPesananPage() {
                         {isDup(d) && <Badge variant="outline" className="text-xs gap-1 bg-amber-100 text-amber-700 border-amber-300" title="Barang & jumlah sama dengan surat pesanan lain — cek jangan sampai dobel"><AlertTriangle size={10} /> Mungkin dobel</Badge>}
                       </div>
                     </td>
-                    <td className="py-3 px-4"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetailNumber(d.number)}><Eye size={13} /></Button></td>
+                    <td className="py-3 px-4"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetailSel({ id: d.id, number: d.number })}><Eye size={13} /></Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -233,7 +252,7 @@ export default function SuratPesananPage() {
       </Card>
 
       {/* Detail — dokumen (bisa dicetak) */}
-      <Dialog open={!!detail} onOpenChange={() => setDetailNumber(null)}>
+      <Dialog open={!!detail} onOpenChange={() => setDetailSel(null)}>
         <DialogContent showCloseButton={false} className="sm:max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0">
           {detail && (
             <>
@@ -254,8 +273,9 @@ export default function SuratPesananPage() {
                     <Button size="sm" variant="outline" disabled={isPending(detail)} className="h-8 gap-1.5" onClick={() => changeStatus(detail, 'cancelled', 'Surat pesanan dibatalkan')}><X size={14} /> Batal</Button>
                   )}
                   <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={handlePrint}><Printer size={14} /> Cetak</Button>
-                  {canManage && <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" disabled={isPending(detail)} onClick={() => remove(detail)}><Trash2 size={14} /></Button>}
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setDetailNumber(null)}><X size={15} /></Button>
+                  {/* Hapus: owner bebas; sales/manager hanya boleh hapus DRAFT (dokumen jalan/selesai tak boleh raib tanpa jejak) */}
+                  {canManage && (isOwner || detail.status === 'draft') && <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" disabled={isPending(detail)} onClick={() => remove(detail)}><Trash2 size={14} /></Button>}
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setDetailSel(null)}><X size={15} /></Button>
                 </div>
               </div>
               {isPending(detail) && <p className="px-5 py-2 text-xs text-amber-600 print:hidden">Menyimpan dokumen… tunggu sebentar.</p>}
