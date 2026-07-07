@@ -116,6 +116,7 @@ export async function proxy(request: NextRequest) {
     if (role === 'sales') {
       const salesOk = path === '/dashboard'
         || path.startsWith('/dashboard/surat-pesanan')
+        || path.startsWith('/dashboard/penawaran')
         || path.startsWith('/dashboard/karyawan/absensi')
       if (path.startsWith('/pos') || (path.startsWith('/dashboard') && !salesOk)) return redirectTo('/dashboard/surat-pesanan')
     }

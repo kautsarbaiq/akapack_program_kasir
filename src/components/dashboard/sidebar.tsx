@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShoppingCart, Package, Warehouse,
   Receipt, Users, Tag, UserCheck, BarChart3, Settings,
-  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck, CalendarCheck, FileText,
+  ChevronDown, ChevronRight, LogOut, Store, X, ExternalLink, Calculator, Truck, CalendarCheck, FileText, FileSpreadsheet,
 } from 'lucide-react'
 import { cn, getInitials, getAvatarColor } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -72,6 +72,7 @@ const navItems: NavItem[] = [
     ],
   },
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
+  { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
   {
     title: 'Akuntansi', href: '/dashboard/akuntansi', icon: Calculator,
     children: [
@@ -115,6 +116,7 @@ const cashierNav: NavItem[] = [
   { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
   { title: 'Riwayat Transaksi', href: '/dashboard/penjualan', icon: Receipt },
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
+  { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
   { title: 'Stok (Lihat)', href: '/dashboard/inventori', icon: Warehouse },
@@ -123,6 +125,7 @@ const cashierNav: NavItem[] = [
 // Menu khusus SALES: Surat Pesanan (utama) + Absensi.
 const salesNav: NavItem[] = [
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
+  { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
 ]
@@ -157,6 +160,7 @@ const managerNav: NavItem[] = [
     ],
   },
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
+  { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
   { title: 'Laporan', href: '/dashboard/laporan', icon: BarChart3 },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: UserCheck },

@@ -11,11 +11,13 @@ const CASHIER_ALLOWED = [
   '/dashboard/inventori',        // Stok (mode lihat-saja)
   '/dashboard/penjualan',        // Riwayat Transaksi (lihat saja; void tetap owner)
   '/dashboard/surat-pesanan',    // Surat Pesanan (lihat saja)
+  '/dashboard/penawaran',        // Penawaran (lihat saja)
 ]
 
 /** Halaman yang boleh diakses SALES: buat surat pesanan + absensi. */
 const SALES_ALLOWED = [
   '/dashboard/surat-pesanan',
+  '/dashboard/penawaran',
   '/dashboard/karyawan/absensi',
 ]
 
@@ -26,6 +28,8 @@ const MANAGER_ALLOWED = [
   '/dashboard/pembelian',
   '/dashboard/stok-keluar',
   '/dashboard/penjualan',
+  '/dashboard/surat-pesanan',
+  '/dashboard/penawaran',
   '/dashboard/laporan',
   '/dashboard/karyawan/absensi',
 ]
