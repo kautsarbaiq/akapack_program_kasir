@@ -431,6 +431,35 @@ export interface SalesOrder {
   created_at: string
 }
 
+// ─── Quotation / Surat Penawaran Harga (untuk customer — TIDAK menyentuh stok) ──
+export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
+
+export interface QuotationItem {
+  id: string
+  quotation_id: string
+  product_id: string
+  description: string   // Keterangan (nama barang)
+  unit_price: number    // harga nego per unit
+  qty: number
+  total: number
+}
+
+export interface Quotation {
+  id: string
+  number: string          // QTN-xxxx/DDMMYYYY
+  outlet_id: string
+  customer_name: string
+  customer_address?: string // di bawah nama; "Di Tempat" bila kosong
+  quote_date: string
+  total: number
+  terms?: string          // bullet catatan (per baris)
+  bank_info?: string      // info transfer pembayaran
+  created_by_name?: string // penandatangan
+  items: QuotationItem[]
+  status: QuotationStatus
+  created_at: string
+}
+
 // ─── Dashboard Stats ───────────────────
 export interface DashboardStats {
   today_revenue: number
