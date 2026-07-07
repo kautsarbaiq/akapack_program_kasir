@@ -72,7 +72,6 @@ export function SalesOrderDocument({ doc }: { doc: SalesOrder }) {
           {metaRow('Sales', doc.sales_name ? `${doc.sales_name}${doc.sales_phone ? ` (${doc.sales_phone})` : ''}` : '—')}
           {doc.source_phone ? metaRow('Asal Pesanan', doc.source_phone) : null}
           {metaRow('Outlet', outletName)}
-          {doc.created_by_name ? metaRow('Diinput oleh', doc.created_by_name) : null}
         </div>
       </div>
 
