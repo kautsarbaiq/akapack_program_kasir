@@ -6,6 +6,7 @@ import { ArrowLeft, BarChart3, CalendarCheck, Clock, AlertTriangle, Timer } from
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useAttendanceStore } from '@/stores/use-attendance-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
@@ -19,6 +20,15 @@ function firstOfMonth(): string {
 }
 const mmToHHMM = (m: number) => { const t = Math.round(m); return `${String(Math.floor(t / 60)).padStart(2, '0')}.${String(t % 60).padStart(2, '0')}` } // bulatkan total dulu (539.5 → 09.00, bukan 08.60)
 const fmtHours = (h: number) => (h > 0 ? `${h.toFixed(1)} jam` : '—')
+// Durasi gaya Olsera: "9 jam 42 menit" / "42 menit" / "—".
+const fmtDur = (ms: number) => {
+  if (ms <= 0) return '—'
+  const totalMin = Math.round(ms / 60000)
+  const h = Math.floor(totalMin / 60), m = totalMin % 60
+  if (h > 0 && m > 0) return `${h} jam ${m} menit`
+  if (h > 0) return `${h} jam`
+  return `${m} menit`
+}
 
 export default function AnalisisAbsensiPage() {
   const employees = useEmployeeStore((s) => s.employees)
@@ -30,6 +40,7 @@ export default function AnalisisAbsensiPage() {
   const [from, setFrom] = useState(firstOfMonth())
   const [to, setTo] = useState(localDay(new Date()))
   const [stdIn, setStdIn] = useState('08:00') // jam masuk standar → hitung telat
+  const [view, setView] = useState<'ringkasan' | 'harian'>('ringkasan') // ringkasan (rekap) / harian (per tanggal gaya Olsera)
 
   const me = useCurrentUserStore((s) => s.user)
   const { isCashier } = useRole() // kasir hanya lihat absensi sendiri
@@ -82,6 +93,45 @@ export default function AnalisisAbsensiPage() {
     })
   }, [employees, records, activeOutletId, from, to, isCashier, me, stdMinutes])
 
+  // Rekap HARIAN per (tanggal, karyawan) — format Olsera: Tanggal | Pegawai | Datang | Pulang | Durasi.
+  const perDate = useMemo(() => {
+    const staff = employees.filter((e) => e.is_active && e.outlet_id === activeOutletId
+      && (!isCashier || e.id === me?.employeeId))
+    const out: { key: string; date: string; name: string; datang: string; pulang: string; durasi: string; complete: boolean }[] = []
+    for (const e of staff) {
+      const byDay = new Map<string, { ts: number; type: 'in' | 'out' }[]>()
+      for (const r of records) {
+        if (r.employee_id !== e.id || r.outlet_id !== activeOutletId) continue
+        const d = localDay(r.timestamp)
+        if (d < from || d > to) continue
+        const arr = byDay.get(d) ?? []
+        arr.push({ ts: new Date(r.timestamp).getTime(), type: r.type })
+        byDay.set(d, arr)
+      }
+      byDay.forEach((arr, day) => {
+        arr.sort((a, b) => a.ts - b.ts)
+        const ins = arr.filter((x) => x.type === 'in')
+        const outs = arr.filter((x) => x.type === 'out')
+        const firstIn = ins.length ? ins[0].ts : arr[0]?.ts ?? null
+        const lastOut = outs.length ? outs[outs.length - 1].ts : null
+        // Durasi = total jam kerja (pasangkan masuk→pulang kronologis; abaikan jeda istirahat).
+        let workMs = 0, openIn: number | null = null
+        for (const x of arr) {
+          if (x.type === 'in') openIn = x.ts
+          else if (openIn !== null && x.ts > openIn) { workMs += x.ts - openIn; openIn = null }
+        }
+        out.push({
+          key: `${e.id}-${day}`, date: day, name: e.name,
+          datang: firstIn !== null ? formatTime(new Date(firstIn)) : '—',
+          pulang: lastOut !== null ? formatTime(new Date(lastOut)) : '—',
+          durasi: fmtDur(workMs), complete: lastOut !== null,
+        })
+      })
+    }
+    out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.name.localeCompare(b.name)))
+    return out
+  }, [employees, records, activeOutletId, from, to, isCashier, me])
+
   const totalHadir = rows.reduce((s, r) => s + r.hadir, 0)
   const totalJam = rows.reduce((s, r) => s + r.jamKerja, 0)
   const totalTelat = rows.reduce((s, r) => s + r.telat, 0)
@@ -110,6 +160,11 @@ export default function AnalisisAbsensiPage() {
         </div>
       </div>
 
+      <div className="flex gap-2">
+        <Button size="sm" variant={view === 'ringkasan' ? 'default' : 'outline'} className={`text-xs ${view === 'ringkasan' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`} onClick={() => setView('ringkasan')}>Ringkasan</Button>
+        <Button size="sm" variant={view === 'harian' ? 'default' : 'outline'} className={`text-xs ${view === 'harian' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`} onClick={() => setView('harian')}>Per Tanggal</Button>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card><CardContent className="p-4"><p className="text-2xl font-bold">{rows.length}</p><p className="text-xs text-muted-foreground mt-1">Karyawan</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-2xl font-bold flex items-center gap-1.5"><CalendarCheck size={18} className="text-emerald-600" />{totalHadir}</p><p className="text-xs text-muted-foreground mt-1">Total hari hadir</p></CardContent></Card>
@@ -117,6 +172,7 @@ export default function AnalisisAbsensiPage() {
         <Card><CardContent className="p-4"><p className="text-2xl font-bold flex items-center gap-1.5"><AlertTriangle size={18} className="text-amber-600" />{totalTelat}</p><p className="text-xs text-muted-foreground mt-1">Total telat (hari)</p></CardContent></Card>
       </div>
 
+      {view === 'ringkasan' && (<>
       {chartData.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-base flex items-center gap-2"><BarChart3 size={16} /> Kehadiran per Karyawan</CardTitle></CardHeader>
@@ -174,6 +230,41 @@ export default function AnalisisAbsensiPage() {
           </p>
         </CardContent>
       </Card>
+      </>)}
+
+      {/* Rekap HARIAN (format Olsera): satu baris per tanggal per karyawan */}
+      {view === 'harian' && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
+                    {['Tanggal', 'Pegawai', 'Datang', 'Pulang', 'Durasi'].map((h) => (
+                      <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {perDate.map((r) => (
+                    <tr key={r.key} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-muted/30">
+                      <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{r.date}</td>
+                      <td className="py-2.5 px-4 font-medium">{r.name}</td>
+                      <td className="py-2.5 px-4 tabular-nums">{r.datang}</td>
+                      <td className="py-2.5 px-4 tabular-nums">{r.complete ? r.pulang : <span className="text-amber-600">belum pulang</span>}</td>
+                      <td className="py-2.5 px-4">{r.durasi}</td>
+                    </tr>
+                  ))}
+                  {perDate.length === 0 && <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">Tidak ada absensi pada rentang ini.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <p className="px-4 py-3 text-xs text-muted-foreground border-t">
+              <b>Datang</b> = absen masuk pertama · <b>Pulang</b> = absen pulang terakhir · <b>Durasi</b> = total jam kerja (jeda istirahat tak dihitung).
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
