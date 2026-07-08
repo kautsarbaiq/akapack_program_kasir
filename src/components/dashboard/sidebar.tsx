@@ -115,6 +115,7 @@ const bottomItems: NavItem[] = [
 const cashierNav: NavItem[] = [
   { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
   { title: 'Riwayat Transaksi', href: '/dashboard/penjualan', icon: Receipt },
+  { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan', icon: BarChart3 },
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
   { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },

@@ -15,7 +15,9 @@ import { useProductStore } from '@/stores/use-product-store'
 import { formatRupiah, formatNumber, localDay } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
-import { useRole } from '@/stores/use-current-user-store'
+import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
+import { Badge } from '@/components/ui/badge'
 
 const PERIODS = [
   { value: '1', label: 'Hari Ini' },
@@ -49,11 +51,16 @@ function KPICard({ title, value, subtitle, accent }: { title: string; value: str
 export default function LaporanPenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const products = useProductStore((s) => s.products)
+  const outlets = useOutletStore((s) => s.outlets)
   const [period, setPeriod] = useState('30')
   const [outletFilter, setOutletFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const { canSeeProfit } = useRole() // tab Laba/Rugi hanya owner
+  const { canSeeProfit, isCashier } = useRole() // tab Laba/Rugi hanya owner
+  const me = useCurrentUserStore((s) => s.user)
+  // Kasir DIKUNCI ke cabangnya (tak bisa pilih cabang lain); owner/manager bebas.
+  const lockedOutlet = isCashier && me?.outletId ? me.outletId : null
+  const effectiveOutlet = lockedOutlet ?? outletFilter
 
   // Mode rentang tanggal kustom (per tanggal). Kalau aktif, override tombol periode.
   const useRange = !!(dateFrom || dateTo)
@@ -68,7 +75,7 @@ export default function LaporanPenjualanPage() {
     const cutoff = startDay.getTime()
     const completed = transactions.filter((t) => {
       if (t.status !== 'completed') return false
-      if (outletFilter !== 'all' && t.outlet_id !== outletFilter) return false
+      if (effectiveOutlet !== 'all' && t.outlet_id !== effectiveOutlet) return false
       if (useRange) {
         const d = localDay(t.created_at)
         return d >= rangeStart && d <= rangeEnd
@@ -169,7 +176,7 @@ export default function LaporanPenjualanPage() {
     const peakHour = hourly.reduce((a, b) => (b.orders > a.orders ? b : a), hourly[0])
 
     return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, paymentData, cashierData, hourly, peakHour }
-  }, [transactions, products, period, outletFilter, useRange, rangeStart, rangeEnd])
+  }, [transactions, products, period, effectiveOutlet, useRange, rangeStart, rangeEnd])
 
   const isEmpty = report.totalTrx === 0
 
@@ -181,7 +188,9 @@ export default function LaporanPenjualanPage() {
           <p className="text-muted-foreground text-sm mt-1">Analisis performa dari transaksi nyata</p>
         </div>
         <div className="flex gap-2 items-center flex-wrap justify-end">
-          <OutletFilter value={outletFilter} onChange={setOutletFilter} />
+          {lockedOutlet
+            ? <Badge variant="outline" className="h-9 px-3 text-xs">{outlets.find((o) => o.id === lockedOutlet)?.name ?? 'Cabang saya'}</Badge>
+            : <OutletFilter value={outletFilter} onChange={setOutletFilter} />}
           {PERIODS.map((p) => (
             <Button key={p.value} variant={!useRange && period === p.value ? 'default' : 'outline'} size="sm"
               className={`text-xs ${!useRange && period === p.value ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''} ${useRange ? 'opacity-50' : ''}`}
