@@ -39,7 +39,8 @@ export default function PenjualanPage() {
   const me = useCurrentUserStore((s) => s.user)
 
   // Kasir DIKUNCI ke cabangnya sendiri (Garut hanya Garut, Bandung hanya Bandung) — tak bisa pilih cabang lain.
-  const lockedOutlet = isCashier && me?.outletId ? me.outletId : null
+  // FAIL-CLOSED: kasir TANPA outlet → '__none__' (lihat nol), bukan jatuh ke 'all' (bocor semua cabang).
+  const lockedOutlet = isCashier ? (me?.outletId ?? '__none__') : null
   const effectiveOutlet = lockedOutlet ?? outletFilter
 
   // Filter per-cabang + rentang tanggal + metode + status.

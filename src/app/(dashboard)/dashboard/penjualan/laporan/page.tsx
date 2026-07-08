@@ -59,7 +59,8 @@ export default function LaporanPenjualanPage() {
   const { canSeeProfit, isCashier } = useRole() // tab Laba/Rugi hanya owner
   const me = useCurrentUserStore((s) => s.user)
   // Kasir DIKUNCI ke cabangnya (tak bisa pilih cabang lain); owner/manager bebas.
-  const lockedOutlet = isCashier && me?.outletId ? me.outletId : null
+  // FAIL-CLOSED: kasir TANPA outlet → '__none__' (lihat nol), bukan jatuh ke 'all' (bocor semua cabang).
+  const lockedOutlet = isCashier ? (me?.outletId ?? '__none__') : null
   const effectiveOutlet = lockedOutlet ?? outletFilter
 
   // Mode rentang tanggal kustom (per tanggal). Kalau aktif, override tombol periode.
