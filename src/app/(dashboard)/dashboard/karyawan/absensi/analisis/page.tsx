@@ -124,7 +124,8 @@ export default function AnalisisAbsensiPage() {
           key: `${e.id}-${day}`, date: day, name: e.name,
           datang: firstIn !== null ? formatTime(new Date(firstIn)) : '—',
           pulang: lastOut !== null ? formatTime(new Date(lastOut)) : '—',
-          durasi: fmtDur(workMs), complete: lastOut !== null,
+          // complete=false bila masih ada sesi masuk yang belum ditutup (mis. masuk lagi tanpa pulang).
+          durasi: fmtDur(workMs), complete: lastOut !== null && openIn === null,
         })
       })
     }
@@ -260,7 +261,7 @@ export default function AnalisisAbsensiPage() {
               </table>
             </div>
             <p className="px-4 py-3 text-xs text-muted-foreground border-t">
-              <b>Datang</b> = absen masuk pertama · <b>Pulang</b> = absen pulang terakhir · <b>Durasi</b> = total jam kerja (jeda istirahat tak dihitung).
+              <b>Datang</b> = absen masuk pertama · <b>Pulang</b> = absen pulang terakhir · <b>Durasi</b> = total jam kerja (jeda istirahat tak dihitung). Shift lintas tengah malam tercatat terpisah per tanggal.
             </p>
           </CardContent>
         </Card>
