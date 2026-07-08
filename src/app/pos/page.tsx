@@ -6,7 +6,7 @@ import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CheckCircle2,
   ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split,
-  Landmark, ShoppingBag, Music2, Store, LayoutDashboard
+  Landmark, ShoppingBag, Music2, Store, LayoutDashboard, Fingerprint
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { OutletSwitcher } from '@/components/dashboard/outlet-switcher'
@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ShiftModal } from '@/components/pos/shift-modal'
+import { AttendanceKioskDialog } from '@/components/pos/attendance-kiosk-dialog'
 import { CustomerSelector } from '@/components/pos/customer-selector'
 import { ReceiptModal } from '@/components/pos/receipt-modal'
 import { useProductStore } from '@/stores/use-product-store'
@@ -111,6 +112,7 @@ export default function POSPage() {
 
   const [shiftOpenModal, setShiftOpenModal] = useState(false)
   const [shiftCloseModal, setShiftCloseModal] = useState(false)
+  const [attendanceOpen, setAttendanceOpen] = useState(false)
   const [customerSheet, setCustomerSheet] = useState(false)
   const [showHeld, setShowHeld] = useState(false)
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
@@ -473,6 +475,10 @@ export default function POSPage() {
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-muted/30">
         <div className="p-3 shrink-0 flex items-center gap-2 flex-wrap">
           <OutletSwitcher className="bg-background h-10" />
+          {/* Absen kilat: siapa pun ketik kode → masuk/pulang, tanpa login satu-satu */}
+          <Button variant="outline" onClick={() => setAttendanceOpen(true)} className="h-10 gap-1.5 bg-background shrink-0" title="Absen masuk/pulang karyawan">
+            <Fingerprint size={16} /> Absen
+          </Button>
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
@@ -856,6 +862,7 @@ export default function POSPage() {
       {/* ── Modals ── */}
       <ShiftModal open={shiftOpenModal} onOpenChange={setShiftOpenModal} mode="open" />
       <ShiftModal open={shiftCloseModal} onOpenChange={setShiftCloseModal} mode="close" />
+      <AttendanceKioskDialog open={attendanceOpen} onOpenChange={setAttendanceOpen} outletId={activeOutletId} />
       <CustomerSelector open={customerSheet} onOpenChange={setCustomerSheet} selectedId={selectedCustomer?.id ?? null} onSelect={setSelectedCustomer} />
       <ReceiptModal open={showReceipt} onOpenChange={setShowReceipt} transaction={receiptTxn} />
 
