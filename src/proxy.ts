@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from '@/lib/supabase/config'
 
+// KUNCI KERAS khusus developer: set env MAINTENANCE_MODE=1 di hosting (Vercel) → kunci TOTAL, owner pun
+// tak bisa masuk & tak ada tombol in-app yang bisa mematikannya. Hanya developer (pemegang akses hosting)
+// yang bisa nyalakan/matikan. Beda dari flag DB app_config (lembut, owner tetap masuk, di-toggle Pengaturan).
 const MAINTENANCE_ENV = ['1', 'true', 'on', 'yes'].includes((process.env.MAINTENANCE_MODE || '').trim().toLowerCase())
 
 // Flag maintenance dari Supabase (bisa di-toggle 1 klik dari halaman Pengaturan, tanpa redeploy).
@@ -37,23 +40,25 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
   const supaOk = isSupabaseConfigured()
 
-  // ── MODE MAINTENANCE (env hosting ATAU flag Supabase dari Pengaturan) ──
-  // Saat aktif, semua pengunjung diarahkan ke halaman "Sedang Maintenance".
-  // Owner (punya cookie peran 'owner') TETAP bisa masuk untuk mengelola. Halaman login & /maintenance
-  // tetap terbuka agar owner bisa login dulu. Aset Next & API dibiarkan lewat agar halaman tampil benar.
-  const maintExempt =
+  // ── MODE MAINTENANCE — DUA TINGKAT ──
+  // Path teknis yang HARUS tetap lolos agar halaman /maintenance sendiri bisa dirender (aset Next + ikon).
+  const maintExemptHard =
     path === '/maintenance' ||
-    path.startsWith('/login') ||
-    path.startsWith('/api') ||
-    path.startsWith('/auth') ||
     path.startsWith('/_next') ||
     path === '/favicon.ico' ||
     /\.(?:png|jpg|jpeg|gif|svg|webp|ico|webmanifest|woff2?)$/i.test(path)
-  const roleCookie = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
-  // Cek exempt & owner DULU — path yang lolos tak perlu bayar query flag maintenance sama sekali.
-  if (!maintExempt && roleCookie !== 'owner') {
-    const maintenanceOn = MAINTENANCE_ENV || (supaOk ? await maintenanceFromDB() : false)
-    if (maintenanceOn) {
+
+  if (MAINTENANCE_ENV) {
+    // KERAS (khusus DEVELOPER via env MAINTENANCE_MODE di hosting/Vercel): SEMUA diblokir — termasuk
+    // owner. Tak ada bypass cookie, tak bisa dimatikan dari dalam app; hanya developer yang bisa
+    // mematikan dengan menghapus env var. Login pun ikut ditutup → benar-benar terkunci total.
+    if (!maintExemptHard) return NextResponse.rewrite(new URL('/maintenance', request.url))
+  } else if (supaOk) {
+    // LEMBUT (flag app_config, di-toggle owner dari Pengaturan): owner TETAP bisa masuk untuk mengelola;
+    // login/api/auth tetap terbuka. Sisanya diarahkan ke halaman maintenance.
+    const maintExemptSoft = maintExemptHard || path.startsWith('/login') || path.startsWith('/api') || path.startsWith('/auth')
+    const roleCookie = (request.cookies.get('akapack-role')?.value || '').toLowerCase()
+    if (!maintExemptSoft && roleCookie !== 'owner' && await maintenanceFromDB()) {
       return NextResponse.rewrite(new URL('/maintenance', request.url))
     }
   }
