@@ -90,12 +90,20 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
   loaded: false,
 
   fetch: async () => {
-    // 1) Sesi karyawan (nama+PIN) diprioritaskan.
+    // 1) Sesi karyawan (nama+PIN) diprioritaskan — TAPI divalidasi ulang ke data karyawan TERBARU.
+    //    Role/cabang bisa berubah sejak sesi disimpan (mis. cashier dinaikkan jadi owner); jangan
+    //    pakai peran basi dari localStorage. Kalau karyawan sudah nonaktif/terhapus → akhiri sesi.
     const staff = readStaff()
     if (staff) {
-      useActiveOutletStore.getState().setActiveOutlet(staff.outletId) // kunci ke cabang karyawan
-      setRoleCookie(staff.role)
-      set({ user: { name: staff.name, email: '', role: staff.role, outletId: staff.outletId, employeeId: staff.employeeId, viaStaff: true }, loaded: true })
+      const emp = useEmployeeStore.getState().employees.find((e) => e.id === staff.employeeId)
+      if (emp && !emp.is_active) { writeStaff(null); set({ user: null, loaded: true }); return }
+      const role = emp?.role ?? staff.role
+      const outletId = emp?.outlet_id ?? staff.outletId
+      const name = emp?.name ?? staff.name
+      if (emp) writeStaff({ employeeId: staff.employeeId, name, role, outletId: outletId ?? '' }) // segarkan sesi tersimpan
+      else setRoleCookie(role)
+      if (outletId) useActiveOutletStore.getState().setActiveOutlet(outletId) // kunci ke cabang (owner: null → biarkan)
+      set({ user: { name, email: '', role, outletId: outletId ?? null, employeeId: staff.employeeId, viaStaff: true }, loaded: true })
       return
     }
     // 2) Mode demo (Supabase belum dikonfigurasi).
