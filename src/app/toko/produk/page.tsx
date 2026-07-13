@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Minus } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
+import { ProductImg } from '@/components/product-img'
 import { Button } from '@/components/ui/button'
 import { useProductStore } from '@/stores/use-product-store'
 import { useVariantStore } from '@/stores/use-variant-store'
@@ -54,7 +55,7 @@ function ProductDetail() {
       <Link href="/toko" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={15} /> Kembali</Link>
       <div className="grid md:grid-cols-2 gap-6">
         <div className="aspect-square bg-muted rounded-2xl flex items-center justify-center overflow-hidden text-muted-foreground">
-          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <CategoryIcon name={product.category?.icon} size={72} />}
+          {product.image_url ? <ProductImg src={product.image_url} alt={product.name} className="w-full h-full object-cover" fallback={<CategoryIcon name={product.category?.icon} size={72} />} /> : <CategoryIcon name={product.category?.icon} size={72} />}
         </div>
         <div className="space-y-4">
           <div>

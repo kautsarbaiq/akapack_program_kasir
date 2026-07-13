@@ -6,6 +6,7 @@ import {
   Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle,
   Download, Upload, Loader2
 } from 'lucide-react'
+import { ProductImg } from '@/components/product-img'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -303,7 +304,7 @@ export default function ProdukPage() {
             return (
               <Card key={p.id} className="overflow-hidden group cursor-pointer hover:shadow-md transition-all duration-200">
                 <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
-                  {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <Package size={32} className="text-muted-foreground" />}
+                  {p.image_url ? <ProductImg src={p.image_url} alt={p.name} className="w-full h-full object-cover" fallback={<Package size={32} className="text-muted-foreground" />} /> : <Package size={32} className="text-muted-foreground" />}
                 </div>
                 <CardContent className="p-3 space-y-1.5">
                   <p className="text-sm font-semibold truncate">{p.name}</p>

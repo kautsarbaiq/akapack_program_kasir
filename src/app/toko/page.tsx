@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
+import { ProductImg } from '@/components/product-img'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useProductStore } from '@/stores/use-product-store'
@@ -75,7 +76,7 @@ export default function TokoCatalog() {
             <div key={p.id} className="bg-background rounded-xl border overflow-hidden flex flex-col">
               <Link href={`/toko/produk?id=${p.id}`} className="block">
                 <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden text-muted-foreground">
-                  {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <CategoryIcon name={p.category?.icon} size={40} />}
+                  {p.image_url ? <ProductImg src={p.image_url} alt={p.name} className="w-full h-full object-cover" fallback={<CategoryIcon name={p.category?.icon} size={40} />} /> : <CategoryIcon name={p.category?.icon} size={40} />}
                 </div>
               </Link>
               <div className="p-3 flex flex-col flex-1 gap-1.5">
