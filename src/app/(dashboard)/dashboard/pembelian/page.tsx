@@ -126,8 +126,11 @@ export default function StokMasukPage() {
       const prod = useProductStore.getState().products.find((p) => p.id === it.product_id)
       const { before: invBefore, after: invAfter } = inv.applyDelta(outlet, it.product_id, undefined, it.qty)
       if (prod && it.cost > 0) {
-        const denom = invBefore + it.qty
-        setCostPrice(it.product_id, denom > 0 ? Math.round((invBefore * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
+        // Bobot rata-rata pakai stok lama ter-clamp ≥0 — stok MINUS (jual saat kosong) tidak boleh
+        // menyeret rumus jadi bobot negatif/modal ngaco.
+        const wBefore = Math.max(0, invBefore)
+        const denom = wBefore + it.qty
+        setCostPrice(it.product_id, denom > 0 ? Math.round((wBefore * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
       }
       addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: outlet })
     })

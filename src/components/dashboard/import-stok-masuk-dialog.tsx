@@ -179,8 +179,10 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
         // Update modal HANYA bila ada harga beli di file (costSum>0) — jangan menolkan modal.
         if (a.costSum > 0 && a.costQty > 0) {
           const beforeCost = prod?.cost_price ?? 0
-          const denom = before + a.costQty
-          const newCost = denom > 0 ? Math.round((before * beforeCost + a.costSum) / denom) : Math.round(a.costSum / a.costQty)
+          // Bobot rata-rata pakai stok lama ter-clamp ≥0 (stok minus tak boleh menyeret modal).
+          const wBefore = Math.max(0, before)
+          const denom = wBefore + a.costQty
+          const newCost = denom > 0 ? Math.round((wBefore * beforeCost + a.costSum) / denom) : Math.round(a.costSum / a.costQty)
           costPatches.push({ id: pid, cost_price: newCost })
         }
       }
