@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useRef, useDeferredValue } from 'react'
+import { useState, useMemo, useCallback, useRef, useDeferredValue, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
@@ -9,6 +9,7 @@ import {
   Landmark, ShoppingBag, Music2, Store, LayoutDashboard, Fingerprint
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
+import { ProductImg } from '@/components/product-img'
 import { OutletSwitcher } from '@/components/dashboard/outlet-switcher'
 import { PAYMENT_METHODS as PAYMENT_METHOD_DEFS } from '@/lib/constants'
 
@@ -113,11 +114,15 @@ export default function POSPage() {
   const [shiftOpenModal, setShiftOpenModal] = useState(false)
   const [shiftCloseModal, setShiftCloseModal] = useState(false)
   const [attendanceOpen, setAttendanceOpen] = useState(false)
+  const [shownCount, setShownCount] = useState(MAX_SHOWN) // batas kartu dirender — bisa ditambah tombol "Tampilkan lagi"
   const [customerSheet, setCustomerSheet] = useState(false)
   const [showHeld, setShowHeld] = useState(false)
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptTxn, setReceiptTxn] = useState<Transaction | null>(null)
+
+  // Ganti pencarian/kategori → batas render kembali ke awal.
+  useEffect(() => { setShownCount(MAX_SHOWN) }, [deferredSearch, selectedCategory])
 
   const filteredProducts = useMemo(() => {
     const base = products.filter((p) => p.is_active && (selectedCategory === 'all' || p.category_id === selectedCategory))
@@ -153,17 +158,20 @@ export default function POSPage() {
     addToCart(product)
   }
 
+  // KEBIJAKAN: stok kosong TETAP boleh dijual (stok jadi minus, dikoreksi via stok masuk/opname).
+  // Peringatkan HANYA saat melewati batas stok (sekali), jangan blokir & jangan spam toast tiap klik.
   const addToCart = useCallback((product: Product) => {
-    if (product.stock === 0) { toast.error('Stok produk habis!'); return }
     setCart((prev) => {
       const existing = prev.find((i) => i.key === product.id)
       if (existing) {
-        // Cek pemakaian SETELAH tambah (bukan sebelum) — cegah oversell saat satuan besar (faktor>1).
-        if ((existing.quantity + 1) * (existing.factor || 1) > product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return prev }
+        const usedBefore = existing.quantity * (existing.factor || 1)
+        const usedAfter = (existing.quantity + 1) * (existing.factor || 1)
+        if (usedBefore <= product.stock && usedAfter > product.stock) toast.warning(`Stok ${product.name} tinggal ${product.stock} — transaksi tetap diproses (stok jadi minus)`)
         const q = existing.quantity + 1
         const pr = linePriceFor(product, existing.unit, q)
         return prev.map((i) => (i.key === product.id ? { ...i, quantity: q, price: pr, subtotal: Math.max(0, q * pr - i.discount) } : i))
       }
+      if (product.stock <= 0) toast.warning(`${product.name} stok kosong — transaksi tetap diproses (stok jadi minus)`)
       return [...prev, {
         key: product.id,
         product_id: product.id,
@@ -184,10 +192,11 @@ export default function POSPage() {
     setCart((prev) => {
       const existing = prev.find((i) => i.key === variant.id)
       if (existing) {
-        if (existing.quantity >= variant.stock) { toast.error(`Stok ${variant.name} hanya ${variant.stock}`); return prev }
+        if (existing.quantity === variant.stock) toast.warning(`Stok ${variant.name} tinggal ${variant.stock} — transaksi tetap diproses (stok jadi minus)`)
         const q = existing.quantity + 1
         return prev.map((i) => (i.key === variant.id ? { ...i, quantity: q, subtotal: Math.max(0, q * i.price - i.discount) } : i))
       }
+      if (variant.stock <= 0) toast.warning(`${variant.name} stok kosong — transaksi tetap diproses (stok jadi minus)`)
       return [...prev, {
         key: variant.id,
         product_id: product.id,
@@ -210,14 +219,15 @@ export default function POSPage() {
         .map((i) => {
           if (i.key !== key) return i
           const q = i.quantity + delta
-          // Cegah oversell saat menambah qty (hormati faktor satuan & stok varian)
+          // Lewat batas stok → PERINGATAN sekali (saat melintas), transaksi tetap jalan (stok boleh minus).
           if (delta > 0) {
             if (i.variant_id) {
               const v = variants.find((x) => x.id === i.variant_id)
-              if (v && q > v.stock) { toast.error(`Stok ${i.product_name} hanya ${v.stock}`); return i }
+              if (v && i.quantity <= v.stock && q > v.stock) toast.warning(`Stok ${i.product_name} tinggal ${v.stock} — lanjut, stok jadi minus`)
             } else {
               const product = products.find((p) => p.id === i.product_id)
-              if (product && q * (i.factor || 1) > product.stock) { toast.error(`Stok ${product.name} hanya ${product.stock}`); return i }
+              const f = i.factor || 1
+              if (product && i.quantity * f <= product.stock && q * f > product.stock) toast.warning(`Stok ${product.name} tinggal ${product.stock} — lanjut, stok jadi minus`)
             }
           }
           let pr = i.price
@@ -231,20 +241,18 @@ export default function POSPage() {
     })
   }
 
-  // Set qty langsung (ketik di keranjang). Minimal 1, dibatasi stok (hormati faktor satuan & varian).
+  // Set qty langsung (ketik di keranjang). Minimal 1; lewat stok → peringatan saja (boleh minus).
   const setQty = (key: string, raw: number) => {
     setCart((prev) => prev.map((i) => {
       if (i.key !== key) return i
-      let q = Math.max(1, Math.floor(Number.isFinite(raw) ? raw : 1))
+      const q = Math.max(1, Math.floor(Number.isFinite(raw) ? raw : 1))
       if (i.variant_id) {
         const v = variants.find((x) => x.id === i.variant_id)
-        if (v && q > v.stock) { toast.error(`Stok ${i.product_name} hanya ${v.stock}`); q = Math.max(1, v.stock) }
+        if (v && q > v.stock && i.quantity <= v.stock) toast.warning(`Stok ${i.product_name} tinggal ${v.stock} — lanjut, stok jadi minus`)
       } else {
         const product = products.find((p) => p.id === i.product_id)
-        if (product && q * (i.factor || 1) > product.stock) {
-          const maxQ = Math.max(1, Math.floor(product.stock / (i.factor || 1)))
-          toast.error(`Stok ${product.name} hanya ${product.stock}`); q = maxQ
-        }
+        const f = i.factor || 1
+        if (product && q * f > product.stock && i.quantity * f <= product.stock) toast.warning(`Stok ${product.name} tinggal ${product.stock} — lanjut, stok jadi minus`)
       }
       let pr = i.price
       if (!i.variant_id) {
@@ -275,13 +283,10 @@ export default function POSPage() {
       const product = products.find((p) => p.id === i.product_id)
       if (!product) return i
       const factor = unitName === product.unit ? 1 : (product.units?.find((x) => x.name === unitName)?.factor ?? 1)
-      // Ganti satuan bisa melipatgandakan kebutuhan stok (qty × faktor) — clamp qty bila melebihi stok.
-      let q = i.quantity
-      if (q * factor > product.stock) {
-        const maxQ = Math.max(1, Math.floor(product.stock / factor))
-        if (maxQ * factor > product.stock) { toast.error(`Stok ${product.name} tidak cukup untuk satuan ${unitName}`); return i }
-        toast.error(`Stok ${product.name} hanya ${product.stock} — qty disesuaikan ke ${maxQ}`)
-        q = maxQ
+      // Ganti satuan bisa melipatgandakan kebutuhan stok (qty × faktor) — peringatkan saja, boleh minus.
+      const q = i.quantity
+      if (q * factor > product.stock && q * (i.factor || 1) <= product.stock) {
+        toast.warning(`Stok ${product.name} tinggal ${product.stock} (butuh ${q * factor}) — lanjut, stok jadi minus`)
       }
       const price = linePriceFor(product, unitName, q)
       return { ...i, unit: unitName, factor, quantity: q, price, discount: 0, subtotal: q * price }
@@ -345,16 +350,15 @@ export default function POSPage() {
       toast.error('Pilih 2 metode berbeda untuk split')
       return
     }
-    // Cek stok FINAL terhadap inventory nyata (cegah oversell bila stok berubah sejak layar dimuat).
+    // Info stok FINAL terhadap inventory nyata — TIDAK memblokir (kebijakan: stok kosong boleh dijual,
+    // hasilnya stok minus yang jujur tercatat & dikoreksi lewat stok masuk/opname).
     const invNow = useInventoryStore.getState()
-    for (const c of cart) {
+    const short = cart.find((c) => {
       const need = c.variant_id ? c.quantity : c.quantity * c.factor
       const live = invNow.stockAt(activeOutletId, c.product_id, c.variant_id)
-      if (live !== null && need > live) {
-        toast.error(`Stok ${c.product_name} tinggal ${live}, tidak cukup untuk ${need}`)
-        return
-      }
-    }
+      return live !== null && need > live
+    })
+    if (short) toast.warning(`Ada barang melebihi stok (${short.product_name}) — transaksi diproses, stok jadi minus`)
     const splitAmt1 = Math.min(splitAmount1, total)
     const splitDetails = paymentMethod === 'split'
       ? { [splitMethod1]: splitAmt1, [splitMethod2]: total - splitAmt1 }
@@ -499,7 +503,7 @@ export default function POSPage() {
 
         <ScrollArea className="flex-1 min-h-0 px-3 pb-3">
           <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
-            {filteredProducts.slice(0, MAX_SHOWN).map((product) => {
+            {filteredProducts.slice(0, shownCount).map((product) => {
               const vlist = product.has_variants ? productVariants(product.id) : []
               const hasVar = vlist.length > 0
               const effectiveStock = hasVar ? vlist.reduce((s, v) => s + v.stock, 0) : product.stock
@@ -510,10 +514,10 @@ export default function POSPage() {
                 <button
                   key={product.id}
                   onClick={() => handleProductClick(product)}
-                  disabled={isOutOfStock}
                   className={cn(
                     'relative flex flex-col bg-card rounded-xl border p-3 text-left transition-all duration-150 overflow-hidden',
-                    isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:shadow-md active:scale-95 cursor-pointer'
+                    'hover:border-primary hover:shadow-md active:scale-95 cursor-pointer',
+                    isOutOfStock && 'opacity-75' // habis: tetap terlihat & BISA dijual (stok minus) — hanya diredupkan sedikit
                   )}>
                   {inCartQty > 0 && (
                     <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-primary">
@@ -524,15 +528,13 @@ export default function POSPage() {
                     <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-700">VARIAN</div>
                   )}
                   <div className="aspect-square rounded-lg bg-muted flex items-center justify-center mb-2 overflow-hidden text-muted-foreground">
-                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <CategoryIcon name={product.category?.icon} size={28} />}
+                    {product.image_url ? <ProductImg src={product.image_url} alt={product.name} className="w-full h-full object-cover" fallback={<CategoryIcon name={product.category?.icon} size={28} />} /> : <CategoryIcon name={product.category?.icon} size={28} />}
                   </div>
                   <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1 flex-1">{product.name}</p>
                   <p className="text-sm font-bold text-primary">{hasVar ? `dari ${formatRupiah(minVarPrice)}` : formatRupiah(product.price)}</p>
                   <p className="text-xs text-muted-foreground">{hasVar ? `${vlist.length} varian` : `Stok: ${product.stock}`}</p>
                   {isOutOfStock && (
-                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-xl">
-                      <span className="text-xs font-bold text-destructive">HABIS</span>
-                    </div>
+                    <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-600">HABIS</span>
                   )}
                 </button>
               )
@@ -543,10 +545,13 @@ export default function POSPage() {
               </div>
             )}
           </div>
-          {filteredProducts.length > MAX_SHOWN && (
-            <p className="text-center text-xs text-muted-foreground py-3">
-              Menampilkan {MAX_SHOWN} dari {filteredProducts.length} produk — persempit dengan pencarian atau kategori.
-            </p>
+          {filteredProducts.length > shownCount && (
+            <div className="text-center py-3 space-y-2">
+              <p className="text-xs text-muted-foreground">Menampilkan {shownCount} dari {filteredProducts.length} produk</p>
+              <Button variant="outline" size="sm" className="text-xs" onClick={() => setShownCount((n) => n + MAX_SHOWN)}>
+                Tampilkan {Math.min(MAX_SHOWN, filteredProducts.length - shownCount)} produk lagi
+              </Button>
+            </div>
           )}
         </ScrollArea>
       </div>
@@ -873,9 +878,9 @@ export default function POSPage() {
           </DialogHeader>
           <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
             {pickerProduct && productVariants(pickerProduct.id).map((v) => (
-              <button key={v.id} disabled={v.stock === 0}
+              <button key={v.id}
                 onClick={() => addVariantToCart(pickerProduct, v)}
-                className={cn('w-full flex items-center justify-between gap-2 p-3 rounded-lg border text-left transition-colors', v.stock === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5')}>
+                className={cn('w-full flex items-center justify-between gap-2 p-3 rounded-lg border text-left transition-colors hover:border-primary hover:bg-primary/5', v.stock <= 0 && 'opacity-75')}>
                 <div>
                   <p className="text-sm font-medium">{v.name}</p>
                   <p className="text-xs text-muted-foreground">Stok: {v.stock}</p>

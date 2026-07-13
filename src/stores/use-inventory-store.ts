@@ -141,7 +141,9 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => ({
     const items = get().items
     const row = items.find((r) => matches(r, outletId, productId, variantId))
     const before = row ? row.stock : 0
-    const after = Math.max(0, before + delta)
+    // Boleh MINUS: kebijakan toko — barang kosong tetap boleh dijual (stok minus = "utang stok",
+    // jujur tercatat & dikoreksi lewat stok masuk/opname). Movement before/after tetap akurat.
+    const after = before + delta
     if (row) {
       const updated = { ...row, stock: after }
       set({ items: items.map((r) => (r === row ? updated : r)) })
