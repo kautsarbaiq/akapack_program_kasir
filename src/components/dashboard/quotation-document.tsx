@@ -63,7 +63,7 @@ export function QuotationDocument({ doc }: { doc: Quotation }) {
         </div>
       </div>
 
-      <p style={{ textAlign: 'center', fontWeight: 800, fontStyle: 'italic', fontSize: 16, marginBottom: 14 }}>Quotation</p>
+      <p style={{ textAlign: 'center', fontWeight: 800, fontStyle: 'italic', fontSize: 16, marginBottom: 14 }}>Invoice</p>
 
       {/* Tabel item */}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
