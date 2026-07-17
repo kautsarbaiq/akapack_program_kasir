@@ -147,10 +147,14 @@ export const useCurrentUserStore = create<CurrentUserStore>()((set) => ({
     // Cegah login ke cabang yang salah saat ada karyawan senama + PIN sama di 2 cabang.
     if (matches.length > 1) return 'Nama & PIN cocok ke lebih dari 1 karyawan — hubungi owner agar PIN dibuat unik.'
     const emp = matches[0]
-    if (!emp.outlet_id) return 'Karyawan ini belum ditetapkan cabangnya. Hubungi owner.'
-    writeStaff({ employeeId: emp.id, name: emp.name, role: emp.role, outletId: emp.outlet_id })
-    useActiveOutletStore.getState().setActiveOutlet(emp.outlet_id) // kunci ke cabang karyawan
-    set({ user: { name: emp.name, email: '', role: emp.role, outletId: emp.outlet_id, employeeId: emp.id, viaStaff: true }, loaded: true })
+    // Owner/manager = lintas cabang → boleh login PIN walau tak punya cabang tetap (outlet null = semua).
+    // Kasir/sales WAJIB punya cabang (dikunci ke sana).
+    const role = (emp.role || '').toLowerCase()
+    const crossBranch = role === 'owner' || role === 'manager'
+    if (!emp.outlet_id && !crossBranch) return 'Karyawan ini belum ditetapkan cabangnya. Hubungi owner.'
+    writeStaff({ employeeId: emp.id, name: emp.name, role: emp.role, outletId: emp.outlet_id ?? '' })
+    if (emp.outlet_id) useActiveOutletStore.getState().setActiveOutlet(emp.outlet_id) // kunci ke cabang (owner/manager: biarkan aktif skrg)
+    set({ user: { name: emp.name, email: '', role: emp.role, outletId: emp.outlet_id ?? null, employeeId: emp.id, viaStaff: true }, loaded: true })
     return null
   },
 
