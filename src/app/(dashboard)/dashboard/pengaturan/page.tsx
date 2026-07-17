@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Save, Store, Percent, Receipt, Bell, Globe, Wrench } from 'lucide-react'
 import { MaintenanceToggle } from '@/components/dashboard/maintenance-toggle'
+import { ChangePasswordCard } from '@/components/dashboard/change-password-card'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -325,7 +326,8 @@ export default function PengaturanPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="sistem">
+        <TabsContent value="sistem" className="space-y-6">
+          <ChangePasswordCard />
           <MaintenanceToggle />
         </TabsContent>
       </Tabs>
