@@ -18,6 +18,7 @@ import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 
 const PERIODS = [
   { value: '1', label: 'Hari Ini' },
@@ -182,6 +183,32 @@ export default function LaporanPenjualanPage() {
 
   const isEmpty = report.totalTrx === 0
 
+  const handleExport = async () => {
+    if (isEmpty) { toast.error('Belum ada data untuk diunduh'); return }
+    const XLSX = await import('xlsx')
+    const wb = XLSX.utils.book_new()
+    const rp = (n: number) => n // biar angka tetap numeric di Excel
+    const ringkasan = [
+      { Keterangan: 'Total Omzet', Nilai: rp(report.totalRevenue) },
+      { Keterangan: 'Total Transaksi', Nilai: report.totalTrx },
+      { Keterangan: 'Rata-rata / Transaksi', Nilai: rp(report.avgTrx) },
+      ...(canSeeProfit ? [
+        { Keterangan: 'Penjualan Bersih', Nilai: rp(report.netSales) },
+        { Keterangan: 'HPP (Modal)', Nilai: rp(report.cogs) },
+        { Keterangan: 'Laba Kotor', Nilai: rp(report.grossProfit) },
+        { Keterangan: 'Margin (%)', Nilai: report.margin },
+      ] : []),
+    ]
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ringkasan), 'Ringkasan')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.topProducts.map((p) => ({ Produk: p.name, SKU: p.sku, Terjual: p.qty, Omzet: rp(p.revenue), 'Persen (%)': p.percentage }))), 'Per Produk')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.paymentData.map((m) => ({ Metode: m.name, Transaksi: m.count, Omzet: rp(m.value) }))), 'Per Metode')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.cashierData.map((c) => ({ Kasir: c.name, Transaksi: c.count, Omzet: rp(c.total), 'Rata-rata': rp(c.avg) }))), 'Per Kasir')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.trend.map((t) => ({ Tanggal: t.label, Omzet: rp(t.revenue) }))), 'Tren Harian')
+    const tag = useRange ? `${rangeStart}_sd_${rangeEnd}` : `${period}hari`
+    XLSX.writeFile(wb, `laporan-penjualan-${tag}-${localDay(new Date())}.xlsx`)
+    toast.success('Laporan diunduh (Excel)')
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -204,7 +231,7 @@ export default function LaporanPenjualanPage() {
           <span className="text-muted-foreground text-xs">s/d</span>
           <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-36 text-sm" title="Sampai tanggal" />
           {useRange && <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setDateFrom(''); setDateTo('') }}>Reset</Button>}
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Download size={13} /> Export</Button>
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handleExport}><Download size={13} /> Export</Button>
         </div>
       </div>
 

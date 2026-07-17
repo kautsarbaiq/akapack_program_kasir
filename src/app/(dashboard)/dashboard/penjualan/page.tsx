@@ -58,6 +58,26 @@ export default function PenjualanPage() {
   const statusTx = statusFilter === 'all' ? methodTx : methodTx.filter((t) => t.status === statusFilter)
   const filtered = rankedSearch(statusTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
 
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.error('Tidak ada transaksi untuk diunduh'); return }
+    const XLSX = await import('xlsx')
+    const rows = filtered.map((t) => ({
+      'No. Transaksi': t.transaction_number,
+      Tanggal: formatDateTime(t.created_at),
+      Cabang: outlets.find((o) => o.id === t.outlet_id)?.name ?? '-',
+      Pelanggan: t.customer?.name ?? 'Umum',
+      Items: t.items.reduce((s, i) => s + i.quantity, 0),
+      Total: t.total,
+      Metode: PAYMENT_LABELS[t.payment_method] ?? t.payment_method,
+      Kasir: t.cashier?.full_name ?? '-',
+      Status: t.status === 'completed' ? 'Selesai' : t.status === 'void' ? 'Void' : t.status,
+    }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Transaksi')
+    XLSX.writeFile(wb, `riwayat-transaksi-${localDay(new Date())}.xlsx`)
+    toast.success(`${rows.length} transaksi diunduh (Excel)`)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -65,7 +85,7 @@ export default function PenjualanPage() {
           <h1 className="text-2xl font-bold">Riwayat Transaksi</h1>
           <p className="text-muted-foreground text-sm mt-1">{effectiveOutlet === 'all' ? 'Semua cabang' : outlets.find((o) => o.id === effectiveOutlet)?.name ?? 'Cabang'}</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+        <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handleExport}>
           <Download size={14} /> Export Excel
         </Button>
       </div>
