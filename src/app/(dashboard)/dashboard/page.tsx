@@ -21,12 +21,14 @@ import { useCustomerStore } from '@/stores/use-customer-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { formatRupiah, formatNumber, formatDateTime, localDay } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
+import { useRole } from '@/stores/use-current-user-store'
 
 export default function DashboardPage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const products = useProductStore((s) => s.products)
   const customers = useCustomerStore((s) => s.customers)
   const storeName = useSettingsStore((s) => s.storeName)
+  const { canSeeRevenue } = useRole() // manager TIDAK lihat omzet/rincian penjualan
   const [period, setPeriod] = useState('30')
   const [outletFilter, setOutletFilter] = useState('all')
 
@@ -95,7 +97,8 @@ export default function DashboardPage() {
   }, [transactions, products, customers, period, outletFilter])
 
   const kpiCards = [
-    { title: 'Omzet Hari Ini', value: formatRupiah(r.today.rev), change: r.revChange, icon: DollarSign, iconBg: 'oklch(0.55 0.22 264 / 0.1)', iconColor: 'oklch(0.55 0.22 264)' },
+    // Omzet hanya untuk owner — manager tak lihat angka rupiah penjualan.
+    ...(canSeeRevenue ? [{ title: 'Omzet Hari Ini', value: formatRupiah(r.today.rev), change: r.revChange, icon: DollarSign, iconBg: 'oklch(0.55 0.22 264 / 0.1)', iconColor: 'oklch(0.55 0.22 264)' }] : []),
     { title: 'Jumlah Transaksi', value: formatNumber(r.today.trx), change: r.trxChange, icon: ShoppingCart, iconBg: 'oklch(0.65 0.18 160 / 0.1)', iconColor: 'oklch(0.55 0.18 160)' },
     { title: 'Produk Terjual', value: formatNumber(r.today.items), change: r.itemsChange, icon: Package, iconBg: 'oklch(0.75 0.18 85 / 0.1)', iconColor: 'oklch(0.6 0.18 85)' },
     { title: 'Pelanggan Baru', value: formatNumber(r.newCust), change: 0, icon: Users, iconBg: 'oklch(0.65 0.2 310 / 0.1)', iconColor: 'oklch(0.55 0.2 310)' },
@@ -147,6 +150,7 @@ export default function DashboardPage() {
         })}
       </div>
 
+      {canSeeRevenue && (
       <Card>
         <CardHeader className="flex-row items-start justify-between pb-4">
           <div>
@@ -179,6 +183,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </CardContent>
       </Card>
+      )}
 
       {/* Orderan per jam (hari ini) */}
       <Card>
@@ -206,7 +211,7 @@ export default function DashboardPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-1.5"><Trophy size={16} className="text-amber-500" /> Produk Terlaris</CardTitle>
-              <Link href="/dashboard/penjualan/laporan"><Button variant="ghost" size="sm" className="text-xs gap-1"><Eye size={13} /> Lihat Semua</Button></Link>
+              {canSeeRevenue && <Link href="/dashboard/penjualan/laporan"><Button variant="ghost" size="sm" className="text-xs gap-1"><Eye size={13} /> Lihat Semua</Button></Link>}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -227,7 +232,7 @@ export default function DashboardPage() {
                       <span className="text-xs text-muted-foreground shrink-0">{p.sold} terjual</span>
                     </div>
                   </div>
-                  <span className="text-sm font-semibold shrink-0">{formatRupiah(p.rev)}</span>
+                  {canSeeRevenue && <span className="text-sm font-semibold shrink-0">{formatRupiah(p.rev)}</span>}
                 </div>
                 {i < r.top.length - 1 && <Separator className="mt-3" />}
               </div>
@@ -266,6 +271,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {canSeeRevenue && (
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -306,6 +312,7 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }

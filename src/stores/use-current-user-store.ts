@@ -68,6 +68,7 @@ export function useRole() {
     isCashier: !isOwner && !isManager && !isSales, // sales BUKAN cashier
     canSeeCost: isOwner,       // harga modal / nilai stok (sensitif) — hanya owner
     canSeeProfit: isOwner,     // laba / margin — hanya owner
+    canSeeRevenue: isOwner,    // OMZET & rincian penjualan per-kasir/sales — hanya owner (manager TIDAK)
     canEditTx: isOwner,        // edit / void transaksi — hanya owner
     canEditStock: isOwner || isManager, // input/ubah stok & barang — owner + manager
     canCreateOrder: isOwner || isManager || isSales, // buat surat pesanan

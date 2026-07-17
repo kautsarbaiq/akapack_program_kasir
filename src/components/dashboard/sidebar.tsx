@@ -131,7 +131,7 @@ const salesNav: NavItem[] = [
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: BarChart3 },
 ]
 
-// Menu manager: input barang, cek stok, penjualan & laporan omzet (TANPA Akuntansi/laba/modal/edit-tx).
+// Menu manager: kelola barang, stok, pesanan & absensi. TANPA omzet/laba/modal/laporan penjualan/per-kasir.
 const managerNav: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { title: 'POS Kasir', href: '/pos', icon: ShoppingCart, badge: 'LIVE', badgeColor: 'bg-emerald-500' },
@@ -153,16 +153,8 @@ const managerNav: NavItem[] = [
       { title: 'Stock Opname', href: '/dashboard/inventori/opname' },
     ],
   },
-  {
-    title: 'Penjualan', href: '/dashboard/penjualan', icon: Receipt,
-    children: [
-      { title: 'Riwayat Transaksi', href: '/dashboard/penjualan' },
-      { title: 'Laporan Penjualan', href: '/dashboard/penjualan/laporan' },
-    ],
-  },
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
   { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
-  { title: 'Laporan', href: '/dashboard/laporan', icon: BarChart3 },
   { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
   { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: UserCheck },
 ]

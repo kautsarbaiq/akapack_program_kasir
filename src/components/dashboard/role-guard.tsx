@@ -27,10 +27,9 @@ const MANAGER_ALLOWED = [
   '/dashboard/inventori',
   '/dashboard/pembelian',
   '/dashboard/stok-keluar',
-  '/dashboard/penjualan',
+  // Penjualan & Laporan Penjualan SENGAJA tidak ada — manager tak boleh lihat omzet/laba/per-kasir.
   '/dashboard/surat-pesanan',
   '/dashboard/penawaran',
-  '/dashboard/laporan',
   '/dashboard/karyawan/absensi',
 ]
 

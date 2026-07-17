@@ -117,6 +117,12 @@ export async function proxy(request: NextRequest) {
       (path.startsWith('/dashboard/karyawan') && !path.startsWith('/dashboard/karyawan/absensi'))
     if (ownerOnly) return redirectTo(landing)
 
+    // MANAGER: dilarang lihat omzet/laba/per-kasir → tutup Laporan Penjualan & Riwayat Transaksi
+    // di server (kasir tetap boleh Riwayat, makanya blok ini khusus manager). Laporan hub juga.
+    if (role === 'manager' && (path.startsWith('/dashboard/penjualan') || path.startsWith('/dashboard/laporan'))) {
+      return redirectTo('/dashboard')
+    }
+
     // SALES: dikunci ke Surat Pesanan + Absensi. Dilarang POS & halaman dashboard lain (server-side).
     if (role === 'sales') {
       const salesOk = path === '/dashboard'
