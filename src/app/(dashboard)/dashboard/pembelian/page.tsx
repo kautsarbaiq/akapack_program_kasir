@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { PackagePlus, Plus, Truck, X, PackageCheck, Trash2, Printer, Download, Upload, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,6 +50,7 @@ type DraftItem = { product_id: string; qty: number; cost: number }
 
 export default function StokMasukPage() {
   const purchases = usePurchaseStore((s) => s.purchases)
+  useEffect(() => { usePurchaseStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const addPurchase = usePurchaseStore((s) => s.addPurchase)
   const setStatus = usePurchaseStore((s) => s.setStatus)
   const deletePurchase = usePurchaseStore((s) => s.deletePurchase)

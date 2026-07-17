@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { FileSpreadsheet, Plus, Eye, X, Trash2, Printer, CheckCircle2, Send, XCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,7 @@ type DraftItem = { product_id: string; qty: number; unit_price: number }
 
 export default function PenawaranPage() {
   const quotations = useQuotationStore((s) => s.quotations)
+  useEffect(() => { useQuotationStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const addQuotation = useQuotationStore((s) => s.addQuotation)
   const setStatus = useQuotationStore((s) => s.setStatus)
   const deleteQuotation = useQuotationStore((s) => s.deleteQuotation)

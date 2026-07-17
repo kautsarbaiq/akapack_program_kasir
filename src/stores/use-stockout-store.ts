@@ -79,15 +79,20 @@ async function persistStockOut(doc: StockOut): Promise<string | null> {
 interface StockOutStore {
   stockOuts: StockOut[]
   loaded: boolean
+  /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
+  ensure: () => void
   fetch: () => Promise<void>
   addStockOut: (doc: StockOut) => void
   setStatus: (id: string, status: StockOutStatus, postedAt?: string) => void
   deleteStockOut: (id: string) => void
 }
 
-export const useStockOutStore = create<StockOutStore>()((set) => ({
+let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+export const useStockOutStore = create<StockOutStore>()((set, get) => ({
   stockOuts: [],
   loaded: false,
+
+  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
 
   fetch: async () => {
     if (!isSupabaseConfigured()) {

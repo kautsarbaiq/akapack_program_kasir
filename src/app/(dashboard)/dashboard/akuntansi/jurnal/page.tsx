@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useMemo, Fragment, useEffect } from 'react'
 import Link from 'next/link'
 import { Plus, Trash2, ScrollText, ArrowLeft, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -39,6 +39,7 @@ export default function JurnalPage() {
   const { entries } = useBooks()
   const accounts = useAccountStore((s) => s.accounts)
   const addEntry = useJournalStore((s) => s.addEntry)
+  useEffect(() => { useJournalStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const deleteEntry = useJournalStore((s) => s.deleteEntry)
   const closedUntil = useClosingStore((s) => s.closedUntil)
 

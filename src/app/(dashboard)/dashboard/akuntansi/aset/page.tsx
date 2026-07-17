@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Boxes, ArrowLeft, Plus, Pencil, Trash2, ReceiptText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,6 +29,7 @@ export default function AsetPage() {
   const deleteAsset = useAssetStore((s) => s.deleteAsset)
   const accounts = useAccountStore((s) => s.accounts)
   const manualEntries = useJournalStore((s) => s.manualEntries)
+  useEffect(() => { useJournalStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const addEntry = useJournalStore((s) => s.addEntry)
 
   const [open, setOpen] = useState(false)

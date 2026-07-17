@@ -26,15 +26,20 @@ interface AddMovementInput {
 interface StockMovementStore {
   movements: StockMovement[]
   loaded: boolean
+  /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
+  ensure: () => void
   fetch: () => Promise<void>
   addMovement: (input: AddMovementInput) => void
   /** Kosongkan semua pergerakan stok di memori (saat hapus semua produk; DB ikut via cascade FK). */
   clearAll: () => void
 }
 
-export const useStockMovementStore = create<StockMovementStore>()((set) => ({
+let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+export const useStockMovementStore = create<StockMovementStore>()((set, get) => ({
   movements: isSupabaseConfigured() ? [] : mockStockMovements,
   loaded: false,
+
+  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
 
   fetch: async () => {
     const rows = await fetchAll<StockMovement>('stock_movements', 'created_at', false)

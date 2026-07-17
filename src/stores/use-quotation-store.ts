@@ -56,15 +56,20 @@ async function persistQuotation(doc: Quotation): Promise<string | null> {
 interface QuotationStore {
   quotations: Quotation[]
   loaded: boolean
+  /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
+  ensure: () => void
   fetch: () => Promise<void>
   addQuotation: (doc: Quotation) => void
   setStatus: (id: string, status: QuotationStatus) => void
   deleteQuotation: (id: string) => void
 }
 
-export const useQuotationStore = create<QuotationStore>()((set) => ({
+let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+export const useQuotationStore = create<QuotationStore>()((set, get) => ({
   quotations: [],
   loaded: false,
+
+  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
 
   fetch: async () => {
     if (!isSupabaseConfigured()) { set({ loaded: true }); return }

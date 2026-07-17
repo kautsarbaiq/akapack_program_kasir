@@ -108,38 +108,59 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
   }
 }
 
+/** Jendela default riwayat transaksi saat app dibuka — hemat bandwidth (egress).
+ *  POS/dashboard cuma butuh data baru; halaman laporan memanggil ensureAll() untuk riwayat penuh. */
+const BOOTSTRAP_DAYS = 92
+
 interface TransactionStore {
   transactions: Transaction[]
   /** Transaksi terakhir yang sukses — dipakai untuk preview struk */
   lastTransaction: Transaction | null
   loaded: boolean
-  fetch: () => Promise<void>
+  /** true bila SEMUA riwayat sudah termuat (bukan hanya jendela 92 hari). */
+  allLoaded: boolean
+  loading: boolean
+  fetch: (full?: boolean) => Promise<void>
+  /** Muat SEMUA riwayat sekali (dipanggil halaman riwayat/laporan yang butuh data lama). */
+  ensureAll: () => void
   addTransaction: (txn: Transaction) => void
   voidTransaction: (id: string) => void
   setStatus: (id: string, status: TransactionStatus) => void
 }
 
-export const useTransactionStore = create<TransactionStore>()((set) => ({
+export const useTransactionStore = create<TransactionStore>()((set, get) => ({
   transactions: isSupabaseConfigured() ? [] : mockTransactions,
   lastTransaction: null,
   loaded: false,
+  allLoaded: false,
+  loading: false,
 
-  fetch: async () => {
+  ensureAll: () => {
+    const s = get()
+    if (!s.allLoaded && !s.loading) void s.fetch(true)
+  },
+
+  fetch: async (full = false) => {
     if (!isSupabaseConfigured()) {
-      set({ loaded: true })
+      set({ loaded: true, allLoaded: true })
       return
     }
+    if (get().loading) return
+    set({ loading: true })
     try {
       const sb = getSupabaseBrowser()
+      const since = new Date(Date.now() - BOOTSTRAP_DAYS * 86400000).toISOString()
       // Paginasi: PostgREST membatasi 1000 baris/permintaan — tanpa ini transaksi lama (>1000) hilang.
       const rows: TxnRow[] = []
       for (let from = 0; ; from += 1000) {
-        const { data, error } = await sb
+        let q = sb
           .from('transactions')
           .select('*, transaction_items(*)')
           .order('created_at', { ascending: false }).order('id', { ascending: true }) // tie-break unik: created_at bisa kembar (batch insert)
           .range(from, from + 999)
-        if (error) { if (from === 0) { set({ loaded: true }); return } break }
+        if (!full) q = q.gte('created_at', since) // jendela hemat-data; laporan pakai ensureAll()
+        const { data, error } = await q
+        if (error) { if (from === 0) { set({ loaded: true, loading: false }); return } break }
         const page = (data ?? []) as unknown as TxnRow[]
         rows.push(...page)
         if (page.length < 1000) break
@@ -183,9 +204,9 @@ export const useTransactionStore = create<TransactionStore>()((set) => ({
           created_at: r.created_at,
         }
       })
-      set({ transactions: mapped, loaded: true })
+      set({ transactions: mapped, loaded: true, allLoaded: full, loading: false })
     } catch {
-      set({ loaded: true })
+      set({ loaded: true, loading: false })
     }
   },
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Download, Eye, FileText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 
 export default function PenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
+  useEffect(() => { useTransactionStore.getState().ensureAll() }, []) // lazy: muat data saat halaman dibuka (hemat egress)
   const voidTransaction = useTransactionStore((s) => s.voidTransaction)
   const outlets = useOutletStore((s) => s.outlets)
   const storeName = useSettingsStore((s) => s.storeName)

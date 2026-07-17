@@ -9,18 +9,12 @@ import { usePromotionStore } from '@/stores/use-promotion-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useStoreCart } from '@/stores/use-store-cart'
 import { useAccountStore } from '@/stores/use-account-store'
-import { useJournalStore } from '@/stores/use-journal-store'
 import { useAssetStore } from '@/stores/use-asset-store'
 import { useClosingStore } from '@/stores/use-closing-store'
 import { useSupplierStore } from '@/stores/use-supplier-store'
-import { usePurchaseStore } from '@/stores/use-purchase-store'
-import { useStockOutStore } from '@/stores/use-stockout-store'
-import { useSalesOrderStore } from '@/stores/use-salesorder-store'
-import { useQuotationStore } from '@/stores/use-quotation-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
@@ -69,16 +63,13 @@ export function DataBootstrap() {
       // Proyeksikan stok produk/varian ke outlet aktif (setelah produk, varian, inventory termuat)
       useProductStore.getState().projectStock(outlet)
       useVariantStore.getState().projectVariantStock(outlet)
-      // transaksi, shift, pergerakan stok, jurnal, pembelian — butuh master data untuk resolusi
+      // Transaksi (jendela 92 hari), shift & absensi — butuh master data untuk resolusi.
+      // HEMAT DATA: tabel riwayat berat (pergerakan stok, jurnal, pembelian, stok keluar,
+      // surat pesanan, penawaran) TIDAK dimuat di sini — dimuat lazy via store.ensure()
+      // saat halamannya dibuka. Riwayat transaksi PENUH via ensureAll() di halaman laporan.
       await Promise.all([
         useTransactionStore.getState().fetch(),
         useShiftStore.getState().fetch(),
-        useStockMovementStore.getState().fetch(),
-        useJournalStore.getState().fetch(),
-        usePurchaseStore.getState().fetch(),
-        useStockOutStore.getState().fetch(),
-        useSalesOrderStore.getState().fetch(),
-        useQuotationStore.getState().fetch(),
         useAttendanceStore.getState().fetch(),
       ])
     }

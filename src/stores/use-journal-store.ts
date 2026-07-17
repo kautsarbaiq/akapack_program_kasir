@@ -68,14 +68,19 @@ interface JournalStore {
   /** Hanya jurnal MANUAL. Jurnal POS/Online diturunkan otomatis di lib/accounting. */
   manualEntries: JournalEntry[]
   loaded: boolean
+  /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
+  ensure: () => void
   fetch: () => Promise<void>
   addEntry: (entry: JournalEntry) => void
   deleteEntry: (id: string) => void
 }
 
-export const useJournalStore = create<JournalStore>()((set) => ({
+let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+export const useJournalStore = create<JournalStore>()((set, get) => ({
   manualEntries: [],
   loaded: false,
+
+  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
 
   fetch: async () => {
     if (!isSupabaseConfigured()) {

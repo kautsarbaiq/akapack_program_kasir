@@ -38,6 +38,7 @@ export default function InventoriPage() {
   const deleteProduct = useProductStore((s) => s.deleteProduct)
   const setActive = useProductStore((s) => s.setActive)
   const movements = useStockMovementStore((s) => s.movements)
+  useEffect(() => { useStockMovementStore.getState().ensure() }, []) // lazy: muat data saat halaman dibuka (hemat egress)
   const addMovement = useStockMovementStore((s) => s.addMovement)
   const invItems = useInventoryStore((s) => s.items)
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)

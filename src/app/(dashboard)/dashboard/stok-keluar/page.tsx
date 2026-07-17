@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { PackageMinus, Plus, Eye, X, Send, Trash2, Printer } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,7 @@ type DraftItem = { product_id: string; qty: number }
 
 export default function StokKeluarPage() {
   const stockOuts = useStockOutStore((s) => s.stockOuts)
+  useEffect(() => { useStockOutStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const addStockOut = useStockOutStore((s) => s.addStockOut)
   const setStatus = useStockOutStore((s) => s.setStatus)
   const deleteStockOut = useStockOutStore((s) => s.deleteStockOut)

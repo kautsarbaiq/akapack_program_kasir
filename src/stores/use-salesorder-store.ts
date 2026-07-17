@@ -71,15 +71,20 @@ async function persistSalesOrder(doc: SalesOrder): Promise<string | null> {
 interface SalesOrderStore {
   salesOrders: SalesOrder[]
   loaded: boolean
+  /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
+  ensure: () => void
   fetch: () => Promise<void>
   addSalesOrder: (doc: SalesOrder) => void
   setStatus: (id: string, status: SalesOrderStatus) => void
   deleteSalesOrder: (id: string) => void
 }
 
-export const useSalesOrderStore = create<SalesOrderStore>()((set) => ({
+let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+export const useSalesOrderStore = create<SalesOrderStore>()((set, get) => ({
   salesOrders: [],
   loaded: false,
+
+  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
 
   fetch: async () => {
     if (!isSupabaseConfigured()) { set({ loaded: true }); return }

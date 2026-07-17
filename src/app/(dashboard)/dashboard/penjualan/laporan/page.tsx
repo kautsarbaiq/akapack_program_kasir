@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,7 @@ function KPICard({ title, value, subtitle, accent }: { title: string; value: str
 
 export default function LaporanPenjualanPage() {
   const transactions = useTransactionStore((s) => s.transactions)
+  useEffect(() => { useTransactionStore.getState().ensureAll() }, []) // lazy: muat data saat halaman dibuka (hemat egress)
   const products = useProductStore((s) => s.products)
   const outlets = useOutletStore((s) => s.outlets)
   const [period, setPeriod] = useState('30')

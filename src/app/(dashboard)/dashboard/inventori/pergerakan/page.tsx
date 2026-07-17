@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,6 +19,7 @@ const TYPE_CONFIG: Record<MovementType, { label: string; className: string }> = 
 
 export default function PergerakanStokPage() {
   const movements = useStockMovementStore((s) => s.movements)
+  useEffect(() => { useStockMovementStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const [typeFilter, setTypeFilter] = useState<string>('all')
 
   const filtered = movements.filter((m) =>

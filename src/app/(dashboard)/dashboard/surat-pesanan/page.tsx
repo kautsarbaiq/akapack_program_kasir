@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { FileText, Plus, Eye, X, Trash2, Printer, CheckCircle2, Send, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,6 +47,7 @@ type DraftItem = { product_id: string; qty: number }
 
 export default function SuratPesananPage() {
   const salesOrders = useSalesOrderStore((s) => s.salesOrders)
+  useEffect(() => { useSalesOrderStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
   const addSalesOrder = useSalesOrderStore((s) => s.addSalesOrder)
   const setStatus = useSalesOrderStore((s) => s.setStatus)
   const deleteSalesOrder = useSalesOrderStore((s) => s.deleteSalesOrder)

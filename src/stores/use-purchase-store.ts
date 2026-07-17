@@ -91,6 +91,8 @@ async function persistPurchase(po: PurchaseOrder): Promise<string | null> {
 interface PurchaseStore {
   purchases: PurchaseOrder[]
   loaded: boolean
+  /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
+  ensure: () => void
   fetch: () => Promise<void>
   addPurchase: (po: PurchaseOrder) => void
   setStatus: (id: string, status: PurchaseStatus, receivedAt?: string) => void
@@ -98,9 +100,12 @@ interface PurchaseStore {
   deletePurchase: (id: string) => void
 }
 
-export const usePurchaseStore = create<PurchaseStore>()((set) => ({
+let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+export const usePurchaseStore = create<PurchaseStore>()((set, get) => ({
   purchases: [],
   loaded: false,
+
+  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
 
   fetch: async () => {
     if (!isSupabaseConfigured()) {
