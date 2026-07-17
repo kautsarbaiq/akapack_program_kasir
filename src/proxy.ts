@@ -123,6 +123,19 @@ export async function proxy(request: NextRequest) {
       return redirectTo('/dashboard')
     }
 
+    // CASHIER (karyawan): whitelist server-side — TIDAK boleh edit stok (pembelian/stok-keluar/opname/
+    // transfer/produk) walau via URL langsung. Boleh: absensi, lihat stok, riwayat/laporan penjualan,
+    // surat pesanan, penawaran. Stok = lihat-saja (halaman inventori sendiri read-only untuk kasir).
+    if (role === 'cashier') {
+      const cashierOk =
+        path.startsWith('/dashboard/karyawan/absensi') ||
+        path === '/dashboard/inventori' ||
+        path.startsWith('/dashboard/penjualan') ||
+        path.startsWith('/dashboard/surat-pesanan') ||
+        path.startsWith('/dashboard/penawaran')
+      if (path.startsWith('/dashboard') && !cashierOk) return redirectTo('/dashboard/karyawan/absensi')
+    }
+
     // SALES: dikunci ke Surat Pesanan + Absensi. Dilarang POS & halaman dashboard lain (server-side).
     if (role === 'sales') {
       const salesOk = path === '/dashboard'
