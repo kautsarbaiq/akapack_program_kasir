@@ -37,7 +37,8 @@ import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { formatRupiah, calculateChange, generateId, generateTransactionNumber, cn, rankedSearch } from '@/lib/utils'
+import { formatRupiah, calculateChange, generateId, nextTransactionNumber, cn, rankedSearch } from '@/lib/utils'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, ProductVariant } from '@/types'
 import { toast } from 'sonner'
 
@@ -384,10 +385,14 @@ export default function POSPage() {
       subtotal: c.subtotal,
     }))
     const emp = currentShift.employee
+    // Nomor BERURUTAN per cabang/hari dari transaksi yang sudah ada di store (bukan acak → tak bentrok).
+    const outletId = useActiveOutletStore.getState().activeOutletId
+    const outletName = useOutletStore.getState().outlets.find((o) => o.id === outletId)?.name
+    const existingNums = useTransactionStore.getState().transactions.map((t) => t.transaction_number)
     const txn: Transaction = {
       id: txnId,
-      outlet_id: useActiveOutletStore.getState().activeOutletId,
-      transaction_number: generateTransactionNumber(),
+      outlet_id: outletId,
+      transaction_number: nextTransactionNumber(existingNums, outletName),
       customer_id: selectedCustomer?.id,
       customer: selectedCustomer ?? undefined,
       cashier_id: emp?.id ?? 'emp-1',

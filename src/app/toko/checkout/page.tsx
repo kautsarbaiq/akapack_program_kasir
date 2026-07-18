@@ -16,7 +16,7 @@ import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
-import { formatRupiah, generateId, generateTransactionNumber, waUrl, cn } from '@/lib/utils'
+import { formatRupiah, generateId, nextTransactionNumber, waUrl, cn } from '@/lib/utils'
 import type { Transaction, TransactionItem, PaymentMethod } from '@/types'
 import { toast } from 'sonner'
 
@@ -69,7 +69,7 @@ export default function CheckoutPage() {
     const txn: Transaction = {
       id: txnId,
       outlet_id: ONLINE_OUTLET,
-      transaction_number: generateTransactionNumber(),
+      transaction_number: nextTransactionNumber(useTransactionStore.getState().transactions.map((t) => t.transaction_number), 'Online'),
       customer_id: customer.id,
       customer,
       cashier_id: '',

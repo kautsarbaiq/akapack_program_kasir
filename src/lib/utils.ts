@@ -168,11 +168,35 @@ export function generateVoucherCode(length: number = 6): string {
   return code
 }
 
+/** Tag cabang 1 huruf untuk nomor transaksi (Bandung→B, Garut→G, else huruf pertama). */
+export function branchTag(outletName?: string): string {
+  const n = (outletName || '').toLowerCase()
+  if (n.includes('garut')) return 'G'
+  if (n.includes('bandung')) return 'B'
+  return (outletName?.trim()[0] || 'X').toUpperCase()
+}
+
+/**
+ * Nomor transaksi BERURUTAN per-cabang per-hari (gaya buku faktur): TRX-YYYYMMDD-{B|G}{NNNN}.
+ * Dihitung dari nomor yang SUDAH ada di store (hari & cabang sama) → +1. Unik, terurut, tanpa
+ * lompatan acak yang bikin owner mengira ada transaksi "hilang". Pakai tanggal LOKAL.
+ */
+export function nextTransactionNumber(existingNumbers: string[], outletName?: string, now: Date = new Date()): string {
+  const ymd = localDay(now).replace(/-/g, '')
+  const prefix = `TRX-${ymd}-${branchTag(outletName)}`
+  const max = existingNumbers.reduce((mx, num) => {
+    if (!num?.startsWith(prefix)) return mx
+    const seq = parseInt(num.slice(prefix.length), 10)
+    return Number.isNaN(seq) ? mx : Math.max(mx, seq)
+  }, 0)
+  return `${prefix}${String(max + 1).padStart(4, '0')}`
+}
+
+/** @deprecated pakai nextTransactionNumber (acak lama sering bentrok). Disisakan utk fallback. */
 export function generateTransactionNumber(): string {
   const now = new Date()
-  const date = now.toISOString().slice(0, 10).replace(/-/g, '')
-  const random = Math.floor(Math.random() * 9000 + 1000)
-  return `TRX-${date}-${random}`
+  const date = localDay(now).replace(/-/g, '')
+  return `TRX-${date}-${now.getHours()}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}${String(now.getMilliseconds()).padStart(3, '0')}`
 }
 
 export function slugify(text: string): string {
