@@ -128,6 +128,7 @@ interface TransactionStore {
   setStatus: (id: string, status: TransactionStatus) => void
 }
 
+let _txnLoad: Promise<void> | null = null // pemuatan yang sedang berjalan (dedup + anti-race window↔full)
 export const useTransactionStore = create<TransactionStore>()((set, get) => ({
   transactions: isSupabaseConfigured() ? [] : mockTransactions,
   lastTransaction: null,
@@ -135,17 +136,21 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
   allLoaded: false,
   loading: false,
 
-  ensureAll: () => {
-    const s = get()
-    if (!s.allLoaded && !s.loading) void s.fetch(true)
-  },
+  ensureAll: () => { void get().fetch(true) },
 
   fetch: async (full = false) => {
     if (!isSupabaseConfigured()) {
       set({ loaded: true, allLoaded: true })
       return
     }
-    if (get().loading) return
+    // Sudah punya SEMUA data → jendela (full=false) tak perlu memuat ulang / menurunkan cakupan.
+    if (get().allLoaded && !full) return
+    // Ada pemuatan berjalan → tunggu; kalau setelahnya cakupan sudah cukup, berhenti.
+    // Ini mencegah RACE: ensureAll (full) yang datang saat jendela (bootstrap) sedang jalan
+    // tak lagi di-skip diam-diam → riwayat penuh SELALU jadi dimuat.
+    const inflight = _txnLoad
+    if (inflight) { await inflight.catch(() => {}); if (!full || get().allLoaded) return }
+    const p = (async () => {
     set({ loading: true })
     try {
       const sb = getSupabaseBrowser()
@@ -208,6 +213,9 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
     } catch {
       set({ loaded: true, loading: false })
     }
+    })()
+    _txnLoad = p
+    try { await p } finally { if (_txnLoad === p) _txnLoad = null }
   },
 
   addTransaction: (txn) => {

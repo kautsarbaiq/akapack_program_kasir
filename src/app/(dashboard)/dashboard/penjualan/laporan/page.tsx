@@ -26,6 +26,7 @@ const PERIODS = [
   { value: '30', label: 'Bulanan' },
   { value: '90', label: '3 Bulan' },
   { value: '365', label: 'Tahunan' },
+  { value: 'all', label: 'Semua' },
 ]
 
 const PIE_COLORS = [
@@ -54,7 +55,7 @@ export default function LaporanPenjualanPage() {
   useEffect(() => { useTransactionStore.getState().ensureAll() }, []) // lazy: muat data saat halaman dibuka (hemat egress)
   const products = useProductStore((s) => s.products)
   const outlets = useOutletStore((s) => s.outlets)
-  const [period, setPeriod] = useState('30')
+  const [period, setPeriod] = useState('all') // default: tampilkan SEMUA transaksi (jangan sampai terlihat "hilang")
   const [outletFilter, setOutletFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -71,11 +72,13 @@ export default function LaporanPenjualanPage() {
   const rangeEnd = dateTo || dateFrom
 
   const report = useMemo(() => {
-    const days = Number(period)
+    const isAll = period === 'all'
+    const days = isAll ? 366 : Number(period)
     // Batas bawah = awal hari (lokal) dari (days-1) hari lalu → konsisten dgn bucket grafik tren
     // (mis. "7 Hari" = hari ini + 6 hari sebelumnya), bukan rolling days*24jam yang lebih lebar.
+    // "Semua" (isAll) = tanpa batas bawah → tampilkan SEMUA transaksi.
     const startDay = new Date(); startDay.setHours(0, 0, 0, 0); startDay.setDate(startDay.getDate() - (days - 1))
-    const cutoff = startDay.getTime()
+    const cutoff = isAll ? 0 : startDay.getTime()
     const completed = transactions.filter((t) => {
       if (t.status !== 'completed') return false
       if (effectiveOutlet !== 'all' && t.outlet_id !== effectiveOutlet) return false
@@ -85,6 +88,10 @@ export default function LaporanPenjualanPage() {
       }
       return new Date(t.created_at).getTime() >= cutoff
     })
+    // Untuk grafik tren "Semua": rentang hari dari transaksi paling awal → hari ini (dibatasi 366 bucket).
+    const trendDays = isAll
+      ? Math.min(366, Math.max(1, Math.ceil((Date.now() - (completed.length ? Math.min(...completed.map((t) => new Date(t.created_at).getTime())) : Date.now())) / 86400000) + 1))
+      : days
 
     const totalRevenue = completed.reduce((s, t) => s + t.total, 0)
     const totalTrx = completed.length
@@ -118,9 +125,9 @@ export default function LaporanPenjualanPage() {
         return { label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), revenue: rev }
       })
     } else {
-      trend = Array.from({ length: days }, (_, i) => {
+      trend = Array.from({ length: trendDays }, (_, i) => {
         const d = new Date()
-        d.setDate(d.getDate() - (days - 1 - i))
+        d.setDate(d.getDate() - (trendDays - 1 - i))
         const key = localDay(d)
         const rev = completed.filter((t) => localDay(t.created_at) === key).reduce((s, t) => s + t.total, 0)
         return { label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), revenue: rev }
@@ -204,7 +211,7 @@ export default function LaporanPenjualanPage() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.paymentData.map((m) => ({ Metode: m.name, Transaksi: m.count, Omzet: rp(m.value) }))), 'Per Metode')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.cashierData.map((c) => ({ Kasir: c.name, Transaksi: c.count, Omzet: rp(c.total), 'Rata-rata': rp(c.avg) }))), 'Per Kasir')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.trend.map((t) => ({ Tanggal: t.label, Omzet: rp(t.revenue) }))), 'Tren Harian')
-    const tag = useRange ? `${rangeStart}_sd_${rangeEnd}` : `${period}hari`
+    const tag = useRange ? `${rangeStart}_sd_${rangeEnd}` : (period === 'all' ? 'semua' : `${period}hari`)
     XLSX.writeFile(wb, `laporan-penjualan-${tag}-${localDay(new Date())}.xlsx`)
     toast.success('Laporan diunduh (Excel)')
   }
