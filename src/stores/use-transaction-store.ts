@@ -83,6 +83,10 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
       .select('id')
       .single()
     if (error || !data) {
+      // IDEMPOTEN: kalau baris dgn id ini SUDAH ada (retry setelah timeout padahal DB sudah commit),
+      // jangan anggap gagal & JANGAN insert item lagi (cegah dobel). id klien = PK → 23505 = sudah tersimpan.
+      const dup = error && ((error as { code?: string }).code === '23505' || /duplicate key|already exists/i.test(error.message || ''))
+      if (dup && isUuid(txn.id)) return txn.id
       console.warn('[akapack] gagal simpan transaksi:', error?.message)
       return null
     }
@@ -112,6 +116,33 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
  *  POS/dashboard cuma butuh data baru; halaman laporan memanggil ensureAll() untuk riwayat penuh. */
 const BOOTSTRAP_DAYS = 92
 
+// ── OUTBOX: transaksi yang GAGAL tersimpan (sinyal putus) disimpan di localStorage & dicoba ulang.
+// Cegah "penjualan hilang" di POS HP dengan koneksi jelek. Idempoten via id (lihat persistTransaction).
+const OUTBOX_KEY = 'akapack-txn-outbox'
+function readOutbox(): Transaction[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') as Transaction[] } catch { return [] }
+}
+function writeOutbox(list: Transaction[]) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(list)) } catch { /* penuh/nonaktif */ }
+}
+function enqueueOutbox(txn: Transaction) {
+  const list = readOutbox()
+  if (!list.some((t) => t.id === txn.id)) { list.push(txn); writeOutbox(list) }
+}
+function dequeueOutbox(id: string) { writeOutbox(readOutbox().filter((t) => t.id !== id)) }
+
+/** Simpan transaksi dengan RETRY (3×, backoff). Return id bila sukses, null bila semua gagal. */
+async function persistWithRetry(txn: Transaction, tries = 3): Promise<string | null> {
+  for (let i = 0; i < tries; i++) {
+    const id = await persistTransaction(txn)
+    if (id) return id
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, 800 * (i + 1)))
+  }
+  return null
+}
+
 interface TransactionStore {
   transactions: Transaction[]
   /** Transaksi terakhir yang sukses — dipakai untuk preview struk */
@@ -124,6 +155,8 @@ interface TransactionStore {
   /** Muat SEMUA riwayat sekali (dipanggil halaman riwayat/laporan yang butuh data lama). */
   ensureAll: () => void
   addTransaction: (txn: Transaction) => void
+  /** Kirim ulang transaksi yang tertunda di outbox (dipanggil saat app dibuka). */
+  flushOutbox: () => Promise<void>
   voidTransaction: (id: string) => void
   setStatus: (id: string, status: TransactionStatus) => void
 }
@@ -220,8 +253,16 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
 
   addTransaction: (txn) => {
     set((s) => ({ transactions: [txn, ...s.transactions], lastTransaction: txn }))
-    void persistTransaction(txn).then((newId) => {
-      if (!newId) return
+    void persistWithRetry(txn).then((newId) => {
+      if (!newId) {
+        // Semua percobaan gagal (sinyal putus) → simpan ke OUTBOX, coba lagi nanti. Transaksi TIDAK hilang.
+        enqueueOutbox(txn)
+        if (isSupabaseConfigured() && typeof window !== 'undefined') {
+          import('sonner').then(({ toast }) => toast.warning('Koneksi bermasalah — transaksi disimpan sementara & otomatis dikirim ulang saat online.', { duration: 8000 }))
+        }
+        return
+      }
+      dequeueOutbox(txn.id)
       set((s) => ({
         transactions: s.transactions.map((t) => (t.id === txn.id ? { ...t, id: newId } : t)),
         lastTransaction: s.lastTransaction && s.lastTransaction.id === txn.id
@@ -229,6 +270,19 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
           : s.lastTransaction,
       }))
     })
+  },
+
+  flushOutbox: async () => {
+    const pending = readOutbox()
+    if (!pending.length) return
+    let ok = 0
+    for (const txn of pending) {
+      const id = await persistWithRetry(txn, 2)
+      if (id) { dequeueOutbox(txn.id); ok++ }
+    }
+    if (ok > 0 && typeof window !== 'undefined') {
+      import('sonner').then(({ toast }) => toast.success(`${ok} transaksi tertunda berhasil dikirim ke server.`))
+    }
   },
 
   voidTransaction: (id) => {

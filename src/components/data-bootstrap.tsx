@@ -72,6 +72,8 @@ export function DataBootstrap() {
         useShiftStore.getState().fetch(),
         useAttendanceStore.getState().fetch(),
       ])
+      // Kirim ulang transaksi yang gagal tersimpan sebelumnya (sinyal putus) — jangan sampai hilang.
+      void useTransactionStore.getState().flushOutbox()
     }
     void run()
   }, [])
