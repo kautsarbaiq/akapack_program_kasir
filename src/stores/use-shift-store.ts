@@ -60,6 +60,8 @@ interface ShiftStore {
   closeShift: (closingCash: number) => Shift | null
   /** Catat penjualan ke shift berjalan */
   recordSale: (amount: number) => void
+  /** Ganti KASIR bertugas tanpa tutup shift (penjualan berikutnya atas nama kasir baru). */
+  switchOperator: (employee: Employee) => void
 }
 
 export const useShiftStore = create<ShiftStore>()((set, get) => ({
@@ -176,5 +178,13 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
     }
     set({ currentShift: { ...cur, ...next } })
     if (isUuid(cur.id)) void updateRow('shifts', cur.id, next)
+  },
+
+  switchOperator: (employee) => {
+    const cur = get().currentShift
+    if (!cur) return
+    // Shift TETAP terbuka; hanya kasir bertugas yang berganti → transaksi berikutnya atas nama dia.
+    set({ currentShift: { ...cur, employee_id: employee.id, employee } })
+    if (isUuid(cur.id) && isUuid(employee.id)) void updateRow('shifts', cur.id, { employee_id: employee.id })
   },
 }))

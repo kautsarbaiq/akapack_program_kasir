@@ -6,7 +6,7 @@ import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CheckCircle2,
   ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split,
-  Landmark, ShoppingBag, Music2, Store, LayoutDashboard, Fingerprint
+  Landmark, ShoppingBag, Music2, Store, LayoutDashboard, Fingerprint, Users
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { ProductImg } from '@/components/product-img'
@@ -24,6 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ShiftModal } from '@/components/pos/shift-modal'
 import { AttendanceKioskDialog } from '@/components/pos/attendance-kiosk-dialog'
+import { SwitchCashierDialog } from '@/components/pos/switch-cashier-dialog'
 import { CustomerSelector } from '@/components/pos/customer-selector'
 import { ReceiptModal } from '@/components/pos/receipt-modal'
 import { useProductStore } from '@/stores/use-product-store'
@@ -115,6 +116,7 @@ export default function POSPage() {
   const [shiftOpenModal, setShiftOpenModal] = useState(false)
   const [shiftCloseModal, setShiftCloseModal] = useState(false)
   const [attendanceOpen, setAttendanceOpen] = useState(false)
+  const [switchCashierOpen, setSwitchCashierOpen] = useState(false)
   const [shownCount, setShownCount] = useState(MAX_SHOWN) // batas kartu dirender — bisa ditambah tombol "Tampilkan lagi"
   const [customerSheet, setCustomerSheet] = useState(false)
   const [showHeld, setShowHeld] = useState(false)
@@ -565,10 +567,18 @@ export default function POSPage() {
       <div className="w-96 flex flex-col shrink-0 min-h-0 overflow-hidden bg-card border-l">
         {/* Shift bar */}
         <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/30 shrink-0">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-medium">{currentShift?.employee?.name ?? 'Tidak ada shift'}</span>
-          </div>
+          {currentShift ? (
+            <button onClick={() => setSwitchCashierOpen(true)} className="flex items-center gap-2 text-xs hover:bg-muted rounded-md px-1.5 py-1 -ml-1.5 transition-colors" title="Klik untuk ganti kasir tanpa tutup shift">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-medium">{currentShift.employee?.name ?? 'Kasir'}</span>
+              <Users size={12} className="text-muted-foreground" />
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-muted-foreground/40" />
+              <span className="font-medium">Tidak ada shift</span>
+            </div>
+          )}
           <div className="flex items-center gap-1">
             {heldOrders.length > 0 && (
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowHeld(true)}>
@@ -873,6 +883,7 @@ export default function POSPage() {
       <ShiftModal open={shiftOpenModal} onOpenChange={setShiftOpenModal} mode="open" />
       <ShiftModal open={shiftCloseModal} onOpenChange={setShiftCloseModal} mode="close" />
       <AttendanceKioskDialog open={attendanceOpen} onOpenChange={setAttendanceOpen} outletId={activeOutletId} />
+      <SwitchCashierDialog open={switchCashierOpen} onOpenChange={setSwitchCashierOpen} />
       <CustomerSelector open={customerSheet} onOpenChange={setCustomerSheet} selectedId={selectedCustomer?.id ?? null} onSelect={setSelectedCustomer} />
       <ReceiptModal open={showReceipt} onOpenChange={setShowReceipt} transaction={receiptTxn} />
 
