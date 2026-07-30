@@ -145,10 +145,13 @@ export default function LaporanPenjualanPage() {
       })
     )
     const totalProdRevenue = Object.values(prodAgg).reduce((s, p) => s + p.revenue, 0)
-    const topProducts = Object.values(prodAgg)
+    // SEMUA produk terjual (diurutkan omzet). topProducts = 10 besar (dashboard/ringkasan),
+    // allProducts = daftar lengkap (tab Per Produk) → tampil sesuai jumlah item yang benar-benar terjual.
+    const rankedProducts = Object.values(prodAgg)
       .map((p) => ({ ...p, percentage: totalProdRevenue > 0 ? Math.round((p.revenue / totalProdRevenue) * 100) : 0 }))
       .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10)
+    const topProducts = rankedProducts.slice(0, 10)
+    const allProducts = rankedProducts
 
     // Per metode bayar
     const methodAgg: Record<string, { count: number; total: number }> = {}
@@ -185,7 +188,7 @@ export default function LaporanPenjualanPage() {
     })
     const peakHour = hourly.reduce((a, b) => (b.orders > a.orders ? b : a), hourly[0])
 
-    return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, paymentData, cashierData, hourly, peakHour }
+    return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, allProducts, paymentData, cashierData, hourly, peakHour }
   }, [transactions, products, period, effectiveOutlet, useRange, rangeStart, rangeEnd])
 
   const isEmpty = report.totalTrx === 0
@@ -207,7 +210,7 @@ export default function LaporanPenjualanPage() {
       ] : []),
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ringkasan), 'Ringkasan')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.topProducts.map((p) => ({ Produk: p.name, SKU: p.sku, Terjual: p.qty, Omzet: rp(p.revenue), 'Persen (%)': p.percentage }))), 'Per Produk')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.allProducts.map((p) => ({ Produk: p.name, SKU: p.sku, Terjual: p.qty, Omzet: rp(p.revenue), 'Persen (%)': p.percentage }))), 'Per Produk')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.paymentData.map((m) => ({ Metode: m.name, Transaksi: m.count, Omzet: rp(m.value) }))), 'Per Metode')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.cashierData.map((c) => ({ Kasir: c.name, Transaksi: c.count, Omzet: rp(c.total), 'Rata-rata': rp(c.avg) }))), 'Per Kasir')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.trend.map((t) => ({ Tanggal: t.label, Omzet: rp(t.revenue) }))), 'Tren Harian')
@@ -356,21 +359,25 @@ export default function LaporanPenjualanPage() {
           </Card>
         </TabsContent>}
 
-        {/* Per Produk */}
+        {/* Per Produk — SEMUA item terjual (bukan cuma 10 besar) */}
         <TabsContent value="produk" className="mt-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">Produk Terlaris</CardTitle></CardHeader>
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle className="text-base">Semua Produk Terjual</CardTitle>
+              <span className="text-xs text-muted-foreground">{formatNumber(report.allProducts.length)} jenis · {formatNumber(report.allProducts.reduce((s, p) => s + p.qty, 0))} pcs terjual</span>
+            </CardHeader>
             <CardContent>
+              <div className="max-h-[70vh] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 bg-background z-10">
                   <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
                     {['#', 'Produk', 'SKU', 'Qty', 'Penjualan', 'Kontribusi'].map((h) => (
-                      <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
+                      <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground bg-muted/50">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {report.topProducts.map((p, i) => (
+                  {report.allProducts.map((p, i) => (
                     <tr key={p.sku + i} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="py-3 px-4 font-bold text-muted-foreground">#{i + 1}</td>
                       <td className="py-3 px-4 font-medium">{p.name}</td>
@@ -387,11 +394,12 @@ export default function LaporanPenjualanPage() {
                       </td>
                     </tr>
                   ))}
-                  {report.topProducts.length === 0 && (
+                  {report.allProducts.length === 0 && (
                     <tr><td colSpan={6} className="py-10 text-center text-muted-foreground">Belum ada data</td></tr>
                   )}
                 </tbody>
               </table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
