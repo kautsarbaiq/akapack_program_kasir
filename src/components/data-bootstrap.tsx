@@ -76,6 +76,19 @@ export function DataBootstrap() {
       void useTransactionStore.getState().flushOutbox()
     }
     void run()
+
+    // SELF-HEALING: kirim ulang transaksi tertunda saat (a) koneksi balik, (b) tab kembali aktif,
+    // (c) berkala tiap 45 dtk. Jadi penjualan yang gagal saat sinyal putus otomatis tersimpan sendiri.
+    const flush = () => { void useTransactionStore.getState().flushOutbox() }
+    const onVisible = () => { if (document.visibilityState === 'visible') flush() }
+    window.addEventListener('online', flush)
+    document.addEventListener('visibilitychange', onVisible)
+    const timer = window.setInterval(flush, 45000)
+    return () => {
+      window.removeEventListener('online', flush)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.clearInterval(timer)
+    }
   }, [])
 
   return null

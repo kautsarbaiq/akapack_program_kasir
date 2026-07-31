@@ -85,6 +85,7 @@ export default function POSPage() {
   const recordPurchase = useCustomerStore((s) => s.recordPurchase)
   const addTransaction = useTransactionStore((s) => s.addTransaction)
   const currentShift = useShiftStore((s) => s.currentShift)
+  const pendingTxns = useTransactionStore((s) => s.pendingCount) // transaksi menunggu koneksi
   const recordSale = useShiftStore((s) => s.recordSale)
   const redeemPointsAction = useCustomerStore((s) => s.redeemPoints)
   const taxRate = useSettingsStore((s) => s.taxRate)
@@ -568,11 +569,18 @@ export default function POSPage() {
         {/* Shift bar */}
         <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/30 shrink-0">
           {currentShift ? (
+            <div className="flex items-center gap-1.5">
             <button onClick={() => setSwitchCashierOpen(true)} className="flex items-center gap-2 text-xs hover:bg-muted rounded-md px-1.5 py-1 -ml-1.5 transition-colors" title="Klik untuk ganti kasir tanpa tutup shift">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="font-medium">{currentShift.employee?.name ?? 'Kasir'}</span>
               <Users size={12} className="text-muted-foreground" />
             </button>
+            {pendingTxns > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 animate-pulse" title="Transaksi menunggu koneksi — otomatis terkirim saat online">
+                {pendingTxns} belum tersimpan
+              </span>
+            )}
+            </div>
           ) : (
             <div className="flex items-center gap-2 text-xs">
               <span className="w-2 h-2 rounded-full bg-muted-foreground/40" />

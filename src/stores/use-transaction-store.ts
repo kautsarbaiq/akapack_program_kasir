@@ -151,6 +151,8 @@ interface TransactionStore {
   /** true bila SEMUA riwayat sudah termuat (bukan hanya jendela 92 hari). */
   allLoaded: boolean
   loading: boolean
+  /** Jumlah transaksi yang BELUM tersimpan ke server (menunggu koneksi). */
+  pendingCount: number
   fetch: (full?: boolean) => Promise<void>
   /** Muat SEMUA riwayat sekali (dipanggil halaman riwayat/laporan yang butuh data lama). */
   ensureAll: () => void
@@ -168,6 +170,7 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
   loaded: false,
   allLoaded: false,
   loading: false,
+  pendingCount: typeof window !== 'undefined' ? readOutbox().length : 0,
 
   ensureAll: () => { void get().fetch(true) },
 
@@ -257,12 +260,14 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
       if (!newId) {
         // Semua percobaan gagal (sinyal putus) → simpan ke OUTBOX, coba lagi nanti. Transaksi TIDAK hilang.
         enqueueOutbox(txn)
+        set({ pendingCount: readOutbox().length })
         if (isSupabaseConfigured() && typeof window !== 'undefined') {
           import('sonner').then(({ toast }) => toast.warning('Koneksi bermasalah — transaksi disimpan sementara & otomatis dikirim ulang saat online.', { duration: 8000 }))
         }
         return
       }
       dequeueOutbox(txn.id)
+      set({ pendingCount: readOutbox().length })
       set((s) => ({
         transactions: s.transactions.map((t) => (t.id === txn.id ? { ...t, id: newId } : t)),
         lastTransaction: s.lastTransaction && s.lastTransaction.id === txn.id
@@ -280,6 +285,7 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
       const id = await persistWithRetry(txn, 2)
       if (id) { dequeueOutbox(txn.id); ok++ }
     }
+    set({ pendingCount: readOutbox().length })
     if (ok > 0 && typeof window !== 'undefined') {
       import('sonner').then(({ toast }) => toast.success(`${ok} transaksi tertunda berhasil dikirim ke server.`))
     }
