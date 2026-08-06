@@ -12,6 +12,11 @@ import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useProductStore } from '@/stores/use-product-store'
+import { useVariantStore } from '@/stores/use-variant-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
 import { printReceipt } from '@/lib/print-receipt'
@@ -57,6 +62,44 @@ export default function PenjualanPage() {
 
   const statusTx = statusFilter === 'all' ? methodTx : methodTx.filter((t) => t.status === statusFilter)
   const filtered = rankedSearch(statusTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
+
+  /** VOID = batalkan penjualan → stok WAJIB kembali ke cabang transaksi + tercatat di pergerakan.
+   *  Qty item disimpan dalam satuan JUAL; satuan besar ditandai "(dus)" pada nama item, jadi
+   *  faktornya dibaca dari situ agar stok yang dikembalikan sesuai satuan dasar. */
+  const handleVoid = (t: Transaction) => {
+    if (t.status !== 'completed') { toast.error('Hanya transaksi selesai yang bisa di-void'); return }
+    if (!confirm(`Void transaksi ${t.transaction_number}?\n\nStok barang akan DIKEMBALIKAN ke ${outlets.find((o) => o.id === t.outlet_id)?.name ?? 'cabang'}.`)) return
+
+    const inv = useInventoryStore.getState()
+    const prods = useProductStore.getState().products
+    const addMovement = useStockMovementStore.getState().addMovement
+    let restored = 0
+    for (const it of t.items) {
+      if (!it.product_id) continue
+      const prod = prods.find((p) => p.id === it.product_id)
+      // Faktor satuan dari akhiran nama item, mis. "Botol X (dus)" → cari unit "dus" di produk.
+      const m = /\(([^)]+)\)\s*$/.exec(it.product_name || '')
+      const factor = (m && prod?.units?.find((u) => u.name === m[1])?.factor) || 1
+      const qtyBase = it.quantity * factor
+      const { before, after } = inv.applyDelta(t.outlet_id, it.product_id, undefined, qtyBase)
+      addMovement({
+        product_id: it.product_id, type: 'in', quantity: qtyBase,
+        before_stock: before, after_stock: after,
+        notes: `Void ${t.transaction_number}`, reference_id: t.id,
+        created_by_name: me?.name || 'Void', outlet_id: t.outlet_id,
+      })
+      restored++
+    }
+    // Segarkan tampilan stok bila cabang transaksi = cabang yang sedang dilihat.
+    const activeOutlet = useActiveOutletStore.getState().activeOutletId
+    if (t.outlet_id === activeOutlet) {
+      useProductStore.getState().projectStock(activeOutlet)
+      useVariantStore.getState().projectVariantStock(activeOutlet)
+    }
+    voidTransaction(t.id)
+    toast.success(`Transaksi di-void — stok ${restored} barang dikembalikan`)
+    setSelected(null)
+  }
 
   const handleExport = async () => {
     if (filtered.length === 0) { toast.error('Tidak ada transaksi untuk diunduh'); return }
@@ -232,11 +275,7 @@ export default function PenjualanPage() {
                     <FileText size={14} /> Cetak Struk
                   </Button>
                   {canEditTx && selected.status === 'completed' && (
-                    <Button variant="destructive" className="flex-1" onClick={() => {
-                      if (confirm('Void transaksi ini? Stok tidak dikembalikan otomatis.')) {
-                        voidTransaction(selected.id); toast.success('Transaksi berhasil di-void'); setSelected(null)
-                      }
-                    }}>
+                    <Button variant="destructive" className="flex-1" onClick={() => handleVoid(selected)}>
                       Void Transaksi
                     </Button>
                   )}

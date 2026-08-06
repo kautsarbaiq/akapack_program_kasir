@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { formatDateTime } from '@/lib/utils'
 import type { MovementType } from '@/types'
 
@@ -20,10 +23,16 @@ const TYPE_CONFIG: Record<MovementType, { label: string; className: string }> = 
 export default function PergerakanStokPage() {
   const movements = useStockMovementStore((s) => s.movements)
   useEffect(() => { useStockMovementStore.getState().ensure() }, []) // lazy load: muat riwayat saat halaman dibuka (hemat egress)
+  const outlets = useOutletStore((s) => s.outlets)
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  // Default = cabang yang sedang aktif, biar Bandung & Garut TIDAK tercampur.
+  const [outletFilter, setOutletFilter] = useState<string>(activeOutletId || 'all')
+  const outletName = (id?: string) => outlets.find((o) => o.id === id)?.name ?? '—'
 
   const filtered = movements.filter((m) =>
-    typeFilter === 'all' || m.type === typeFilter
+    (typeFilter === 'all' || m.type === typeFilter) &&
+    (outletFilter === 'all' || m.outlet_id === outletFilter)
   )
 
   return (
@@ -33,7 +42,8 @@ export default function PergerakanStokPage() {
         <p className="text-muted-foreground text-sm mt-1">Riwayat semua perubahan stok produk</p>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
+        <OutletFilter value={outletFilter} onChange={setOutletFilter} />
         <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? 'all')}>
           <SelectTrigger className="w-44 h-9 text-sm">
             <SelectValue placeholder="Semua Tipe" />
@@ -56,7 +66,7 @@ export default function PergerakanStokPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Tanggal', 'Produk', 'Tipe', 'Qty', 'Stok Awal', 'Stok Akhir', 'Catatan', 'Operator'].map((h) => (
+                  {['Tanggal', 'Cabang', 'Produk', 'Tipe', 'Qty', 'Stok Awal', 'Stok Akhir', 'Catatan', 'Operator'].map((h) => (
                     <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -67,6 +77,7 @@ export default function PergerakanStokPage() {
                   return (
                     <tr key={m.id} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="py-3 px-4 text-xs text-muted-foreground">{formatDateTime(m.created_at)}</td>
+                      <td className="py-3 px-4 text-xs whitespace-nowrap">{outletName(m.outlet_id)}</td>
                       <td className="py-3 px-4">
                         <p className="font-medium">{m.product?.name}</p>
                         <p className="text-xs text-muted-foreground font-mono">{m.product?.sku}</p>
