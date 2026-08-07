@@ -71,9 +71,40 @@ interface InventoryStore {
 // Baris sementara yang insert-nya sedang berjalan — cegah double-insert (race) sebelum id ditukar.
 const inserting = new Set<string>()
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * GAGAL SIMPAN STOK → jangan diam-diam. Dulu kegagalan cuma jadi warning di console, sementara
+ * layar sudah terlanjur bilang "berhasil" — akibatnya stok terlihat bertambah lalu balik lagi
+ * setelah refresh. Sekarang: beri tahu kasir DAN tarik ulang data dari server supaya angka di
+ * layar = angka sebenarnya (bukan angka palsu).
+ */
+let failureNotified = false
+function reportStockFailure() {
+  if (typeof window === 'undefined') return
+  void useInventoryStore.getState().fetch() // samakan lagi dgn server
+  if (failureNotified) return
+  failureNotified = true
+  setTimeout(() => { failureNotified = false }, 5000) // jangan spam saat banyak baris gagal
+  void import('sonner').then(({ toast }) =>
+    toast.error('Stok GAGAL tersimpan ke server — koneksi bermasalah. Angka dikembalikan ke data server, silakan ulangi.', { duration: 10000 })
+  )
+}
+
+/** Simpan perubahan stok dengan RETRY (3×, jeda menaik). true bila akhirnya tersimpan. */
+async function updateStockWithRetry(id: string, patch: { stock: number; min_stock: number }): Promise<boolean> {
+  for (let i = 0; i < 3; i++) {
+    const ok = await updateRow('inventory', id, patch)
+    if (ok) return true
+    if (i < 2) await sleep(700 * (i + 1))
+  }
+  return false
+}
+
 function persistRow(row: InventoryRow) {
   if (isUuid(row.id)) {
-    void updateRow('inventory', row.id, { stock: row.stock, min_stock: row.min_stock })
+    void updateStockWithRetry(row.id, { stock: row.stock, min_stock: row.min_stock })
+      .then((ok) => { if (!ok) reportStockFailure() })
     return row.id
   }
   // Baris baru → insert; FK butuh uuid. Jangan insert baris VARIAN sebelum variant_id jadi uuid
@@ -90,12 +121,13 @@ function persistRow(row: InventoryRow) {
       min_stock: row.min_stock,
     }).then((r) => {
       inserting.delete(row.id)
-      if (!r) return
+      if (!r) { reportStockFailure(); return } // insert gagal → jangan diam, samakan lagi dgn server
       useInventoryStore.setState((s) => ({ items: s.items.map((x) => (x.id === row.id ? { ...x, id: r.id } : x)) }))
       // Flush stok terkini bila berubah selama insert berjalan (mutasi di jendela race)
       const cur = useInventoryStore.getState().items.find((x) => x.id === r.id)
       if (cur && (cur.stock !== row.stock || cur.min_stock !== row.min_stock)) {
-        void updateRow('inventory', r.id, { stock: cur.stock, min_stock: cur.min_stock })
+        void updateStockWithRetry(r.id, { stock: cur.stock, min_stock: cur.min_stock })
+          .then((ok) => { if (!ok) reportStockFailure() })
       }
     })
   }
@@ -225,15 +257,26 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => ({
     const sb = getSupabaseBrowser()
     let failed = 0
     for (const c of chunk(updates, 500)) {
-      try {
-        const { error } = await sb.from('inventory').upsert(c)
-        if (error) { failed += c.length; console.warn('[akapack] bulk update inventory:', error.message) }
-      } catch (e) { failed += c.length; console.warn('[akapack] bulk update inventory:', e) }
+      // Retry 3× — upsert berdasarkan id bersifat idempoten, jadi aman diulang saat koneksi ngadat.
+      let ok = false
+      for (let i = 0; i < 3 && !ok; i++) {
+        try {
+          const { error } = await sb.from('inventory').upsert(c)
+          if (!error) ok = true
+          else { console.warn('[akapack] bulk update inventory:', error.message); if (i < 2) await sleep(700 * (i + 1)) }
+        } catch (e) { console.warn('[akapack] bulk update inventory:', e); if (i < 2) await sleep(700 * (i + 1)) }
+      }
+      if (!ok) failed += c.length
     }
     for (const c of chunk(inserts, 500)) {
       try {
         const rows = c.map((r) => ({ tenant_id: DEFAULT_TENANT_ID, outlet_id: r.outlet_id, product_id: r.product_id, variant_id: null, stock: r.stock, min_stock: r.min_stock }))
-        const { data, error } = await sb.from('inventory').insert(rows).select('id, product_id')
+        let { data, error } = await sb.from('inventory').insert(rows).select('id, product_id')
+        // Insert per-statement bersifat atomik: kalau gagal, tak ada baris masuk → aman dicoba ulang.
+        for (let i = 0; i < 2 && error; i++) {
+          await sleep(700 * (i + 1))
+          ;({ data, error } = await sb.from('inventory').insert(rows).select('id, product_id'))
+        }
         if (error || !data) { failed += c.length; if (error) console.warn('[akapack] bulk insert inventory:', error.message) }
         else {
           const idByProduct = new Map((data as { id: string; product_id: string }[]).map((d) => [d.product_id, d.id]))
