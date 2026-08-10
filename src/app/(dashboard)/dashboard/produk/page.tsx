@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import Link from 'next/link'
 import {
   Package, Plus, Search, LayoutGrid, List,
   Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle,
-  Download, Upload, Loader2
+  Download, Upload, Loader2, Tag
 } from 'lucide-react'
 import { ProductImg } from '@/components/product-img'
 import { Card, CardContent } from '@/components/ui/card'
@@ -149,6 +150,11 @@ export default function ProdukPage() {
           <p className="text-muted-foreground text-sm mt-1">Kelola semua produk dan stok Anda</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/dashboard/produk/label">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              <Tag size={14} /> Label Harga
+            </Button>
+          </Link>
           <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setImportOpen(true)}>
             <Upload size={14} /> Import
           </Button>

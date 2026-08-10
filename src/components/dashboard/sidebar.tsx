@@ -42,6 +42,7 @@ const navItems: NavItem[] = [
       { title: 'Katalog Produk', href: '/dashboard/produk' },
       { title: 'Kategori', href: '/dashboard/produk/kategori' },
       { title: 'Import / Export', href: '/dashboard/produk/import' },
+      { title: 'Label Harga', href: '/dashboard/produk/label' },
     ],
   },
   {
@@ -141,6 +142,7 @@ const managerNav: NavItem[] = [
       { title: 'Katalog Produk', href: '/dashboard/produk' },
       { title: 'Kategori', href: '/dashboard/produk/kategori' },
       { title: 'Import / Export', href: '/dashboard/produk/import' },
+      { title: 'Label Harga', href: '/dashboard/produk/label' },
     ],
   },
   {
