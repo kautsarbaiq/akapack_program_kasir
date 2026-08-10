@@ -21,7 +21,7 @@ const SALES_ALLOWED = [
   '/dashboard/karyawan/absensi',
 ]
 
-/** Halaman yang boleh diakses manager (TANPA Akuntansi/Promosi/Pelanggan/Karyawan-mgmt/Outlet/Pengaturan). */
+/** Halaman yang boleh diakses manager (TANPA Akuntansi/Promosi/Pelanggan/Outlet/Pengaturan). */
 const MANAGER_ALLOWED = [
   '/dashboard/produk',
   '/dashboard/inventori',
@@ -30,7 +30,7 @@ const MANAGER_ALLOWED = [
   // Penjualan & Laporan Penjualan SENGAJA tidak ada — manager tak boleh lihat omzet/laba/per-kasir.
   '/dashboard/surat-pesanan',
   '/dashboard/penawaran',
-  '/dashboard/karyawan/absensi',
+  '/dashboard/karyawan',   // kelola karyawan + absensi (akun Owner tetap terkunci, dijaga di form)
 ]
 
 /**

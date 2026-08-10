@@ -155,8 +155,14 @@ const managerNav: NavItem[] = [
   },
   { title: 'Surat Pesanan', href: '/dashboard/surat-pesanan', icon: FileText },
   { title: 'Penawaran', href: '/dashboard/penawaran', icon: FileSpreadsheet },
-  { title: 'Absensi', href: '/dashboard/karyawan/absensi', icon: CalendarCheck },
-  { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis', icon: UserCheck },
+  {
+    title: 'Karyawan', href: '/dashboard/karyawan', icon: Users,
+    children: [
+      { title: 'Daftar Karyawan', href: '/dashboard/karyawan' },
+      { title: 'Absensi', href: '/dashboard/karyawan/absensi' },
+      { title: 'Analisis Absensi', href: '/dashboard/karyawan/absensi/analisis' },
+    ],
+  },
 ]
 
 interface SidebarProps {

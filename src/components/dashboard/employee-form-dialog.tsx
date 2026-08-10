@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { useRole } from '@/stores/use-current-user-store'
 import { employeeSchema, type EmployeeFormValues } from '@/lib/validations'
 import type { Employee, UserRole } from '@/types'
 
@@ -39,6 +40,11 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
   const addEmployee = useEmployeeStore((s) => s.addEmployee)
   const updateEmployee = useEmployeeStore((s) => s.updateEmployee)
   const outlets = useOutletStore((s) => s.outlets)
+  const { isOwner } = useRole()
+  // Manager boleh menambah/ubah karyawan, TAPI tak boleh membuat atau mengubah akun Owner —
+  // kalau tidak, manager bisa mengangkat dirinya sendiri jadi owner (naik hak akses diam-diam).
+  const roleOptions = isOwner ? ROLES : ROLES.filter((r) => r.value !== 'owner')
+  const editingOwner = isEdit && employee?.role === 'owner' && !isOwner
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema),
@@ -69,6 +75,12 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
   }, [open, employee, reset])
 
   const onSubmit = async (data: EmployeeFormValues) => {
+    // Pengaman: non-owner tak boleh mengangkat siapa pun (termasuk dirinya) jadi Owner,
+    // dan tak boleh mengubah akun Owner yang sudah ada.
+    if (!isOwner && (data.role === 'owner' || employee?.role === 'owner')) {
+      toast.error('Hanya Pemilik yang bisa membuat atau mengubah akun Owner.')
+      return
+    }
     await new Promise((r) => setTimeout(r, 300))
     if (isEdit && employee) {
       updateEmployee(employee.id, data)
@@ -100,12 +112,12 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
 
           <div className="space-y-2">
             <Label>Role / Jabatan *</Label>
-            <Select value={role} onValueChange={(v) => { if (v) setValue('role', v as UserRole, { shouldValidate: true }) }}>
+            <Select value={role} disabled={editingOwner} onValueChange={(v) => { if (v) setValue('role', v as UserRole, { shouldValidate: true }) }}>
               <SelectTrigger>
                 <SelectValue placeholder="Pilih role..." />
               </SelectTrigger>
               <SelectContent>
-                {ROLES.map((r) => (
+                {roleOptions.map((r) => (
                   <SelectItem key={r.value} value={r.value}>
                     <div className="flex flex-col">
                       <span>{r.label}</span>

@@ -114,7 +114,8 @@ export async function proxy(request: NextRequest) {
       path.startsWith('/dashboard/outlet') ||
       path.startsWith('/dashboard/promosi') ||
       path.startsWith('/dashboard/pelanggan') ||
-      (path.startsWith('/dashboard/karyawan') && !path.startsWith('/dashboard/karyawan/absensi'))
+      // Kelola karyawan: owner + MANAGER. Role lain hanya boleh halaman absensi.
+      (path.startsWith('/dashboard/karyawan') && !path.startsWith('/dashboard/karyawan/absensi') && role !== 'manager')
     if (ownerOnly) return redirectTo(landing)
 
     // MANAGER: dilarang lihat omzet/laba/per-kasir → tutup Laporan Penjualan & Riwayat Transaksi
