@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Printer, Search, Tag, X, CheckSquare } from 'lucide-react'
+import { ArrowLeft, Printer, Search, Tag, X, CheckSquare, Save } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,23 +15,31 @@ import { toast } from 'sonner'
 /** Angka gaya label toko: 44550 → "44.550" (tanpa "Rp", titik ribuan). */
 const labelPrice = (n: number) => new Intl.NumberFormat('id-ID').format(Math.round(n))
 
-/**
- * Baris harga pada label — tiap satuan ditulis relatif terhadap satuan DI BAWAHNYA,
- * persis seperti label fisik toko: "1 PACK (25pcs)" lalu "1 CTN (20pack)".
- * (CTN faktornya 500 pcs; karena 1 pack = 25 pcs → 500/25 = 20 pack.)
- */
-function priceRows(p: Product): { label: string; price: number }[] {
-  const rows: { label: string; price: number }[] = []
+/** Isian manual PACK & CTN per produk (diketik langsung di halaman ini). */
+type Manual = { packIsi: number; packHarga: number; ctnIsi: number; ctnHarga: number }
+
+/** Ambil nilai awal dari data produk bila satuannya sudah pernah diisi. */
+function initialManual(p: Product): Manual {
   const units = [...(p.units ?? [])].filter((u) => u.factor > 0).sort((a, b) => a.factor - b.factor)
-  // Satuan dasar selalu tampil lebih dulu (mis. "1 PCS")
-  rows.push({ label: `1 ${p.unit.toUpperCase()}`, price: p.price })
-  let prevFactor = 1
-  let prevName = p.unit
-  for (const u of units) {
-    const isi = Math.round(u.factor / prevFactor)
-    rows.push({ label: `1 ${u.name.toUpperCase()} (${isi}${prevName.toLowerCase()})`, price: u.price })
-    prevFactor = u.factor
-    prevName = u.name
+  const pack = units[0]
+  const ctn = units[1]
+  return {
+    packIsi: pack?.factor ?? 0,
+    packHarga: pack?.price ?? 0,
+    // CTN ditulis dalam jumlah PACK (mis. 20 pack), bukan pcs — sama seperti label fisik.
+    ctnIsi: ctn && pack?.factor ? Math.round(ctn.factor / pack.factor) : 0,
+    ctnHarga: ctn?.price ?? 0,
+  }
+}
+
+/** Baris harga pada label: satuan dasar → PACK → CTN (yang kosong dilewati). */
+function priceRows(p: Product, m: Manual): { label: string; price: number }[] {
+  const rows = [{ label: `1 ${p.unit.toUpperCase()}`, price: p.price }]
+  if (m.packIsi > 0 && m.packHarga > 0) {
+    rows.push({ label: `1 PACK (${m.packIsi}${p.unit.toLowerCase()})`, price: m.packHarga })
+  }
+  if (m.ctnIsi > 0 && m.ctnHarga > 0) {
+    rows.push({ label: `1 CTN (${m.ctnIsi}${m.packIsi > 0 ? 'pack' : p.unit.toLowerCase()})`, price: m.ctnHarga })
   }
   return rows
 }
@@ -42,6 +50,8 @@ export default function LabelHargaPage() {
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('all')
   const [picked, setPicked] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+  const bulkPatch = useProductStore((s) => s.bulkPatch)
 
   const list = useMemo(() => {
     const base = products.filter((p) => p.is_active && (cat === 'all' || p.category_id === cat))
@@ -53,6 +63,12 @@ export default function LabelHargaPage() {
     [picked, products]
   )
 
+  // Isian manual PACK/CTN per produk — diisi otomatis dari data produk (kalau ada), bisa diketik ulang.
+  const [manual, setManual] = useState<Record<string, Manual>>({})
+  const manualOf = (p: Product): Manual => manual[p.id] ?? initialManual(p)
+  const setManualField = (id: string, field: keyof Manual, val: number) =>
+    setManual((s) => ({ ...s, [id]: { ...(s[id] ?? initialManual(products.find((p) => p.id === id)!)), [field]: val } }))
+
   const toggle = (id: string) => setPicked((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   const addAllShown = () => {
     setPicked((s) => Array.from(new Set([...s, ...list.map((p) => p.id)])))
@@ -63,6 +79,30 @@ export default function LabelHargaPage() {
     window.print()
   }
 
+  /**
+   * Simpan isian PACK/CTN ke data produk supaya tak perlu diketik ulang tiap cetak —
+   * sekaligus membuat satuan besar bisa dipilih saat jualan di kasir.
+   * FAKTOR dihitung otomatis dalam satuan DASAR: PACK = isi pack; CTN = isi pack × isi ctn.
+   * Pakai bulkPatch (hanya menyentuh kolom units) — TIDAK mengubah stok.
+   */
+  const saveToProducts = async () => {
+    const patches = selected.map((p) => {
+      const m = manualOf(p)
+      const units: { name: string; factor: number; price: number }[] = []
+      if (m.packIsi > 0 && m.packHarga > 0) units.push({ name: 'PACK', factor: m.packIsi, price: m.packHarga })
+      if (m.ctnIsi > 0 && m.ctnHarga > 0) {
+        units.push({ name: 'CTN', factor: (m.packIsi > 0 ? m.packIsi : 1) * m.ctnIsi, price: m.ctnHarga })
+      }
+      return { id: p.id, units }
+    }).filter((x) => x.units.length > 0)
+    if (!patches.length) { toast.error('Belum ada PACK/CTN yang diisi'); return }
+    setSaving(true)
+    const failed = await bulkPatch(patches)
+    setSaving(false)
+    if (failed > 0) toast.error(`${failed} produk GAGAL tersimpan — cek koneksi lalu ulangi`)
+    else toast.success(`Satuan ${patches.length} produk tersimpan`)
+  }
+
   return (
     <div className="space-y-6">
       {/* Panel pemilih — tidak ikut tercetak */}
@@ -71,7 +111,7 @@ export default function LabelHargaPage() {
           <div>
             <Link href="/dashboard/produk" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"><ArrowLeft size={13} /> Produk</Link>
             <h1 className="text-2xl font-bold flex items-center gap-2"><Tag size={22} /> Cetak Label Harga</h1>
-            <p className="text-muted-foreground text-sm mt-1">Pilih produk, lalu cetak label rak — harga per satuan otomatis dari data produk.</p>
+            <p className="text-muted-foreground text-sm mt-1">Pilih produk, isi PACK &amp; CTN-nya, lalu cetak label rak.</p>
           </div>
           <Button onClick={handlePrint} disabled={!selected.length} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">
             <Printer size={16} /> Cetak {selected.length > 0 && `(${selected.length})`}
@@ -117,15 +157,49 @@ export default function LabelHargaPage() {
         </Card>
 
         {selected.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">Akan dicetak:</span>
-            {selected.map((p) => (
-              <span key={p.id} className="inline-flex items-center gap-1 text-xs bg-muted rounded-full pl-2.5 pr-1 py-1">
-                {p.name.slice(0, 28)}{p.name.length > 28 ? '…' : ''}
-                <button onClick={() => toggle(p.id)} className="hover:text-destructive"><X size={12} /></button>
-              </span>
-            ))}
-          </div>
+          <Card>
+            <CardContent className="p-0">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b">
+                <p className="text-sm font-semibold">Isi PACK & CTN ({selected.length} produk)</p>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={saveToProducts} disabled={saving}>
+                  <Save size={13} /> {saving ? 'Menyimpan…' : 'Simpan ke produk'}
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Produk', `PACK isi (${'pcs'})`, 'Harga PACK', 'CTN isi (pack)', 'Harga CTN', ''].map((h) => (
+                        <th key={h} className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selected.map((p) => {
+                      const m = manualOf(p)
+                      return (
+                        <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td className="py-2 px-3">
+                            <p className="text-xs font-medium truncate max-w-[220px]">{p.name}</p>
+                            <p className="text-[11px] text-muted-foreground font-mono">{p.sku}</p>
+                          </td>
+                          <td className="py-2 px-3"><Input type="number" min={0} className="h-8 w-24 text-right" value={m.packIsi || ''} onChange={(e) => setManualField(p.id, 'packIsi', Number(e.target.value) || 0)} /></td>
+                          <td className="py-2 px-3"><Input type="number" min={0} className="h-8 w-28 text-right" value={m.packHarga || ''} onChange={(e) => setManualField(p.id, 'packHarga', Number(e.target.value) || 0)} /></td>
+                          <td className="py-2 px-3"><Input type="number" min={0} className="h-8 w-24 text-right" value={m.ctnIsi || ''} onChange={(e) => setManualField(p.id, 'ctnIsi', Number(e.target.value) || 0)} /></td>
+                          <td className="py-2 px-3"><Input type="number" min={0} className="h-8 w-28 text-right" value={m.ctnHarga || ''} onChange={(e) => setManualField(p.id, 'ctnHarga', Number(e.target.value) || 0)} /></td>
+                          <td className="py-2 px-3"><button onClick={() => toggle(p.id)} className="text-muted-foreground hover:text-destructive"><X size={14} /></button></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="px-4 py-2.5 text-xs text-muted-foreground border-t">
+                Kosongkan kalau produk tak punya PACK/CTN — barisnya otomatis tak tampil di label.
+                <b> Simpan ke produk</b> membuat isian ini dipakai ulang & satuan besar bisa dipilih di kasir.
+              </p>
+            </CardContent>
+          </Card>
         )}
       </div>
 
@@ -134,7 +208,7 @@ export default function LabelHargaPage() {
       {selected.length > 0 && (
         <div id="print-area" className="grid grid-cols-2 gap-3">
           {selected.map((p) => {
-            const rows = priceRows(p)
+            const rows = priceRows(p, manualOf(p))
             return (
               <div key={p.id} style={{ background: '#FFD100', color: '#111', padding: '14px 16px', breakInside: 'avoid', printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
                 <p style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.15, textTransform: 'uppercase' }}>{p.name}</p>

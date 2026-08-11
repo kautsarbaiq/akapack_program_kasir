@@ -15,7 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const asUuidOrNull = (s?: string | null) => (s && UUID_RE.test(s) ? s : null)
 const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
 
-export type ProductPatch = { id: string; price?: number; cost_price?: number; price_online?: number; image_url?: string; category_id?: string }
+export type ProductPatch = { id: string; price?: number; cost_price?: number; price_online?: number; image_url?: string; category_id?: string; units?: ProductUnit[] }
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
@@ -196,6 +196,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
           price_online: patch.price_online ?? p.price_online,
           image_url: patch.image_url ?? p.image_url,
           category_id: patch.category_id ?? p.category_id,
+          units: patch.units ?? p.units,
           updated_at: new Date().toISOString(),
         }
         return { ...next, category: resolveCategory(next.category_id) }
@@ -214,6 +215,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
         if (patch.price_online !== undefined) upd.price_online = patch.price_online
         if (patch.image_url !== undefined) upd.image_url = patch.image_url
         if (patch.category_id !== undefined) upd.category_id = asUuidOrNull(patch.category_id)
+        if (patch.units !== undefined) upd.units = patch.units
         if (Object.keys(upd).length === 0) return true
         const { error } = await sb.from('products').update(upd).eq('id', patch.id)
         if (error) { console.warn('[akapack] bulkPatch products:', error.message); return false }
