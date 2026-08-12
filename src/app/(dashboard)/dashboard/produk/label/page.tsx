@@ -21,26 +21,46 @@ type Manual = { packIsi: number; packHarga: number; ctnIsi: number; ctnHarga: nu
 /** Ambil nilai awal dari data produk bila satuannya sudah pernah diisi. */
 function initialManual(p: Product): Manual {
   const units = [...(p.units ?? [])].filter((u) => u.factor > 0).sort((a, b) => a.factor - b.factor)
-  const pack = units[0]
-  const ctn = units[1]
+  const pack = units.find((u) => u.name.toUpperCase() === 'PACK')
+  const ctn = units.find((u) => u.name.toUpperCase() === 'CTN')
+  // Satuan dasar sudah berupa PACK → harga pack = harga jual produk, dan isi CTN dihitung
+  // langsung dari faktornya. Kalau dasarnya pcs, isi CTN = faktor CTN ÷ faktor PACK.
+  const baseIsPack = !isPieceUnit(p.unit)
   return {
     packIsi: pack?.factor ?? 0,
-    packHarga: pack?.price ?? 0,
-    // CTN ditulis dalam jumlah PACK (mis. 20 pack), bukan pcs — sama seperti label fisik.
-    ctnIsi: ctn && pack?.factor ? Math.round(ctn.factor / pack.factor) : 0,
+    packHarga: pack?.price ?? (baseIsPack ? p.price : 0),
+    ctnIsi: ctn ? Math.round(ctn.factor / (pack?.factor || 1)) : 0,
     ctnHarga: ctn?.price ?? 0,
   }
 }
 
-/** Baris harga pada label: satuan dasar → PACK → CTN (yang kosong dilewati). */
+/** Satuan yang berarti "satuan terkecil" — kalau satuan dasar produk bukan ini, berarti dasarnya
+ *  sudah berupa kemasan (mis. produk yang dijual per PACK). */
+const PIECE_UNITS = ['pcs', 'buah', 'unit', 'biji', 'lembar', 'batang']
+const isPieceUnit = (u: string) => PIECE_UNITS.includes(u.trim().toLowerCase())
+
+/**
+ * Baris harga pada label: PACK lalu CTN — persis seperti label fisik (tanpa baris satuan dasar
+ * terpisah, karena itulah yang dulu bikin harga tampil DUA KALI saat Harga PACK diisi).
+ * "PACK isi (pcs)" tampil sebagai keterangan isi: "1 PACK (50pcs)".
+ * Harga PACK boleh dikosongkan → otomatis pakai harga jual produk.
+ */
 function priceRows(p: Product, m: Manual): { label: string; price: number }[] {
-  const rows = [{ label: `1 ${p.unit.toUpperCase()}`, price: p.price }]
-  if (m.packIsi > 0 && m.packHarga > 0) {
-    rows.push({ label: `1 PACK (${m.packIsi}${p.unit.toLowerCase()})`, price: m.packHarga })
+  const rows: { label: string; price: number }[] = []
+  if (m.packIsi > 0 || m.packHarga > 0) {
+    rows.push({
+      label: m.packIsi > 0 ? `1 PACK (${m.packIsi}pcs)` : '1 PACK',
+      price: m.packHarga > 0 ? m.packHarga : p.price,
+    })
   }
-  if (m.ctnIsi > 0 && m.ctnHarga > 0) {
-    rows.push({ label: `1 CTN (${m.ctnIsi}${m.packIsi > 0 ? 'pack' : p.unit.toLowerCase()})`, price: m.ctnHarga })
+  if (m.ctnIsi > 0 || m.ctnHarga > 0) {
+    rows.push({
+      label: m.ctnIsi > 0 ? `1 CTN (${m.ctnIsi}pack)` : '1 CTN',
+      price: m.ctnHarga,
+    })
   }
+  // Produk tanpa PACK/CTN → label harga biasa (satuan dasarnya saja).
+  if (rows.length === 0) rows.push({ label: `1 ${p.unit.toUpperCase()}`, price: p.price })
   return rows
 }
 
@@ -89,9 +109,15 @@ export default function LabelHargaPage() {
     const patches = selected.map((p) => {
       const m = manualOf(p)
       const units: { name: string; factor: number; price: number }[] = []
-      if (m.packIsi > 0 && m.packHarga > 0) units.push({ name: 'PACK', factor: m.packIsi, price: m.packHarga })
-      if (m.ctnIsi > 0 && m.ctnHarga > 0) {
-        units.push({ name: 'CTN', factor: (m.packIsi > 0 ? m.packIsi : 1) * m.ctnIsi, price: m.ctnHarga })
+      // FAKTOR selalu dalam SATUAN DASAR produk — salah hitung di sini bikin stok di kasir kacau.
+      if (isPieceUnit(p.unit)) {
+        // Dasar = pcs → PACK & CTN dua-duanya satuan besar yang bisa dijual.
+        if (m.packIsi > 0 && m.packHarga > 0) units.push({ name: 'PACK', factor: m.packIsi, price: m.packHarga })
+        if (m.ctnIsi > 0 && m.ctnHarga > 0) units.push({ name: 'CTN', factor: (m.packIsi || 1) * m.ctnIsi, price: m.ctnHarga })
+      } else {
+        // Dasar SUDAH pack → "isi pcs" cuma keterangan label (bukan konversi jual),
+        // jadi hanya CTN yang disimpan: 1 CTN = ctnIsi pack.
+        if (m.ctnIsi > 0 && m.ctnHarga > 0) units.push({ name: 'CTN', factor: m.ctnIsi, price: m.ctnHarga })
       }
       return { id: p.id, units }
     }).filter((x) => x.units.length > 0)
@@ -195,8 +221,10 @@ export default function LabelHargaPage() {
                 </table>
               </div>
               <p className="px-4 py-2.5 text-xs text-muted-foreground border-t">
-                Kosongkan kalau produk tak punya PACK/CTN — barisnya otomatis tak tampil di label.
-                <b> Simpan ke produk</b> membuat isian ini dipakai ulang & satuan besar bisa dipilih di kasir.
+                <b>PACK isi</b> tampil sebagai keterangan di label (mis. &quot;1 PACK (50pcs)&quot;).
+                <b> Harga PACK</b> boleh dikosongkan — otomatis memakai harga jual produk.
+                Kosongkan CTN kalau produk tak punya karton. <b>Simpan ke produk</b> menyimpan satuan besar
+                supaya bisa dipilih saat jualan di kasir.
               </p>
             </CardContent>
           </Card>
