@@ -120,7 +120,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           <div className="text-center space-y-0.5">
             <p className="font-bold text-sm">{headerName}</p>
             {headerAddress && <p className="text-muted-foreground text-[11px] leading-tight">{headerAddress}</p>}
-            {headerPhone && <p className="text-muted-foreground text-[11px]">{headerPhone}</p>}
+            {headerPhone && <p className="text-muted-foreground text-[11px]" style={{ whiteSpace: 'pre-line' }}>{headerPhone}</p>}
             <p className="text-muted-foreground">Struk Pembelian</p>
             <p className="text-muted-foreground">{formatDateTime(transaction.created_at)}</p>
           </div>
@@ -178,7 +178,7 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 22 }}>{headerName}</div>
             {headerAddress && <div style={{ fontSize: 15 }}>{headerAddress}</div>}
-            {headerPhone && <div style={{ fontSize: 15 }}>{headerPhone}</div>}
+            {headerPhone && <div style={{ fontSize: 15, whiteSpace: 'pre-line' }}>{headerPhone}</div>}
           </div>
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
           <div>No: {transaction.transaction_number}</div>

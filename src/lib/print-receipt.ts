@@ -20,7 +20,9 @@ export function printReceipt(t: Transaction, header: ReceiptHeader) {
   const inner =
     `<div style="text-align:center"><div style="font-weight:700;font-size:22px">${esc(header.name)}</div>` +
     (header.address ? `<div style="font-size:15px">${esc(header.address)}</div>` : '') +
-    (header.phone ? `<div style="font-size:15px">${esc(header.phone)}</div>` : '') + `</div>` +
+    // Beberapa nomor telepon (dipisah baris) → tiap nomor satu baris di struk.
+    (header.phone ? header.phone.split(/\r?\n/).map((t) => t.trim()).filter(Boolean)
+      .map((t) => `<div style="font-size:15px">${esc(t)}</div>`).join('') : '') + `</div>` +
     line +
     `<div>No: ${esc(t.transaction_number)}</div>` +
     `<div>${esc(formatDateTime(t.created_at))}</div>` +

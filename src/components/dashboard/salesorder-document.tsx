@@ -50,7 +50,7 @@ export function SalesOrderDocument({ doc }: { doc: SalesOrder }) {
         <div>
           <p style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>{headerName}</p>
           {headerAddress && <p style={{ color: '#555', fontSize: 11, marginTop: 2, maxWidth: 340 }}>{headerAddress}</p>}
-          {headerPhone && <p style={{ color: '#555', fontSize: 11 }}>{headerPhone}</p>}
+          {headerPhone && <p style={{ color: '#555', fontSize: 11, whiteSpace: 'pre-line' }}>{headerPhone}</p>}
         </div>
         <div style={{ textAlign: 'right' }}>
           <p style={{ fontSize: 16, fontWeight: 800, color: '#111' }}>SURAT PESANAN</p>

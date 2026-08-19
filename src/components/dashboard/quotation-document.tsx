@@ -43,7 +43,7 @@ export function QuotationDocument({ doc }: { doc: Quotation }) {
           <p style={{ fontSize: 10, color: '#777', marginTop: 2 }}>akapack — plastik & mesin kemasan</p>
         </div>
         <div style={{ textAlign: 'right', fontSize: 11, color: '#333', lineHeight: 1.6 }}>
-          {outlet?.phone && <p>Telp : {outlet.phone}</p>}
+          {outlet?.phone && <p style={{ whiteSpace: 'pre-line' }}>Telp : {outlet.phone}</p>}
           {storeEmail && <p>Email : {storeEmail}</p>}
           {outlet?.address && <p style={{ maxWidth: 300 }}>{outlet.address}</p>}
         </div>
