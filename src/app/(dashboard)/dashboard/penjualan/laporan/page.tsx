@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -59,6 +60,8 @@ export default function LaporanPenjualanPage() {
   const [outletFilter, setOutletFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [prodSearch, setProdSearch] = useState('')            // cari produk di tab Per Produk
+  const [histOf, setHistOf] = useState<{ id: string; name: string; sku: string } | null>(null) // riwayat 1 produk
   const { canSeeProfit, isCashier } = useRole() // tab Laba/Rugi hanya owner
   const me = useCurrentUserStore((s) => s.user)
   // Kasir DIKUNCI ke cabangnya (tak bisa pilih cabang lain); owner/manager bebas.
@@ -135,11 +138,11 @@ export default function LaporanPenjualanPage() {
     }
 
     // Per produk
-    const prodAgg: Record<string, { name: string; sku: string; qty: number; revenue: number }> = {}
+    const prodAgg: Record<string, { id: string; name: string; sku: string; qty: number; revenue: number }> = {}
     completed.forEach((t) =>
       t.items.forEach((it) => {
         const prod = products.find((p) => p.id === it.product_id)
-        if (!prodAgg[it.product_id]) prodAgg[it.product_id] = { name: it.product_name, sku: prod?.sku ?? '-', qty: 0, revenue: 0 }
+        if (!prodAgg[it.product_id]) prodAgg[it.product_id] = { id: it.product_id, name: it.product_name, sku: prod?.sku ?? '-', qty: 0, revenue: 0 }
         prodAgg[it.product_id].qty += it.quantity
         prodAgg[it.product_id].revenue += it.subtotal
       })
@@ -188,10 +191,57 @@ export default function LaporanPenjualanPage() {
     })
     const peakHour = hourly.reduce((a, b) => (b.orders > a.orders ? b : a), hourly[0])
 
-    return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, allProducts, paymentData, cashierData, hourly, peakHour }
+    return { totalRevenue, totalTrx, avgTrx, netSales, cogs, grossProfit, margin, trend, topProducts, allProducts, paymentData, cashierData, hourly, peakHour, completed }
   }, [transactions, products, period, effectiveOutlet, useRange, rangeStart, rangeEnd])
 
   const isEmpty = report.totalTrx === 0
+
+  // Daftar produk pada tab Per Produk, disaring kata kunci (nama / SKU).
+  const shownProducts = useMemo(() => {
+    const q = prodSearch.trim().toLowerCase()
+    if (!q) return report.allProducts
+    return report.allProducts.filter((p) => `${p.name} ${p.sku}`.toLowerCase().includes(q))
+  }, [report.allProducts, prodSearch])
+
+  /**
+   * Riwayat penjualan SATU produk — tiap baris = satu kali produk itu terjual:
+   * tanggal, nomor nota, cabang, qty, harga satuan, subtotal, kasir.
+   * Sumbernya transaksi yang SUDAH tersaring periode+cabang, jadi konsisten dengan angka di tabel.
+   */
+  const history = useMemo(() => {
+    if (!histOf) return []
+    const rows: { date: string; time: string; trx: string; outlet: string; qty: number; price: number; subtotal: number; cashier: string }[] = []
+    for (const t of report.completed) {
+      for (const it of t.items) {
+        if (it.product_id !== histOf.id) continue
+        rows.push({
+          date: localDay(t.created_at),
+          time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          trx: t.transaction_number,
+          outlet: outlets.find((o) => o.id === t.outlet_id)?.name ?? '—',
+          qty: it.quantity,
+          price: it.product_price,
+          subtotal: it.subtotal,
+          cashier: t.cashier?.full_name ?? '—',
+        })
+      }
+    }
+    return rows.sort((a, b) => (a.date === b.date ? b.time.localeCompare(a.time) : b.date.localeCompare(a.date)))
+  }, [histOf, report.completed, outlets])
+
+  const exportHistory = () => {
+    if (!histOf || !history.length) return
+    const XLSXp = import('xlsx')
+    void XLSXp.then((XLSX) => {
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(history.map((h) => ({
+        Tanggal: h.date, Jam: h.time, 'No. Transaksi': h.trx, Cabang: h.outlet,
+        Qty: h.qty, 'Harga Satuan': h.price, Subtotal: h.subtotal, Kasir: h.cashier,
+      }))), 'Riwayat')
+      XLSX.writeFile(wb, `riwayat-${histOf.sku}-${localDay(new Date())}.xlsx`)
+      toast.success('Riwayat diunduh')
+    })
+  }
 
   const handleExport = async () => {
     if (isEmpty) { toast.error('Belum ada data untuk diunduh'); return }
@@ -362,9 +412,16 @@ export default function LaporanPenjualanPage() {
         {/* Per Produk — SEMUA item terjual (bukan cuma 10 besar) */}
         <TabsContent value="produk" className="mt-6">
           <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base">Semua Produk Terjual</CardTitle>
-              <span className="text-xs text-muted-foreground">{formatNumber(report.allProducts.length)} jenis · {formatNumber(report.allProducts.reduce((s, p) => s + p.qty, 0))} pcs terjual</span>
+            <CardHeader className="flex-row items-center justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="text-base">Semua Produk Terjual</CardTitle>
+                <CardDescription className="text-xs mt-0.5">Klik baris produk untuk melihat riwayat penjualannya per tanggal</CardDescription>
+              </div>
+              <div className="flex items-center gap-3">
+                <Input placeholder="Cari produk… (mis. botol leon)" className="h-8 w-56 text-sm"
+                  value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{formatNumber(shownProducts.length)} jenis · {formatNumber(shownProducts.reduce((s, p) => s + p.qty, 0))} pcs</span>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="max-h-[70vh] overflow-y-auto">
@@ -377,8 +434,9 @@ export default function LaporanPenjualanPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.allProducts.map((p, i) => (
-                    <tr key={p.sku + i} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}>
+                  {shownProducts.map((p, i) => (
+                    <tr key={p.sku + i} onClick={() => setHistOf({ id: p.id, name: p.name, sku: p.sku })}
+                      className="hover:bg-muted/30 transition-colors cursor-pointer" style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="py-3 px-4 font-bold text-muted-foreground">#{i + 1}</td>
                       <td className="py-3 px-4 font-medium">{p.name}</td>
                       <td className="py-3 px-4 font-mono text-xs text-muted-foreground">{p.sku}</td>
@@ -394,8 +452,8 @@ export default function LaporanPenjualanPage() {
                       </td>
                     </tr>
                   ))}
-                  {report.allProducts.length === 0 && (
-                    <tr><td colSpan={6} className="py-10 text-center text-muted-foreground">Belum ada data</td></tr>
+                  {shownProducts.length === 0 && (
+                    <tr><td colSpan={6} className="py-10 text-center text-muted-foreground">{prodSearch ? `Tidak ada produk cocok "${prodSearch}"` : 'Belum ada data'}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -483,6 +541,58 @@ export default function LaporanPenjualanPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Riwayat penjualan satu produk — tanggal, qty, nota, cabang, kasir */}
+      <Dialog open={!!histOf} onOpenChange={(o) => !o && setHistOf(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-base">{histOf?.name}</DialogTitle>
+            <p className="text-xs text-muted-foreground font-mono">{histOf?.sku}</p>
+          </DialogHeader>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex gap-4 text-sm">
+              <span><b>{formatNumber(history.reduce((s2, h) => s2 + h.qty, 0))}</b> <span className="text-muted-foreground">pcs terjual</span></span>
+              <span><b>{formatRupiah(history.reduce((s2, h) => s2 + h.subtotal, 0))}</b></span>
+              <span className="text-muted-foreground">{history.length}x transaksi</span>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={exportHistory} disabled={!history.length}>
+              <Download size={13} /> Excel
+            </Button>
+          </div>
+
+          <div className="max-h-[55vh] overflow-y-auto -mx-6 px-6">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-background z-10">
+                <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
+                  {['Tanggal', 'Jam', 'No. Transaksi', 'Cabang', 'Qty', 'Harga', 'Subtotal', 'Kasir'].map((h) => (
+                    <th key={h} className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground bg-muted/50 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h, i) => (
+                  <tr key={h.trx + i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td className="py-2 px-3 whitespace-nowrap">{h.date}</td>
+                    <td className="py-2 px-3 text-muted-foreground">{h.time}</td>
+                    <td className="py-2 px-3 font-mono text-xs">{h.trx}</td>
+                    <td className="py-2 px-3 text-xs">{h.outlet}</td>
+                    <td className="py-2 px-3 font-semibold">{formatNumber(h.qty)}</td>
+                    <td className="py-2 px-3 text-muted-foreground">{formatRupiah(h.price)}</td>
+                    <td className="py-2 px-3 font-medium">{formatRupiah(h.subtotal)}</td>
+                    <td className="py-2 px-3 text-xs text-muted-foreground">{h.cashier}</td>
+                  </tr>
+                ))}
+                {history.length === 0 && (
+                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Belum terjual pada periode ini</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground">Mengikuti filter periode &amp; cabang yang aktif di atas.</p>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }
