@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { useProductStore, type BulkProductInput, type ProductPatch } from '@/stores/use-product-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
+import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
-import { formatRupiah } from '@/lib/utils'
+import { formatRupiah, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type CatRow = {
@@ -209,6 +210,16 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
         failed += pf
         // Seed stok awal ke outlet terpilih (urutan `created` = urutan input)
         failed += await inv.bulkUpsert(outletId, created.map((p, i) => ({ productId: p.id, stock: Math.max(0, newRows[i].stock) })))
+        // Jejak "Masuk Barang" untuk stok awal → muncul di History Item Produk.
+        const seedMoves = created
+          .map((p, i) => ({ p, qty: Math.max(0, newRows[i].stock) }))
+          .filter((x) => x.qty > 0)
+          .map(({ p, qty }) => ({
+            product_id: p.id, outlet_id: outletId, type: 'in' as const,
+            quantity: qty, before_stock: 0, after_stock: qty,
+            notes: `Impor katalog ${formatDate(new Date())}`,
+          }))
+        if (seedMoves.length) await useStockMovementStore.getState().addMovementsBulk(seedMoves)
         createdN = created.length - pf
       }
 

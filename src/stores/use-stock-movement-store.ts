@@ -3,6 +3,7 @@ import type { StockMovement, MovementType } from '@/types'
 import { mockStockMovements } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
 import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { fetchAll, insertRow } from '@/lib/supabase/repo'
 import { useProductStore } from './use-product-store'
 import { useActiveOutletStore } from './use-active-outlet-store'
@@ -10,7 +11,7 @@ import { useActiveOutletStore } from './use-active-outlet-store'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
 
-interface AddMovementInput {
+export interface AddMovementInput {
   product_id: string
   type: MovementType
   quantity: number
@@ -30,6 +31,9 @@ interface StockMovementStore {
   ensure: () => void
   fetch: () => Promise<void>
   addMovement: (input: AddMovementInput) => void
+  /** Catat BANYAK pergerakan sekaligus (mis. impor Excel ribuan baris) — dikirim per potongan,
+   *  bukan satu-satu, supaya tak membanjiri server. Mengembalikan jumlah baris yang GAGAL. */
+  addMovementsBulk: (inputs: AddMovementInput[]) => Promise<number>
   /** Kosongkan semua pergerakan stok di memori (saat hapus semua produk; DB ikut via cascade FK). */
   clearAll: () => void
 }
@@ -88,6 +92,59 @@ export const useStockMovementStore = create<StockMovementStore>()((set, get) => 
       reference_id: isUuid(input.reference_id) ? input.reference_id : null,
       created_at: createdAt,
     })
+  },
+
+  addMovementsBulk: async (inputs) => {
+    if (!inputs.length) return 0
+    const products = useProductStore.getState().products
+    const fallbackOutlet = useActiveOutletStore.getState().activeOutletId
+    const now = new Date().toISOString()
+
+    const local: StockMovement[] = inputs.map((input) => ({
+      id: generateId('mov'),
+      outlet_id: input.outlet_id ?? fallbackOutlet,
+      product_id: input.product_id,
+      product: products.find((p) => p.id === input.product_id),
+      type: input.type,
+      quantity: input.quantity,
+      before_stock: input.before_stock,
+      after_stock: input.after_stock,
+      notes: input.notes,
+      reference_id: input.reference_id,
+      created_by: 'system',
+      created_by_name: input.created_by_name ?? 'Sistem',
+      created_at: input.date ? new Date(input.date).toISOString() : now,
+    }))
+    set((s) => ({ movements: [...local, ...s.movements] }))
+
+    if (!isSupabaseConfigured()) return 0
+    const sb = getSupabaseBrowser()
+    const payload = local.map((m) => ({
+      tenant_id: DEFAULT_TENANT_ID,
+      outlet_id: isUuid(m.outlet_id) ? m.outlet_id : null,
+      product_id: isUuid(m.product_id) ? m.product_id : null,
+      type: m.type,
+      quantity: m.quantity,
+      before_stock: m.before_stock,
+      after_stock: m.after_stock,
+      notes: m.notes ?? null,
+      reference_id: isUuid(m.reference_id) ? m.reference_id : null,
+      created_at: m.created_at,
+    }))
+    let failed = 0
+    for (let i = 0; i < payload.length; i += 250) {
+      const chunk = payload.slice(i, i + 250)
+      // Sekali ulang kalau gagal — kedipan koneksi jangan sampai menghapus jejak seluruh potongan.
+      let ok = false
+      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+        const { error } = await sb.from('stock_movements').insert(chunk)
+        if (!error) { ok = true; break }
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 600))
+        else console.warn('[akapack] gagal catat pergerakan massal:', error.message)
+      }
+      if (!ok) failed += chunk.length
+    }
+    return failed
   },
 
   clearAll: () => set({ movements: [] }),

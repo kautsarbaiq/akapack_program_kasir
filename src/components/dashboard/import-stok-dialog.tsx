@@ -15,6 +15,8 @@ import { useCategoryStore } from '@/stores/use-category-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
+import { useStockMovementStore, type AddMovementInput } from '@/stores/use-stock-movement-store'
+import { formatDate } from '@/lib/utils'
 import type { ProductFormValues } from '@/lib/validations'
 import { toast } from 'sonner'
 
@@ -96,12 +98,25 @@ export function ImportStokDialog({ open, onOpenChange }: { open: boolean; onOpen
       const inv = useInventoryStore.getState()
       const matchedEntries: { productId: string; stock: number }[] = []
       const newRows: Row[] = []
+      // Jejak untuk History Item Produk: tiap baris impor dicatat sebagai pergerakan stok.
+      const moves: AddMovementInput[] = []
+      const stamp = formatDate(new Date())
       for (const r of aggRows) {
         const p = byName(r.name)
         if (p) {
           const cur = inv.stockAt(outletId, p.id, undefined) ?? p.stock
           const final = mode === 'set' ? r.qty : mode === 'add' ? cur + r.qty : Math.max(0, cur - r.qty)
           matchedEntries.push({ productId: p.id, stock: final })
+          const delta = final - cur
+          // Stok naik = Masuk Barang. Turun = penyesuaian (bukan "keluar" — tak ada barang terjual).
+          if (delta !== 0) {
+            moves.push({
+              product_id: p.id, outlet_id: outletId,
+              type: delta > 0 ? 'in' : 'adjustment',
+              quantity: delta, before_stock: cur, after_stock: final,
+              notes: `Impor Excel ${stamp}`,
+            })
+          }
         } else newRows.push(r)
       }
       let failed = 0
@@ -120,8 +135,20 @@ export function ImportStokDialog({ open, onOpenChange }: { open: boolean; onOpen
         const { products: created, failed: pf } = await bulkAdd(values)
         failed += pf
         failed += await inv.bulkUpsert(outletId, created.map((p, i) => ({ productId: p.id, stock: Math.max(0, newRows[i].qty) })))
+        created.forEach((p, i) => {
+          const qty = Math.max(0, newRows[i].qty)
+          if (qty > 0) moves.push({
+            product_id: p.id, outlet_id: outletId, type: 'in',
+            quantity: qty, before_stock: 0, after_stock: qty,
+            notes: `Impor Excel ${stamp} (produk baru)`,
+          })
+        })
         createdN = created.length - pf
       }
+
+      // Catat jejaknya SETELAH stok tersimpan, per potongan (impor bisa ribuan baris).
+      const moveFailed = moves.length ? await useStockMovementStore.getState().addMovementsBulk(moves) : 0
+      if (moveFailed > 0) toast.warning(`${moveFailed} jejak riwayat gagal tercatat (stok tetap tersimpan)`)
 
       useProductStore.getState().projectStock(activeOutletId)
       useVariantStore.getState().projectVariantStock(activeOutletId)

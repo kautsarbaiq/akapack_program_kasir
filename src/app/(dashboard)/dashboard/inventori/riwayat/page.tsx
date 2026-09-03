@@ -219,7 +219,7 @@ export default function RiwayatItemPage() {
                   <TabsTrigger value="masuk">Masuk Barang ({masuk.length})</TabsTrigger>
                   <TabsTrigger value="keluar">Barang Keluar ({keluar.length})</TabsTrigger>
                   <TabsTrigger value="transfer">Transfer ({transfer.length})</TabsTrigger>
-                  {lainnya.length > 0 && <TabsTrigger value="lain">Opname ({lainnya.length})</TabsTrigger>}
+                  {lainnya.length > 0 && <TabsTrigger value="lain">Opname / Penyesuaian ({lainnya.length})</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="semua" className="mt-4"><Table rs={rows} refLabel="No. Report / Transaksi" /></TabsContent>
                 <TabsContent value="masuk" className="mt-4"><Table rs={masuk} refLabel="No. Report" /></TabsContent>
