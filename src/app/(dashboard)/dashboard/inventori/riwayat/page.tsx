@@ -44,6 +44,15 @@ export default function RiwayatItemPage() {
     useTransactionStore.getState().ensureAll()
   }, [])
 
+  // Datang dari klik produk di halaman lain (?product=<id>) → langsung terpilih, tak perlu cari ulang.
+  // Dibaca dari window (bukan useSearchParams) supaya halaman tetap bisa di-prerender statis.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('product')
+    if (!id) return
+    const p = useProductStore.getState().products.find((x) => x.id === id)
+    if (p) { setPicked(p); setSearch(p.name) }
+  }, [products])
+
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<Product | null>(null)
   // Kasir dikunci ke cabangnya (fail-closed); lainnya bebas pilih.

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle, XCircle, CheckCircle2, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
-  Search, ClipboardList, Copy, Eye, Layers, Power, ScrollText, Trash2, FileSpreadsheet,
+  Search, ClipboardList, Copy, Eye, Layers, Power, ScrollText, Trash2, FileSpreadsheet, History,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -203,7 +203,13 @@ export default function InventoriPage() {
                 {visible.map((p) => (
                   <tr key={p.id} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: '1px solid var(--border)' }}
                     onContextMenu={readOnly ? undefined : (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, product: p }) }}>
-                    <td className="py-3 px-4 font-medium">{p.name}{!p.is_active && <span className="ml-1.5 text-xs text-muted-foreground">(nonaktif)</span>}</td>
+                    <td className="py-3 px-4 font-medium">
+                      {/* Klik nama = buka History Item Produk (masuk/keluar/transfer barang ini) */}
+                      <Link href={`/dashboard/inventori/riwayat?product=${p.id}`} className="hover:underline decoration-dotted underline-offset-2" title="Lihat riwayat barang ini">
+                        {p.name}
+                      </Link>
+                      {!p.is_active && <span className="ml-1.5 text-xs text-muted-foreground">(nonaktif)</span>}
+                    </td>
                     <td className="py-3 px-4 font-mono text-xs text-muted-foreground">{p.sku}</td>
                     <td className="py-3 px-4"><Badge variant="secondary" className="text-xs">{p.category?.name}</Badge></td>
                     <td className="py-3 px-4"><span className={`font-bold ${getStockStatus(p.stock, p.min_stock) === 'out' ? 'text-destructive' : getStockStatus(p.stock, p.min_stock) === 'low' ? 'text-amber-600' : ''}`}>{p.stock}</span><span className="text-muted-foreground text-xs"> {p.unit}</span></td>
@@ -217,6 +223,9 @@ export default function InventoriPage() {
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Stok masuk" onClick={() => openFlow('in', p.id)}><ArrowDownToLine size={13} /></Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600" title="Stok keluar" onClick={() => openFlow('out', p.id)}><ArrowUpFromLine size={13} /></Button>
+                        <Link href={`/dashboard/inventori/riwayat?product=${p.id}`}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Riwayat barang"><History size={13} /></Button>
+                        </Link>
                       </div>
                       )}
                     </td>
