@@ -101,6 +101,38 @@ async function updateStockWithRetry(id: string, patch: { stock: number; min_stoc
   return false
 }
 
+/**
+ * Kirim PERUBAHAN (delta) ke server, bukan angka absolut.
+ *
+ * Menulis angka absolut hasil hitungan di memori bikin perubahan perangkat lain TERHAPUS
+ * (lost update) — 17 Agu 2026 transfer 2000 pcs Brown Paper Cup hilang gara-gara ini.
+ * Fungsi DB apply_stock_delta mengunci barisnya dan melakukan `stock = stock + delta`,
+ * lalu mengembalikan stok sebenarnya → dipakai menyamakan angka di layar.
+ */
+async function pushDelta(
+  outletId: string, productId: string, variantId: string | undefined, delta: number
+): Promise<boolean> {
+  const sb = getSupabaseBrowser()
+  for (let i = 0; i < 3; i++) {
+    const { data, error } = await sb.rpc('apply_stock_delta', {
+      p_outlet: outletId, p_product: productId, p_variant: variantId ?? null, p_delta: delta,
+    })
+    if (!error) {
+      const after = Array.isArray(data) ? (data[0] as { after_stock?: number })?.after_stock : undefined
+      if (typeof after === 'number') {
+        // Samakan dengan angka OTORITATIF dari server (bisa beda kalau perangkat lain ikut menulis).
+        useInventoryStore.setState((s) => ({
+          items: s.items.map((r) => (matches(r, outletId, productId, variantId) ? { ...r, stock: after } : r)),
+        }))
+      }
+      return true
+    }
+    if (i < 2) await sleep(700 * (i + 1))
+    else console.warn('[akapack] apply_stock_delta gagal:', error.message)
+  }
+  return false
+}
+
 function persistRow(row: InventoryRow) {
   if (isUuid(row.id)) {
     void updateStockWithRetry(row.id, { stock: row.stock, min_stock: row.min_stock })
@@ -179,11 +211,18 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => ({
     if (row) {
       const updated = { ...row, stock: after }
       set({ items: items.map((r) => (r === row ? updated : r)) })
-      persistRow(updated)
     } else {
       const nr: InventoryRow = { id: generateId('inv'), outlet_id: outletId, product_id: productId, variant_id: variantId, stock: after, min_stock: 0 }
       set({ items: [...items, nr] })
-      persistRow(nr)
+    }
+    // Ke server sebagai DELTA (anti saling-timpa antar perangkat). Produk/varian yang id-nya belum
+    // uuid (baru dibuat, belum tersimpan) tak bisa lewat RPC → pakai jalur lama sampai id-nya jadi.
+    const canRpc = isSupabaseConfigured() && isUuid(outletId) && isUuid(productId) && (!variantId || isUuid(variantId))
+    if (canRpc) {
+      void pushDelta(outletId, productId, variantId, delta).then((ok) => { if (!ok) reportStockFailure() })
+    } else {
+      const cur = get().items.find((r) => matches(r, outletId, productId, variantId))
+      if (cur) persistRow(cur)
     }
     return { before, after }
   },
