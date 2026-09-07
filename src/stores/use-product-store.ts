@@ -23,6 +23,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out
 }
 import { useInventoryStore } from './use-inventory-store'
+import { useStockMovementStore } from './use-stock-movement-store'
 import { useActiveOutletStore } from './use-active-outlet-store'
 
 interface ProductStore {
@@ -252,7 +253,17 @@ export const useProductStore = create<ProductStore>()((set) => ({
     const invStore = useInventoryStore.getState()
     const liveStock = invStore.stockAt(outlet, id)
     if (liveStock === null || values.stock !== liveStock) {
-      invStore.setStockAt(outlet, id, undefined, values.stock)
+      const { before, after } = invStore.setStockAt(outlet, id, undefined, values.stock)
+      // Ubah stok lewat form produk HARUS ninggalin jejak — dulu angkanya berubah tanpa tercatat
+      // di History Item Produk, jadi selisih stok tak bisa ditelusuri sama sekali.
+      if (after !== before) {
+        useStockMovementStore.getState().addMovement({
+          product_id: id, outlet_id: outlet,
+          type: after > before ? 'in' : 'adjustment',
+          quantity: after - before, before_stock: before, after_stock: after,
+          notes: 'Ubah stok dari form produk',
+        })
+      }
     }
     void updateRow('products', id, {
       category_id: values.category_id,
