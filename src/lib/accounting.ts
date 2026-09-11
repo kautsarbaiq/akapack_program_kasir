@@ -3,6 +3,7 @@
 // jurnal manual & saldo awal digabung untuk membentuk buku besar & laporan.
 
 import type { Account, AccountType, Asset, JournalEntry, JournalLine, PurchaseOrder, Transaction } from '@/types'
+import { paymentBreakdown } from './payments'
 
 // Kode akun baku yang dirujuk mesin jurnal otomatis (lihat mockAccounts / migration 0009).
 export const ACC = {
@@ -50,8 +51,15 @@ export function transactionToJournalEntry(
     lines.push({ account_id: a?.id ?? code, account_code: code, account_name: a?.name ?? code, debit, credit })
   }
 
-  const payCode = txn.payment_method === 'cash' ? ACC.CASH : ACC.BANK
-  push(payCode, r(txn.total), 0)
+  // Debit kas/bank sesuai porsi tiap metode — split (cash 50rb + TF 50rb) = Kas 50rb + Bank 50rb,
+  // bukan seluruhnya ke Bank. Jumlah porsi dijaga = total agar jurnal tetap seimbang.
+  const parts = Object.entries(paymentBreakdown(txn))
+  const partSum = parts.reduce((s, [, v]) => s + v, 0)
+  parts.forEach(([method, amt], i) => {
+    // Pembulatan: selisih (kalau ada) ditaruh di baris terakhir supaya debit == kredit persis.
+    const amount = i === parts.length - 1 ? r(txn.total) - r(partSum - amt) : r(amt)
+    push(method === 'cash' ? ACC.CASH : ACC.BANK, amount, 0)
+  })
   if (txn.discount_amount > 0) push(ACC.SALES_DISCOUNT, r(txn.discount_amount), 0)
   push(ACC.SALES, 0, r(txn.subtotal))
   if (txn.tax_amount > 0) push(ACC.VAT_PAYABLE, 0, r(txn.tax_amount))

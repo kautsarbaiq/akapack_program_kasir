@@ -1,5 +1,6 @@
 import { formatRupiah, formatDateTime } from './utils'
 import { PAYMENT_LABELS } from './constants'
+import { paymentBreakdown, isSplit } from './payments'
 import type { Transaction } from '@/types'
 
 interface ReceiptHeader { name: string; address?: string; phone?: string; footer?: string }
@@ -34,7 +35,12 @@ export function printReceipt(t: Transaction, header: ReceiptHeader) {
     (t.tax_amount > 0 ? `<div style="display:flex;justify-content:space-between"><span>PPN</span><span>+${formatRupiah(t.tax_amount)}</span></div>` : '') +
     (t.service_charge_amount > 0 ? `<div style="display:flex;justify-content:space-between"><span>Service</span><span>+${formatRupiah(t.service_charge_amount)}</span></div>` : '') +
     `<div style="display:flex;justify-content:space-between;font-weight:700;font-size:19px;margin-top:3px"><span>TOTAL</span><span>${formatRupiah(t.total)}</span></div>` +
-    `<div style="display:flex;justify-content:space-between"><span>${esc(PAYMENT_LABELS[t.payment_method] ?? t.payment_method)}</span><span>${formatRupiah(t.paid_amount)}</span></div>` +
+    // Split: tulis tiap metode + nominalnya ("Tunai 50.000" / "Transfer BCA 50.000"), bukan cuma "Split".
+    (isSplit(t)
+      ? `<div style="font-weight:700;margin-top:3px">Pembayaran (split)</div>` +
+        Object.entries(paymentBreakdown(t)).map(([m, v]) =>
+          `<div style="display:flex;justify-content:space-between;padding-left:8px"><span>${esc(PAYMENT_LABELS[m] ?? m)}</span><span>${formatRupiah(v)}</span></div>`).join('')
+      : `<div style="display:flex;justify-content:space-between"><span>${esc(PAYMENT_LABELS[t.payment_method] ?? t.payment_method)}</span><span>${formatRupiah(t.paid_amount)}</span></div>`) +
     (t.payment_method === 'cash' ? `<div style="display:flex;justify-content:space-between"><span>Kembali</span><span>${formatRupiah(t.change_amount)}</span></div>` : '') +
     line +
     `<div style="text-align:center">${esc(header.footer || 'Terima kasih')}</div>`

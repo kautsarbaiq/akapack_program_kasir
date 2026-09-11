@@ -15,6 +15,7 @@ import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useProductStore } from '@/stores/use-product-store'
 import { formatRupiah, formatNumber, localDay } from '@/lib/utils'
 import { PAYMENT_LABELS } from '@/lib/constants'
+import { paymentBreakdown } from '@/lib/payments'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
@@ -156,13 +157,15 @@ export default function LaporanPenjualanPage() {
     const topProducts = rankedProducts.slice(0, 10)
     const allProducts = rankedProducts
 
-    // Per metode bayar
+    // Per metode bayar — transaksi SPLIT dipecah ke tiap metodenya (cash 50rb + TF 50rb
+    // menambah kas 50rb DAN bank 50rb), bukan jadi ember "split" tersendiri.
     const methodAgg: Record<string, { count: number; total: number }> = {}
     completed.forEach((t) => {
-      const k = t.payment_method
-      if (!methodAgg[k]) methodAgg[k] = { count: 0, total: 0 }
-      methodAgg[k].count++
-      methodAgg[k].total += t.total
+      for (const [k, amt] of Object.entries(paymentBreakdown(t))) {
+        if (!methodAgg[k]) methodAgg[k] = { count: 0, total: 0 }
+        methodAgg[k].count++
+        methodAgg[k].total += amt
+      }
     })
     const paymentData = Object.entries(methodAgg).map(([method, d]) => ({
       name: PAYMENT_LABELS[method] ?? method,

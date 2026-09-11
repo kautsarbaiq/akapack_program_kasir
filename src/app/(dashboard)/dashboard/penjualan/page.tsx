@@ -23,6 +23,7 @@ import { printReceipt } from '@/lib/print-receipt'
 import { formatRupiah, formatDateTime, rankedSearch, localDay } from '@/lib/utils'
 import type { Transaction } from '@/types'
 import { PAYMENT_LABELS, PAYMENT_COLORS, PAYMENT_METHODS } from '@/lib/constants'
+import { paymentBreakdown, isSplit } from '@/lib/payments'
 import { toast } from 'sonner'
 
 export default function PenjualanPage() {
@@ -55,7 +56,8 @@ export default function PenjualanPage() {
     const d = localDay(t.created_at)
     return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
   })
-  const methodTx = methodFilter === 'all' ? dateTx : dateTx.filter((t) => t.payment_method === methodFilter)
+  // Split ikut tersaring bila mengandung metode yang dipilih (cash 50rb+TF 50rb muncul di filter Tunai maupun Transfer).
+  const methodTx = methodFilter === 'all' ? dateTx : dateTx.filter((t) => t.payment_method === methodFilter || methodFilter in paymentBreakdown(t))
   // Omzet/jumlah transaksi tetap dari transaksi SELESAI (void tak dihitung omzet).
   const totalOmzet = methodTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
   const totalTrx = methodTx.filter(t => t.status === 'completed').length
@@ -111,7 +113,11 @@ export default function PenjualanPage() {
       Pelanggan: t.customer?.name ?? 'Umum',
       Items: t.items.reduce((s, i) => s + i.quantity, 0),
       Total: t.total,
-      Metode: PAYMENT_LABELS[t.payment_method] ?? t.payment_method,
+      Metode: isSplit(t)
+        ? 'Split: ' + Object.entries(paymentBreakdown(t)).map(([m, v]) => `${PAYMENT_LABELS[m] ?? m} ${v}`).join(' + ')
+        : (PAYMENT_LABELS[t.payment_method] ?? t.payment_method),
+      Tunai: paymentBreakdown(t).cash ?? 0,
+      'Non-Tunai': t.total - (paymentBreakdown(t).cash ?? 0),
       Kasir: t.cashier?.full_name ?? '-',
       Status: t.status === 'completed' ? 'Selesai' : t.status === 'void' ? 'Void' : t.status,
     }))
@@ -263,7 +269,16 @@ export default function PenjualanPage() {
                   {selected.discount_amount > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Diskon</span><span>-{formatRupiah(selected.discount_amount)}</span></div>}
                   <Separator />
                   <div className="flex justify-between font-bold text-lg"><span>Total</span><span>{formatRupiah(selected.total)}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dibayar</span><span>{formatRupiah(selected.paid_amount)}</span></div>
+                  {isSplit(selected) ? (
+                    <>
+                      <div className="text-sm text-muted-foreground">Dibayar (split)</div>
+                      {Object.entries(paymentBreakdown(selected)).map(([m, v]) => (
+                        <div key={m} className="flex justify-between text-sm pl-3"><span>{PAYMENT_LABELS[m] ?? m}</span><span>{formatRupiah(v)}</span></div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dibayar</span><span>{formatRupiah(selected.paid_amount)}</span></div>
+                  )}
                   {selected.change_amount > 0 && <div className="flex justify-between text-sm text-emerald-600 font-semibold"><span>Kembalian</span><span>{formatRupiah(selected.change_amount)}</span></div>}
                 </div>
 

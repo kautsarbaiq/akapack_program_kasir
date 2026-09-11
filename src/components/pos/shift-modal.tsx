@@ -25,6 +25,7 @@ import {
   closeShiftSchema, type CloseShiftFormValues,
 } from '@/lib/validations'
 import { formatRupiah } from '@/lib/utils'
+import { cashPortion } from '@/lib/payments'
 
 interface Props {
   open: boolean
@@ -136,9 +137,8 @@ function CloseShiftForm({ onDone }: { onDone: () => void }) {
   const cashSales = transactions.reduce((sum, t) => {
     if (t.status !== 'completed' || t.outlet_id !== currentShift.outlet_id) return sum
     if (new Date(t.created_at).getTime() < openedMs) return sum
-    if (t.payment_method === 'cash') return sum + t.total // kas masuk laci = total (kembalian sudah diberikan)
-    if (t.payment_method === 'split' && t.payment_details) return sum + (t.payment_details['cash'] ?? 0)
-    return sum
+    // Kas masuk laci = porsi tunai (kembalian sudah diberikan); split ikut porsi tunainya.
+    return sum + cashPortion(t)
   }, 0)
   const expectedCash = currentShift.opening_cash + cashSales
   const diff = (Number.isFinite(closingCash) ? closingCash : 0) - expectedCash

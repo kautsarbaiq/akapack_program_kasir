@@ -10,6 +10,7 @@ import { formatRupiah, formatDateTime } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { PAYMENT_LABELS } from '@/lib/constants'
+import { paymentBreakdown, isSplit } from '@/lib/payments'
 import type { Transaction } from '@/types'
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -91,7 +92,9 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
       t.tax_amount > 0 ? `PPN: +${formatRupiah(t.tax_amount)}` : null,
       t.service_charge_amount > 0 ? `Service: +${formatRupiah(t.service_charge_amount)}` : null,
       `*TOTAL: ${formatRupiah(t.total)}*`,
-      `Bayar (${PAYMENT_LABELS[t.payment_method] ?? t.payment_method}): ${formatRupiah(t.paid_amount)}`,
+      ...(isSplit(t)
+        ? ['Pembayaran (split):', ...Object.entries(paymentBreakdown(t)).map(([m, v]) => `  ${PAYMENT_LABELS[m] ?? m}: ${formatRupiah(v)}`)]
+        : [`Bayar (${PAYMENT_LABELS[t.payment_method] ?? t.payment_method}): ${formatRupiah(t.paid_amount)}`]),
       t.payment_method === 'cash' ? `Kembalian: ${formatRupiah(t.change_amount)}` : null,
       '',
       receiptFooter || 'Terima kasih telah berbelanja',
@@ -146,7 +149,16 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
             <div className="flex justify-between font-bold text-sm pt-0.5">
               <span>TOTAL</span><span>{formatRupiah(transaction.total)}</span>
             </div>
-            <Row label={PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method} value={formatRupiah(transaction.paid_amount)} />
+            {isSplit(transaction) ? (
+              <>
+                <p className="font-semibold mt-1">Pembayaran (split)</p>
+                {Object.entries(paymentBreakdown(transaction)).map(([m, v]) => (
+                  <Row key={m} label={`  ${PAYMENT_LABELS[m] ?? m}`} value={formatRupiah(v)} />
+                ))}
+              </>
+            ) : (
+              <Row label={PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method} value={formatRupiah(transaction.paid_amount)} />
+            )}
             {transaction.payment_method === 'cash' && <Row label="Kembalian" value={formatRupiah(transaction.change_amount)} />}
           </div>
 
@@ -201,7 +213,16 @@ export function ReceiptModal({ open, onOpenChange, transaction }: Props) {
           {transaction.tax_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>PPN</span><span>+{formatRupiah(transaction.tax_amount)}</span></div>}
           {transaction.service_charge_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Service</span><span>+{formatRupiah(transaction.service_charge_amount)}</span></div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 19, marginTop: 3 }}><span>TOTAL</span><span>{formatRupiah(transaction.total)}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method}</span><span>{formatRupiah(transaction.paid_amount)}</span></div>
+          {isSplit(transaction) ? (
+            <>
+              <div style={{ fontWeight: 700, marginTop: 3 }}>Pembayaran (split)</div>
+              {Object.entries(paymentBreakdown(transaction)).map(([m, v]) => (
+                <div key={m} style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 8 }}><span>{PAYMENT_LABELS[m] ?? m}</span><span>{formatRupiah(v)}</span></div>
+              ))}
+            </>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method}</span><span>{formatRupiah(transaction.paid_amount)}</span></div>
+          )}
           {transaction.payment_method === 'cash' && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Kembali</span><span>{formatRupiah(transaction.change_amount)}</span></div>}
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
           <div style={{ textAlign: 'center' }}>{receiptFooter || 'Terima kasih'}</div>
