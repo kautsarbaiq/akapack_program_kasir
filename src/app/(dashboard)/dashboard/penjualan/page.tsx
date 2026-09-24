@@ -59,7 +59,10 @@ export default function PenjualanPage() {
   // Split ikut tersaring bila mengandung metode yang dipilih (cash 50rb+TF 50rb muncul di filter Tunai maupun Transfer).
   const methodTx = methodFilter === 'all' ? dateTx : dateTx.filter((t) => t.payment_method === methodFilter || methodFilter in paymentBreakdown(t))
   // Omzet/jumlah transaksi tetap dari transaksi SELESAI (void tak dihitung omzet).
-  const totalOmzet = methodTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.total, 0)
+  // Saat difilter per metode, yang dijumlah adalah PORSI metode itu — split 32.000 (tunai 10.000 +
+  // TF 22.000) menambah 10.000 di filter Tunai, bukan 32.000 penuh di kedua-duanya.
+  const amountOf = (t: Transaction) => (methodFilter === 'all' ? t.total : (paymentBreakdown(t)[methodFilter] ?? 0))
+  const totalOmzet = methodTx.filter(t => t.status === 'completed').reduce((s, t) => s + amountOf(t), 0)
   const totalTrx = methodTx.filter(t => t.status === 'completed').length
 
   const statusTx = statusFilter === 'all' ? methodTx : methodTx.filter((t) => t.status === statusFilter)
@@ -206,11 +209,21 @@ export default function PenjualanPage() {
                     <td className="py-3 px-4 font-mono text-xs font-semibold">{t.transaction_number}</td>
                     <td className="py-3 px-4 text-sm">{t.customer?.name ?? <span className="text-muted-foreground">Umum</span>}</td>
                     <td className="py-3 px-4 text-muted-foreground text-xs">{t.items.length} item</td>
-                    <td className="py-3 px-4 font-bold">{formatRupiah(t.total)}</td>
+                    <td className="py-3 px-4 font-bold">
+                      {formatRupiah(amountOf(t))}
+                      {methodFilter !== 'all' && amountOf(t) !== t.total && (
+                        <span className="block text-[11px] font-normal text-muted-foreground">dari {formatRupiah(t.total)}</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PAYMENT_COLORS[t.payment_method] ?? ''}`}>
                         {PAYMENT_LABELS[t.payment_method] ?? t.payment_method}
                       </span>
+                      {isSplit(t) && (
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {Object.entries(paymentBreakdown(t)).map(([m, v]) => `${PAYMENT_LABELS[m] ?? m} ${formatRupiah(v)}`).join(' + ')}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-sm text-muted-foreground">{t.cashier?.full_name ?? '-'}</td>
                     <td className="py-3 px-4 text-xs text-muted-foreground">{formatDateTime(t.created_at)}</td>
