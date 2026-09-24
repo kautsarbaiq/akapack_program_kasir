@@ -334,8 +334,11 @@ export const useProductStore = create<ProductStore>()((set) => ({
     const inv = useInventoryStore.getState()
     set((s) => ({
       products: s.products.map((p) => {
-        const st = inv.stockAt(outletId, p.id)
-        return st === null ? p : { ...p, stock: st, stock_status: getStockStatus(st, p.min_stock) }
+        // Cabang ini belum punya baris stok untuk produk tsb → tampilkan 0, JANGAN biarkan angka
+        // cabang sebelumnya nyangkut. Dulu `return p` membuat stok Bandung terbaca di Garut,
+        // sehingga impor stok satu cabang terlihat seolah "menimpa" kedua toko.
+        const st = inv.stockAt(outletId, p.id) ?? 0
+        return { ...p, stock: st, stock_status: getStockStatus(st, p.min_stock) }
       }),
     }))
   },
