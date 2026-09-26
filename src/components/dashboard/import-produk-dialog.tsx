@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
-import { Upload, FileSpreadsheet, Loader2, CheckCircle2, Boxes, Tag, Image as ImageIcon } from 'lucide-react'
+import { Upload, FileSpreadsheet, Loader2, CheckCircle2, Boxes, Tag, Image as ImageIcon, Warehouse } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -74,6 +74,7 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState<CatRow[] | null>(null)
   const [updateExisting, setUpdateExisting] = useState(false)
+  const [updateStock, setUpdateStock] = useState(false)   // set stok produk lama = stock_qty file
   const [outletId, setOutletId] = useState(activeOutletId)
   const [busy, setBusy] = useState(false)
 
@@ -238,13 +239,36 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
         updatedN = existRows.length
       }
 
+      // 2b. Stok produk yang SUDAH ADA — hanya kalau diminta. Dulu selalu dilewati, sehingga file
+      // hasil SO yang diimpor di sini "tidak mengubah stok sama sekali" tanpa penjelasan apa pun.
+      let stockN = 0
+      if (updateExisting && updateStock && existRows.length) {
+        const invNow = useInventoryStore.getState()
+        const entries = existRows.map(({ row, product }) => ({ productId: product.id, stock: Math.max(0, row.stock) }))
+        const moves = existRows.map(({ row, product }) => {
+          const before = invNow.stockAt(outletId, product.id, undefined) ?? 0
+          const after = Math.max(0, row.stock)
+          return { product_id: product.id, outlet_id: outletId, before, after }
+        }).filter((m) => m.after !== m.before)
+        failed += await inv.bulkUpsert(outletId, entries)
+        if (moves.length) {
+          await useStockMovementStore.getState().addMovementsBulk(moves.map((m) => ({
+            product_id: m.product_id, outlet_id: m.outlet_id,
+            type: m.after > m.before ? ('in' as const) : ('adjustment' as const),
+            quantity: m.after - m.before, before_stock: m.before, after_stock: m.after,
+            notes: `Impor katalog ${formatDate(new Date())} (set stok)`,
+          })))
+        }
+        stockN = entries.length
+      }
+
       useProductStore.getState().projectStock(activeOutletId)
       useVariantStore.getState().projectVariantStock(activeOutletId)
       const oname = outlets.find((o) => o.id === outletId)?.name ?? ''
       if (failed > 0) {
         toast.warning(`Import: ${createdN} produk baru${updatedN ? `, ${updatedN} diperbarui` : ''}, tapi ${failed} baris GAGAL ke server — muat ulang & ulangi yang gagal.`)
       } else {
-        toast.success(`Import selesai: ${createdN} produk baru${updatedN ? `, ${updatedN} diperbarui` : ''}${createdN ? ` (stok awal di ${oname})` : ''}`)
+        toast.success(`Import selesai: ${createdN} produk baru${updatedN ? `, ${updatedN} diperbarui` : ''}${stockN ? `, stok ${stockN} produk disamakan dengan file` : ''}${createdN ? ` (stok awal di ${oname})` : ''}`)
       }
       reset()
       onOpenChange(false)
@@ -290,8 +314,21 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
               </div>
 
               <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
-                <div><p className="text-sm font-medium flex items-center gap-1.5"><Tag size={14} /> Perbarui produk yang sudah ada</p><p className="text-xs text-muted-foreground">{matchedCount} produk: harga, modal, foto & kategori ditimpa dari file (stok tidak diubah)</p></div>
+                <div><p className="text-sm font-medium flex items-center gap-1.5"><Tag size={14} /> Perbarui produk yang sudah ada</p><p className="text-xs text-muted-foreground">{matchedCount} produk: harga, modal, foto &amp; kategori ditimpa dari file</p></div>
                 <Switch checked={updateExisting} onCheckedChange={setUpdateExisting} />
+              </div>
+
+              {/* Stok produk lama TIDAK ikut kecuali dinyalakan — dulu ini diam-diam dilewati. */}
+              <div className={`flex items-center justify-between rounded-lg px-3 py-2 ${updateExisting ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-muted/40'}`}>
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5"><Warehouse size={14} /> Set stok produk lama = kolom stock_qty</p>
+                  <p className="text-xs text-muted-foreground">
+                    {updateExisting
+                      ? `Untuk hasil SO/opname: stok ${matchedCount} produk di outlet terpilih disamakan dengan file.`
+                      : 'Nyalakan "Perbarui produk yang sudah ada" dulu. Tanpa ini, stok produk lama TIDAK berubah.'}
+                  </p>
+                </div>
+                <Switch checked={updateStock} disabled={!updateExisting} onCheckedChange={setUpdateStock} />
               </div>
 
               <div className="max-h-48 overflow-y-auto rounded-lg border text-xs">
