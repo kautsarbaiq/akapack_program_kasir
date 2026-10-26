@@ -8,6 +8,7 @@ import { useEmployeeStore } from '@/stores/use-employee-store'
 import { usePromotionStore } from '@/stores/use-promotion-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { flushStockOutbox } from '@/lib/stock/stock-sync'
+import { UpdateBanner } from '@/components/update-banner'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useVariantStore } from '@/stores/use-variant-store'
@@ -96,5 +97,5 @@ export function DataBootstrap() {
     }
   }, [])
 
-  return null
+  return <UpdateBanner />
 }
