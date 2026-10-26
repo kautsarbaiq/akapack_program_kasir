@@ -125,13 +125,20 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
   clearAll: () => set({ variants: [] }),
 
   projectVariantStock: (outletId) => {
-    const inv = useInventoryStore.getState()
-    set((s) => ({
-      variants: s.variants.map((v) => {
-        const st = inv.stockAt(outletId, v.product_id, v.id)
-        return st === null ? v : { ...v, stock: st }
-      }),
-    }))
+    const items = useInventoryStore.getState().items
+    if (!items.length || !get().variants.length) return
+    const byVariant = new Map<string, number>()
+    for (const r of items) if (r.outlet_id === outletId && r.variant_id) byVariant.set(r.variant_id, r.stock)
+    set((s) => {
+      let changed = false
+      const variants = s.variants.map((v) => {
+        const st = byVariant.get(v.id) ?? 0
+        if (st === v.stock) return v
+        changed = true
+        return { ...v, stock: st }
+      })
+      return changed ? { variants } : {}
+    })
   },
 }))
 

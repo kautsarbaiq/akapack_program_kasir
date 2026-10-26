@@ -318,16 +318,26 @@ export const useProductStore = create<ProductStore>()((set) => ({
   },
 
   projectStock: (outletId) => {
-    const inv = useInventoryStore.getState()
-    set((s) => ({
-      products: s.products.map((p) => {
+    const items = useInventoryStore.getState().items
+    // Peta sekali jalan (O(produk + baris stok)). Dulu stockAt() = items.find per produk →
+    // ±4.200 × 8.300 perbandingan, dan kini proyeksi jalan di SETIAP penjualan → kasir tersendat.
+    const byProduct = new Map<string, number>()
+    for (const r of items) if (r.outlet_id === outletId && !r.variant_id) byProduct.set(r.product_id, r.stock)
+    const loadedAny = items.length > 0
+    set((s) => {
+      let changed = false
+      const products = s.products.map((p) => {
         // Cabang ini belum punya baris stok untuk produk tsb → tampilkan 0, JANGAN biarkan angka
-        // cabang sebelumnya nyangkut. Dulu `return p` membuat stok Bandung terbaca di Garut,
-        // sehingga impor stok satu cabang terlihat seolah "menimpa" kedua toko.
-        const st = inv.stockAt(outletId, p.id) ?? 0
+        // cabang sebelumnya nyangkut (dulu stok Bandung terbaca di Garut). Inventori belum termuat
+        // sama sekali → biarkan apa adanya.
+        if (!loadedAny) return p
+        const st = byProduct.get(p.id) ?? 0
+        if (st === p.stock) return p // pertahankan identitas objek → tak memicu render ulang
+        changed = true
         return { ...p, stock: st, stock_status: getStockStatus(st, p.min_stock) }
-      }),
-    }))
+      })
+      return changed ? { products } : {}
+    })
   },
 
   setCostPrice: (id, newCost) => {
