@@ -133,6 +133,13 @@ export function pendingStockLines(): StockLine[] { return readOutbox().flatMap((
 export function stockOutboxCount(): number { return readOutbox().reduce((n, e) => n + e.lines.length, 0) }
 export function deadLetters(): DeadEntry[] { return readList<DeadEntry>(DEAD_KEY) }
 
+// ── "stok berubah" — store produk/varian memproyeksikan ulang angka yang ditampilkan ──────────────
+// Sengaja di modul daun ini (tak mengimpor store): pendaftaran terjadi saat modul store dimuat, dan
+// registri di modul store yang terlibat impor melingkar bisa belum terinisialisasi (TDZ → crash).
+const reconciledListeners = new Set<() => void>()
+export function onStockReconciled(cb: () => void) { reconciledListeners.add(cb); return () => { reconciledListeners.delete(cb) } }
+export function emitStockReconciled() { reconciledListeners.forEach((cb) => { try { cb() } catch { /* abaikan */ } }) }
+
 // ── kait ke store (didaftarkan sekali oleh use-inventory-store; hindari import melingkar) ─────────
 
 interface Handlers {

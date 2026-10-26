@@ -3,8 +3,8 @@ import type { ProductVariant } from '@/types'
 import { generateId } from '@/lib/utils'
 import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
-import { useInventoryStore, onStockReconciled } from './use-inventory-store'
-import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
+import { useInventoryStore } from './use-inventory-store'
+import { newMovementId, describeStockError, onStockReconciled } from '@/lib/stock/stock-sync'
 import { useActiveOutletStore } from './use-active-outlet-store'
 
 export interface VariantFormValues {

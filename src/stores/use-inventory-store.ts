@@ -5,7 +5,8 @@ import { DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll } from '@/lib/supabase/repo'
 import {
   enqueueStock, applyStockNow as sendNow, pendingStockLines, registerStockSyncHandlers, flushStockOutbox,
-  describeStockError, type StockLine, type StockResult, type StockFailure,
+  describeStockError, onStockReconciled, emitStockReconciled as emitReconciled,
+  type StockLine, type StockResult, type StockFailure,
 } from '@/lib/stock/stock-sync'
 import { useStockMovementStore } from './use-stock-movement-store'
 
@@ -49,10 +50,10 @@ function fold(start: number, lines: StockLine[]): number {
   return v
 }
 
-/** Pemberitahuan ke store lain (produk/varian) bahwa angka stok berubah → proyeksikan ulang. */
-const reconciledListeners = new Set<() => void>()
-export function onStockReconciled(cb: () => void) { reconciledListeners.add(cb); return () => reconciledListeners.delete(cb) }
-function emitReconciled() { reconciledListeners.forEach((cb) => { try { cb() } catch { /* abaikan */ } }) }
+// Pendaftar "stok berubah" ada di stock-sync (modul daun tanpa impor store) — store produk/varian
+// mendaftar saat dimuat; kalau registrinya di sini, impor melingkar produk→inventori→riwayat→produk
+// bisa memanggilnya sebelum modul ini selesai dimuat (TDZ) dan aplikasi crash saat dibuka.
+export { onStockReconciled }
 
 export interface Estimate { before: number; after: number }
 

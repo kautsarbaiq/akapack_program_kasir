@@ -22,8 +22,8 @@ function chunk<T>(arr: T[], size: number): T[][] {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
 }
-import { useInventoryStore, onStockReconciled } from './use-inventory-store'
-import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
+import { useInventoryStore } from './use-inventory-store'
+import { newMovementId, describeStockError, onStockReconciled } from '@/lib/stock/stock-sync'
 import { useActiveOutletStore } from './use-active-outlet-store'
 
 interface ProductStore {
