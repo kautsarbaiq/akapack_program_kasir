@@ -38,7 +38,7 @@ import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { newMovementId } from '@/lib/stock/stock-sync'
-import { formatRupiah, calculateChange, generateId, nextTransactionNumber, cn, rankedSearch } from '@/lib/utils'
+import { formatRupiah, calculateChange, nextTransactionNumber, cn, rankedSearch } from '@/lib/utils'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, ProductVariant } from '@/types'
 import { toast } from 'sonner'
@@ -376,8 +376,8 @@ export default function POSPage() {
 
     const now = new Date().toISOString()
     // UUID asli sejak awal supaya reference_id pergerakan stok tertaut ke transaksi di DB
-    // (bukan id sementara yg jadi NULL). Fallback ke generateId bila crypto tak tersedia.
-    const txnId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : generateId('trx')
+    // (bukan id sementara yg jadi NULL). newMovementId punya cadangan uuid untuk peramban lama.
+    const txnId = newMovementId() // selalu uuid (ada cadangan untuk peramban lama) — dulu bisa 'trx-…'
     const items: TransactionItem[] = cart.map((c) => ({
       id: newMovementId(), // uuid tetap → item tak bisa tersimpan dobel walau nota dikirim ulang
       transaction_id: txnId,

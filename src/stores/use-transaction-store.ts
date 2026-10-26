@@ -81,7 +81,11 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         shipping_cost: txn.shipping_cost ?? 0,
         // Waktu jual SEBENARNYA. Tanpa ini server memakai now() → nota yang tertahan di antrean
         // offline tercatat pada jam terkirim (pernah sampai keesokan harinya, TRX-20261021-A0072).
-        ...(txn.created_at ? { created_at: txn.created_at } : {}),
+        // Jam perangkat yang kebablasan ke depan dijepit ke sekarang; pesanan toko online memakai jam
+        // SERVER (jam HP pembeli tak bisa dipercaya).
+        ...(txn.created_at && txn.source !== 'online'
+          ? { created_at: new Date(Math.min(Date.parse(txn.created_at) || Date.now(), Date.now())).toISOString() }
+          : {}),
       })
       .select('id')
       .single()
@@ -121,9 +125,19 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
       // id item uuid → upsert abaikan-duplikat: kiriman ganda/bersamaan (antrean + kirim pertama) tak
       // pernah menggandakan item (pola TRX-20260828-G0043, omzet tercatat 2×). Satu pernyataan = atomik.
       const allUuid = txn.items.every((it) => isUuid(it.id))
-      const { error: itemsErr } = allUuid
-        ? await sb.from('transaction_items').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })
-        : await sb.from('transaction_items').insert(rows)
+      const write = (rs: typeof rows) => (allUuid
+        ? sb.from('transaction_items').upsert(rs, { onConflict: 'id', ignoreDuplicates: true })
+        : sb.from('transaction_items').insert(rs))
+      let { error: itemsErr } = await write(rows)
+      if (itemsErr && (itemsErr as { code?: string }).code === '23503') {
+        // Produk sudah DIHAPUS sejak dijual (kasir memegang katalog lama / antrean offline): simpan item
+        // tanpa tautan produk — status yang sama dengan ON DELETE SET NULL — supaya nota tak macet di
+        // antrean selamanya. Nama & harga item tetap tersimpan.
+        const ids = rows.map((r) => r.product_id).filter(Boolean) as string[]
+        const { data: alive } = await sb.from('products').select('id').in('id', ids)
+        const exists = new Set(((alive ?? []) as { id: string }[]).map((p) => p.id))
+        ;({ error: itemsErr } = await write(rows.map((r) => (r.product_id && !exists.has(r.product_id) ? { ...r, product_id: null } : r))))
+      }
       if (itemsErr) {
         console.warn('[akapack] gagal simpan item transaksi:', itemsErr.message)
         return null // JANGAN dianggap sukses — antrean akan mengulang & melengkapi itemnya
@@ -160,8 +174,19 @@ function dequeueOutbox(id: string) { writeOutbox(readOutbox().filter((t) => t.id
 /** id transaksi yang masih di antrean perangkat ini (belum sampai server) — jangan di-void dulu. */
 export function pendingTxnIds(): Set<string> { return new Set(readOutbox().map((t) => t.id)) }
 
+// Nota yang sedang dikirim di tab ini — kirim pertama & pengurasan antrean berkala tak boleh berjalan
+// bersamaan untuk nota yang sama (nota lama di antrean dgn id item non-uuid bisa tersimpan dobel).
+const inFlight = new Map<string, Promise<string | null>>()
+
 /** Simpan transaksi dengan RETRY (3×, backoff). Return id bila sukses, null bila semua gagal. */
-async function persistWithRetry(txn: Transaction, tries = 3): Promise<string | null> {
+function persistWithRetry(txn: Transaction, tries = 3): Promise<string | null> {
+  const running = inFlight.get(txn.id)
+  if (running) return running
+  const p = persistWithRetryInner(txn, tries).finally(() => { inFlight.delete(txn.id) })
+  inFlight.set(txn.id, p)
+  return p
+}
+async function persistWithRetryInner(txn: Transaction, tries: number): Promise<string | null> {
   for (let i = 0; i < tries; i++) {
     const id = await persistTransaction(txn)
     if (id) return id
