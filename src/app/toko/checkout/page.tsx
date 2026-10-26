@@ -87,8 +87,10 @@ export default function CheckoutPage() {
     }
     addTransaction(txn)
     // Stok dipotong saat order (reservasi); pesanan "pending" sampai dikonfirmasi admin.
-    // Lewat antrean tahan-offline: stok + riwayat ditulis server sekaligus, tertaut ke nota ini.
-    useInventoryStore.getState().applyStock(items.map((i) => ({
+    // DITUNGGU selama pembeli masih di halaman (3× percobaan) — perangkat pembeli bukan antrean yang
+    // bisa diandalkan (tab ditutup/dibekukan setelah buka WA). Hasil belum pasti tetap masuk antrean
+    // dengan id yang sama sebagai cadangan.
+    await useInventoryStore.getState().applyStockNow(items.map((i) => ({
       id: newMovementId(),
       outlet_id: ONLINE_OUTLET,
       product_id: i.product_id,

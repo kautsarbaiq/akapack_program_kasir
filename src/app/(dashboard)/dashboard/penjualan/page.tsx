@@ -13,7 +13,7 @@ import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { voidSaleOnServer } from '@/lib/stock/stock-sync'
+import { voidSaleOnServer, pendingStockLines } from '@/lib/stock/stock-sync'
 import { pendingTxnIds } from '@/stores/use-transaction-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
@@ -72,8 +72,8 @@ export default function PenjualanPage() {
    *  ini, terkunci (tak bisa di-void dua kali dari dua perangkat) dan idempoten. */
   const handleVoid = async (t: Transaction) => {
     if (t.status !== 'completed') { toast.error('Hanya transaksi selesai yang bisa di-void'); return }
-    if (pendingTxnIds().has(t.id)) {
-      toast.error('Nota ini masih menunggu sinyal di perangkat kasir — void setelah tersinkron.')
+    if (pendingTxnIds().has(t.id) || pendingStockLines().some((l) => l.reference_id === t.id)) {
+      toast.error('Nota ini (atau potongan stoknya) masih menunggu sinyal di perangkat ini — void setelah tersinkron.')
       return
     }
     const outletName = outlets.find((o) => o.id === t.outlet_id)?.name ?? 'cabang'
@@ -82,7 +82,10 @@ export default function PenjualanPage() {
     let res = await voidSaleOnServer(t.id, me?.name)
     if (!res.ok && res.reason === 'NO_STOCK_TRACE') {
       // Nota offline lama yang potongan stoknya tak pernah sampai server: jangan "kembalikan" stok fantom.
-      if (!confirm(`Nota ${t.transaction_number} tidak punya jejak stok keluar (kemungkinan dibuat saat offline, stoknya tidak terpotong).\n\nVoid TANPA mengembalikan stok?`)) return
+      // Nota BARU tanpa jejak stok hampir selalu berarti potongannya MASIH DALAM PERJALANAN dari perangkat
+      // kasir (antrean offline), bukan "tidak terpotong". Void paksa sekarang = potongan yang datang
+      // belakangan dicatat 0 oleh server (stok tidak terpotong untuk penjualan yang batal).
+      if (!confirm(`Nota ${t.transaction_number} belum punya jejak stok keluar di server.\n\nKalau nota ini BARU dibuat, kemungkinan perangkat kasir masih mengirim potongan stoknya — sebaiknya tunggu beberapa menit lalu coba void lagi.\n\nTetap void sekarang TANPA mengembalikan stok?`)) return
       res = await voidSaleOnServer(t.id, me?.name, true)
     }
     if (!res.ok) {

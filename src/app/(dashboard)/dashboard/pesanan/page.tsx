@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { voidSaleOnServer } from '@/lib/stock/stock-sync'
+import { voidSaleOnServer, pendingStockLines } from '@/lib/stock/stock-sync'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { PAYMENT_LABELS } from '@/lib/constants'
 import { formatRupiah, formatDateTime, waUrl } from '@/lib/utils'
@@ -47,12 +47,16 @@ export default function PesananOnlinePage() {
   const complete = (t: Transaction) => { setStatus(t.id, 'completed'); toast.success('Pesanan ditandai Selesai'); setDetail(null) }
 
   const cancel = async (t: Transaction) => {
+    if (pendingStockLines().some((l) => l.reference_id === t.id)) {
+      toast.error('Potongan stok pesanan ini masih menunggu sinyal di perangkat ini — batalkan setelah tersinkron.')
+      return
+    }
     if (!confirm('Batalkan pesanan ini? Stok yang sempat dipotong akan dikembalikan otomatis.')) return
     // Server membalik persis potongan stok pesanan ini (outlet pemenuhan), terkunci & idempoten.
     let res = await voidSaleOnServer(t.id, 'Admin')
     if (!res.ok && res.reason === 'NO_STOCK_TRACE') {
       // Pesanan lama: jejak potongannya tak tertaut ke nota → stok harus dikembalikan manual.
-      if (!confirm('Pesanan ini tidak punya jejak stok keluar yang tertaut. Batalkan TANPA mengembalikan stok? (Kembalikan manual lewat Stok Masuk bila perlu.)')) return
+      if (!confirm('Pesanan ini belum punya jejak stok keluar di server. Kalau pesanan BARU masuk, potongan stoknya mungkin masih dikirim dari perangkat pembeli — sebaiknya tunggu beberapa menit.\n\nTetap batalkan TANPA mengembalikan stok? (Pesanan lama: kembalikan manual lewat Stok Masuk bila perlu.)')) return
       res = await voidSaleOnServer(t.id, 'Admin', true)
     }
     if (!res.ok) { toast.error(`Gagal membatalkan: ${res.message}`); return }

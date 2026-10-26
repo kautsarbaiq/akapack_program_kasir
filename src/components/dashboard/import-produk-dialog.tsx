@@ -189,6 +189,7 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
       const catId = (name: string) => catMap.get(name.trim().toLowerCase()) ?? ''
 
       const inv = useInventoryStore.getState()
+      let queuedN = 0 // baris stok yang hasilnya belum pasti → tersimpan di antrean perangkat
       let failed = 0
 
       // 1. Buat produk baru
@@ -214,7 +215,11 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
           .map((p, i) => ({ p, qty: Math.max(0, newRows[i].stock) }))
           .filter((x) => x.qty > 0)
           .map(({ p, qty }) => ({ id: newMovementId(), outlet_id: outletId, product_id: p.id, delta: qty, type: 'in' as const, notes: `Impor katalog ${formatDate(new Date())}` }))
-        if (seed.length) failed += (await inv.applyStockNow(seed)).failed.length
+        if (seed.length) {
+          const r = await inv.applyStockNow(seed)
+          failed += r.failed.length
+          queuedN += r.queued.length
+        }
         createdN = created.length - pf
       }
 
@@ -242,11 +247,13 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
           id: newMovementId(), outlet_id: outletId, product_id: product.id,
           set_to: Math.max(0, row.stock), type: 'opname' as const, notes: `Impor katalog ${formatDate(new Date())} (set stok)`,
         }))
-        const { failed: sf } = await inv.applyStockNow(sets)
+        const { failed: sf, queued: sq } = await inv.applyStockNow(sets)
         failed += sf.length
+        queuedN += sq.length
         stockN = sets.length - sf.length
       }
 
+      if (queuedN > 0) toast.warning(`Koneksi bermasalah — ${queuedN} baris stok disimpan di perangkat & dikirim otomatis. JANGAN diimpor ulang.`, { duration: 15000 })
       const oname = outlets.find((o) => o.id === outletId)?.name ?? ''
       if (failed > 0) {
         toast.warning(`Import: ${createdN} produk baru${updatedN ? `, ${updatedN} diperbarui` : ''}, tapi ${failed} baris GAGAL ke server — muat ulang & ulangi yang gagal.`)

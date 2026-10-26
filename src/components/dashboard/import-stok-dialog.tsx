@@ -135,8 +135,9 @@ export function ImportStokDialog({ open, onOpenChange }: { open: boolean; onOpen
       }
 
       // Per potongan ≤200 baris; tiap potongan atomik & aman diulang (id sama).
-      const { failed: stockFailed } = await inv.applyStockNow(lines)
+      const { failed: stockFailed, queued } = await inv.applyStockNow(lines)
       failed += stockFailed.length
+      if (queued.length) toast.warning(`Koneksi bermasalah — ${queued.length} baris stok disimpan di perangkat & dikirim otomatis. JANGAN diimpor ulang.`, { duration: 15000 })
 
       const oname = outlets.find((o) => o.id === outletId)?.name ?? ''
       if (failed > 0) {

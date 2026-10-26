@@ -53,7 +53,7 @@ export default function StockOpnamePage() {
     // yang bisa basi) dan mencatatnya di riwayat dalam transaksi yang sama.
     const at = new Date().toISOString()
     setSaving(true)
-    const { failed } = await useInventoryStore.getState().applyStockNow(changes.map((p) => ({
+    const { failed, queued } = await useInventoryStore.getState().applyStockNow(changes.map((p) => ({
       id: newMovementId(), outlet_id: activeOutletId, product_id: p.id,
       set_to: Math.max(0, Number(actual[p.id])), type: 'opname' as const,
       notes: `Stock opname (${outletName})`, created_at: at,
@@ -66,7 +66,11 @@ export default function StockOpnamePage() {
       toast.error(`${failed.length} dari ${changes.length} produk GAGAL disimpan (${describeStockError(failed[0].code, failed[0].message)}). Hitungannya masih di layar — simpan ulang.`, { duration: 12000 })
       return
     }
-    toast.success(`Opname ${outletName}: ${changes.length} produk disesuaikan`)
+    if (queued.length) {
+      toast.warning(`Koneksi bermasalah — opname ${queued.length} produk disimpan di perangkat & dikirim otomatis. JANGAN diulang.`, { duration: 12000 })
+    } else {
+      toast.success(`Opname ${outletName}: ${changes.length} produk disesuaikan`)
+    }
     setActual({})
   }
 

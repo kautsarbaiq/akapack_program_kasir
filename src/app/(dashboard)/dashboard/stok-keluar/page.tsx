@@ -111,7 +111,7 @@ export default function StokKeluarPage() {
     if (!live || live.status !== 'draft') return
     // Server menolak bila stok SEBENARNYA kurang (allow_negative=false) — seluruh dokumen batal, tak ada
     // yang setengah keluar. id deterministik → dokumen terposting dua kali tetap mengurangi SEKALI.
-    const { failed } = await useInventoryStore.getState().applyStockNow(live.items.map((it) => ({
+    const { failed, queued } = await useInventoryStore.getState().applyStockNow(live.items.map((it) => ({
       id: stableUuid(`so-post:${live.id}:${it.product_id}`), outlet_id: live.outlet_id, product_id: it.product_id,
       delta: -it.qty, type: 'out' as const, notes: `Stok keluar ${live.number} (${REASON_LABEL[live.reason]})`,
       reference_id: live.id, allow_negative: false,
@@ -121,7 +121,8 @@ export default function StokKeluarPage() {
       return
     }
     setStatus(live.id, 'posted', new Date().toISOString())
-    toast.success('Dokumen diposting — stok berkurang & pergerakan tercatat')
+    if (queued.length) toast.warning('Koneksi bermasalah — pengurangan stok disimpan di perangkat & dikirim otomatis. JANGAN diposting ulang.', { duration: 12000 })
+    else toast.success('Dokumen diposting — stok berkurang & pergerakan tercatat')
     setDetail(null)
   }
 

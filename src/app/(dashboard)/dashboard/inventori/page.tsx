@@ -53,6 +53,10 @@ export default function InventoriPage() {
 
   // form stok masuk/keluar
   const [flow, setFlow] = useState<Flow | null>(null)
+  const [flowBusy, setFlowBusy] = useState(false)
+  // id pergerakan dibuat SEKALI per isian dialog: klik ganda / simpan ulang setelah koneksi putus
+  // memakai id yang sama → server menerapkannya tepat sekali (dulu bisa masuk/keluar dua kali).
+  const [flowLineId, setFlowLineId] = useState('')
   const [qty, setQty] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
@@ -89,10 +93,11 @@ export default function InventoriPage() {
 
   const openFlow = (mode: 'in' | 'out', productId = '') => {
     setFlow({ mode, productId }); setQty(''); setDate(new Date().toISOString().slice(0, 10)); setNote(''); setOutletId(activeOutletId)
+    setFlowLineId(newMovementId())
   }
 
   const submitFlow = async () => {
-    if (!flow) return
+    if (!flow || flowBusy) return
     const product = products.find((p) => p.id === flow.productId)
     const n = Number(qty)
     if (!product) { toast.error('Pilih produk dulu'); return }
@@ -105,18 +110,26 @@ export default function InventoriPage() {
     }
     // Tanggal hari ini = waktu sekarang (urut wajar di riwayat); tanggal lain = dicatat mundur.
     const today = new Date().toISOString().slice(0, 10)
-    const { failed } = await useInventoryStore.getState().applyStockNow([{
-      id: newMovementId(), outlet_id: outletId, product_id: product.id,
+    setFlowBusy(true)
+    const { failed, queued } = await useInventoryStore.getState().applyStockNow([{
+      id: flowLineId || newMovementId(), outlet_id: outletId, product_id: product.id,
       delta: flow.mode === 'in' ? n : -n, type: flow.mode,
       notes: note.trim(),
       created_at: date && date !== today ? new Date(date).toISOString() : undefined,
       allow_negative: flow.mode === 'in', // keluar: server menolak bila stok SEBENARNYA kurang
     }])
+    setFlowBusy(false)
     if (failed.length) {
+      // Ditolak server (mis. stok kurang) → tidak ada yang tertulis; isian tetap terbuka utk dikoreksi.
       toast.error(`Stok ${flow.mode === 'in' ? 'masuk' : 'keluar'} GAGAL: ${describeStockError(failed[0].code, failed[0].message)}`, { duration: 10000 })
+      setFlowLineId(newMovementId()) // isian dikoreksi = perubahan baru
       return
     }
-    toast.success(`Stok ${flow.mode === 'in' ? 'masuk' : 'keluar'} ${product.name} ${flow.mode === 'in' ? '+' : '−'}${n} di ${oname}`)
+    if (queued.length) {
+      toast.warning(`Koneksi bermasalah — stok ${product.name} disimpan di perangkat & dikirim otomatis. JANGAN diulang.`, { duration: 10000 })
+    } else {
+      toast.success(`Stok ${flow.mode === 'in' ? 'masuk' : 'keluar'} ${product.name} ${flow.mode === 'in' ? '+' : '−'}${n} di ${oname}`)
+    }
     setFlow(null)
   }
 
@@ -291,7 +304,7 @@ export default function InventoriPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFlow(null)}>Batal</Button>
-            <Button onClick={submitFlow} className={flow?.mode === 'in' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-amber-600 text-white hover:bg-amber-700'}>Simpan</Button>
+            <Button onClick={submitFlow} disabled={flowBusy} className={flow?.mode === 'in' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-amber-600 text-white hover:bg-amber-700'}>{flowBusy ? 'Menyimpan…' : 'Simpan'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

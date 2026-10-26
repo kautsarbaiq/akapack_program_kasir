@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeftRight, ArrowLeft, Plus, X, ArrowRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,6 +21,9 @@ export default function TransferStokPage() {
   const products = useProductStore((s) => s.products)
   const invItems = useInventoryStore((s) => s.items)
   const [busy, setBusy] = useState(false)
+  // id transfer & tiap barisnya dipertahankan selama ISIANNYA sama. Proses ulang (setelah gagal / koneksi
+  // putus) memakai id yang sama → server menerapkannya tepat sekali, tak pernah memindah dua kali.
+  const attempt = useRef<{ sig: string; transferId: string; ids: Record<string, string> } | null>(null)
 
   const [fromId, setFromId] = useState(outlets[0]?.id ?? '')
   const [toId, setToId] = useState(outlets[1]?.id ?? '')
@@ -60,23 +63,30 @@ export default function TransferStokPage() {
     // menolak bila stok asal SEBENARNYA kurang (bukan angka di memori), dan mencatat riwayat dengan
     // angka asli. Dulu dua kiriman terpisah + label dari memori (Math.max(0, …)) → riwayat meleset.
     // Pasangan baris berurutan & potongan 200 = genap → kedua sisi satu produk tak pernah terpisah.
-    const transferId = newMovementId()
-    const at = new Date().toISOString()
+    const sig = JSON.stringify([fromId, toId, [...agg].sort()])
+    if (!attempt.current || attempt.current.sig !== sig) attempt.current = { sig, transferId: newMovementId(), ids: {} }
+    const a = attempt.current
+    const idFor = (k: string) => (a.ids[k] ??= newMovementId())
     const lines = [...agg].flatMap(([pid, qty]) => [
-      { id: newMovementId(), outlet_id: fromId, product_id: pid, delta: -qty, type: 'transfer' as const,
-        notes: `Transfer ke ${toName}`, reference_id: transferId, created_at: at, allow_negative: false },
-      { id: newMovementId(), outlet_id: toId, product_id: pid, delta: qty, type: 'transfer' as const,
-        notes: `Transfer dari ${fromName}`, reference_id: transferId, created_at: at },
+      { id: idFor(`${pid}:from`), outlet_id: fromId, product_id: pid, delta: -qty, type: 'transfer' as const,
+        notes: `Transfer ke ${toName}`, reference_id: a.transferId, allow_negative: false },
+      { id: idFor(`${pid}:to`), outlet_id: toId, product_id: pid, delta: qty, type: 'transfer' as const,
+        notes: `Transfer dari ${fromName}`, reference_id: a.transferId },
     ])
     setBusy(true)
-    const { failed } = await useInventoryStore.getState().applyStockNow(lines)
+    const { failed, queued } = await useInventoryStore.getState().applyStockNow(lines)
     setBusy(false)
     if (failed.length) {
       const f = failed[0]
-      toast.error(`Transfer GAGAL — tidak ada stok yang dipindah. ${describeStockError(f.code, f.message)}`, { duration: 12000 })
+      toast.error(`Transfer DITOLAK — tidak ada stok yang dipindah. ${describeStockError(f.code, f.message)}`, { duration: 12000 })
       return
     }
-    toast.success(`Transfer ${agg.size} produk: ${fromName} → ${toName}`)
+    attempt.current = null
+    if (queued.length) {
+      toast.warning(`Koneksi bermasalah — transfer ${fromName} → ${toName} disimpan di perangkat & dikirim otomatis. JANGAN diulang.`, { duration: 12000 })
+    } else {
+      toast.success(`Transfer ${agg.size} produk: ${fromName} → ${toName}`)
+    }
     setItems([{ product_id: '', qty: 1 }])
   }
 

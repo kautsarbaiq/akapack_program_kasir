@@ -175,8 +175,13 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
 
       // Posting massal lewat server: stok + riwayat sekaligus (DELTA, bukan "stok lama + qty" absolut
       // yang dihitung dari memori — itu menghapus penjualan perangkat lain selama impor).
-      const { results, failed: stockFailed } = await inv.applyStockNow(lines)
+      const { results, failed: stockFailed, queued } = await inv.applyStockNow(lines)
       let failed = stockFailed.length
+      // Dokumen yang barisnya DITOLAK → kembalikan ke draf ('ordered') supaya bisa diposting ulang dari
+      // menu Stok Masuk dengan id yang sama. Dulu tetap 'received' padahal stoknya tak pernah masuk —
+      // tak bisa diposting ulang, dan menghapusnya malah MENGURANGI stok yang tak pernah ada.
+      const failedDocs = new Set(stockFailed.map((f) => f.line.reference_id).filter(Boolean) as string[])
+      failedDocs.forEach((poId) => ps.setStatus(poId, 'ordered'))
       // Stok SEBELUM impor per produk (dari server) = before_stock terkecil (semua delta positif).
       const lineProduct = new Map(lines.map((l) => [l.id, l.product_id]))
       const origBefore = new Map<string, number>()
@@ -200,7 +205,9 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       if (costPatches.length) failed += await prodStore.bulkPatch(costPatches)
 
       const tail = skipped > 0 ? ` (${skipped} item dilewati — produk tak ada di katalog)` : ''
-      if (failed > 0) toast.warning(`${createdDocs} dokumen dibuat, tapi ${failed} update stok GAGAL ke server — muat ulang & cek.${tail}`)
+      if (failedDocs.size > 0) toast.warning(`${createdDocs} dokumen dibuat, tapi stok ${failedDocs.size} dokumen DITOLAK server — dokumen itu kembali ke draf, posting ulang dari menu Stok Masuk.${tail}`, { duration: 15000 })
+      else if (failed > 0) toast.warning(`${createdDocs} dokumen dibuat, tapi ${failed} pembaruan modal GAGAL ke server — muat ulang & cek.${tail}`)
+      else if (queued.length) toast.warning(`${createdDocs} dokumen dibuat — koneksi bermasalah, stoknya disimpan di perangkat & dikirim otomatis. JANGAN diimpor ulang.${tail}`, { duration: 15000 })
       else toast.success(`${createdDocs} dokumen Stok Masuk dibuat — stok ${outlets.find((o) => o.id === targetOutletId)?.name ?? 'cabang'} bertambah${tail}`)
       reset()
       onOpenChange(false)
