@@ -3,7 +3,8 @@ import type { ProductVariant } from '@/types'
 import { generateId } from '@/lib/utils'
 import { DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { fetchAll, insertRow, updateRow, deleteRow } from '@/lib/supabase/repo'
-import { useInventoryStore } from './use-inventory-store'
+import { useInventoryStore, onStockReconciled } from './use-inventory-store'
+import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
 import { useActiveOutletStore } from './use-active-outlet-store'
 
 export interface VariantFormValues {
@@ -24,9 +25,7 @@ interface VariantStore {
   deleteVariant: (id: string) => void
   /** Kurangi stok varian saat transaksi POS */
   clearAll: () => void
-  decrementVariantStock: (id: string, qty: number) => { before: number; after: number }
   /** Kembalikan stok varian (mis. pesanan online dibatalkan) */
-  incrementVariantStock: (id: string, qty: number) => { before: number; after: number }
   /** Proyeksikan stok varian dari inventory outlet tsb (saat ganti outlet aktif) */
   projectVariantStock: (outletId: string) => void
 }
@@ -56,8 +55,8 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       created_at: new Date().toISOString(),
     }
     set((s) => ({ variants: [...s.variants, v] }))
-    // Stok awal varian → inventory outlet aktif
-    useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, productId, v.id, data.stock)
+    // Stok awal varian dikirim setelah varian & produknya punya id server (fungsi stok butuh uuid).
+    const openingOutlet = useActiveOutletStore.getState().activeOutletId
     void insertRow<ProductVariant>('product_variants', {
       tenant_id: DEFAULT_TENANT_ID,
       product_id: productId,
@@ -71,6 +70,12 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       if (saved) {
         useInventoryStore.getState().remapVariant(v.id, saved.id)
         set((s) => ({ variants: s.variants.map((x) => (x.id === v.id ? saved : x)) }))
+        if (data.stock > 0) {
+          useInventoryStore.getState().applyStock([{
+            id: newMovementId(), outlet_id: openingOutlet, product_id: productId, variant_id: saved.id,
+            delta: data.stock, type: 'in', notes: `Stok awal varian ${data.name}`,
+          }])
+        }
       }
     })
     return v
@@ -90,7 +95,15 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       const invStore = useInventoryStore.getState()
       const liveStock = invStore.stockAt(outlet, pv.product_id, id)
       if (liveStock === null || data.stock !== liveStock) {
-        invStore.setStockAt(outlet, pv.product_id, id, data.stock)
+        // Dulu ubah stok varian TANPA riwayat sama sekali. Kini angka absolut dihitung & dicatat server.
+        void invStore.applyStockNow([{
+          id: newMovementId(), outlet_id: outlet, product_id: pv.product_id, variant_id: id,
+          set_to: Math.max(0, data.stock), type: 'adjustment', notes: `Ubah stok varian ${data.name}`,
+        }]).then(({ failed }) => {
+          if (!failed.length) return
+          void import('sonner').then(({ toast }) => toast.error(
+            `Stok varian "${data.name}" GAGAL disimpan: ${describeStockError(failed[0].code, failed[0].message)}.`, { duration: 12000 }))
+        })
       }
     }
     void updateRow('product_variants', id, {
@@ -109,25 +122,6 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
 
   clearAll: () => set({ variants: [] }),
 
-  // Stok varian per-outlet: lewat inventory (outlet aktif), lalu proyeksi field `stock`.
-  decrementVariantStock: (id, qty) => {
-    const v = get().variants.find((x) => x.id === id)
-    if (!v) return { before: 0, after: 0 }
-    const outlet = useActiveOutletStore.getState().activeOutletId
-    const { before, after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, -qty)
-    set((s) => ({ variants: s.variants.map((x) => (x.id === id ? { ...x, stock: after } : x)) }))
-    return { before, after }
-  },
-
-  incrementVariantStock: (id, qty) => {
-    const v = get().variants.find((x) => x.id === id)
-    if (!v) return { before: 0, after: 0 }
-    const outlet = useActiveOutletStore.getState().activeOutletId
-    const { before, after } = useInventoryStore.getState().applyDelta(outlet, v.product_id, id, qty)
-    set((s) => ({ variants: s.variants.map((x) => (x.id === id ? { ...x, stock: after } : x)) }))
-    return { before, after }
-  },
-
   projectVariantStock: (outletId) => {
     const inv = useInventoryStore.getState()
     set((s) => ({
@@ -138,3 +132,8 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
     }))
   },
 }))
+
+// Samakan field `stock` varian setiap kali stok disamakan dengan server.
+if (typeof window !== 'undefined') {
+  onStockReconciled(() => useVariantStore.getState().projectVariantStock(useActiveOutletStore.getState().activeOutletId))
+}

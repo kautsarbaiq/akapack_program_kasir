@@ -13,9 +13,8 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
-import { useStockMovementStore, type AddMovementInput } from '@/stores/use-stock-movement-store'
+import { newMovementId, type StockLine } from '@/lib/stock/stock-sync'
 import { formatDate } from '@/lib/utils'
 import type { ProductFormValues } from '@/lib/validations'
 import { toast } from 'sonner'
@@ -96,67 +95,54 @@ export function ImportStokDialog({ open, onOpenChange }: { open: boolean; onOpen
     setBusy(true)
     try {
       const inv = useInventoryStore.getState()
-      const matchedEntries: { productId: string; stock: number }[] = []
       const newRows: Row[] = []
-      // Jejak untuk History Item Produk: tiap baris impor dicatat sebagai pergerakan stok.
-      const moves: AddMovementInput[] = []
-      const stamp = formatDate(new Date())
+      // Tiap baris = satu pergerakan ke server: stok + riwayat ditulis bersama dengan angka SEBENARNYA.
+      //  - mode "set" (hasil SO/opname) → set_to: selisihnya dihitung server dari stok asli;
+      //  - "tambah"/"kurangi" → DELTA. Dulu dihitung dari angka di memori lalu ditulis absolut,
+      //    sehingga penjualan dari perangkat lain selama impor ikut terhapus.
+      const dateLabel = formatDate(new Date())
+      const lines: StockLine[] = []
+      let matchedN = 0
       for (const r of aggRows) {
         const p = byName(r.name)
-        if (p) {
-          const cur = inv.stockAt(outletId, p.id, undefined) ?? p.stock
-          const final = mode === 'set' ? r.qty : mode === 'add' ? cur + r.qty : Math.max(0, cur - r.qty)
-          matchedEntries.push({ productId: p.id, stock: final })
-          const delta = final - cur
-          // Stok naik = Masuk Barang. Turun = penyesuaian (bukan "keluar" — tak ada barang terjual).
-          if (delta !== 0) {
-            moves.push({
-              product_id: p.id, outlet_id: outletId,
-              type: delta > 0 ? 'in' : 'adjustment',
-              quantity: delta, before_stock: cur, after_stock: final,
-              notes: `Impor Excel ${stamp}`,
-            })
-          }
-        } else newRows.push(r)
+        if (!p) { newRows.push(r); continue }
+        matchedN++
+        if (mode === 'set') {
+          lines.push({ id: newMovementId(), outlet_id: outletId, product_id: p.id, set_to: Math.max(0, r.qty), type: 'opname', notes: `Impor Excel ${dateLabel}` })
+        } else if (r.qty > 0) {
+          lines.push({ id: newMovementId(), outlet_id: outletId, product_id: p.id, delta: mode === 'add' ? r.qty : -r.qty, type: mode === 'add' ? 'in' : 'adjustment', notes: `Impor Excel ${dateLabel}` })
+        }
       }
-      let failed = 0
-      if (matchedEntries.length) failed += await inv.bulkUpsert(outletId, matchedEntries)
 
+      let failed = 0
       let createdN = 0
       if (createNew && newRows.length && !categories[0]?.id) {
         toast.warning(`${newRows.length} produk baru dilewati — buat minimal 1 kategori dulu di menu Kategori.`)
       } else if (createNew && newRows.length) {
         const defaultCat = categories[0]!.id
-        const stamp = Date.now().toString(36) // SKU unik per-baris (stamp + index) — cegah tabrakan
+        const skuStamp = Date.now().toString(36) // SKU unik per-baris (stamp + index) — cegah tabrakan
         const values: ProductFormValues[] = newRows.map((r, i) => ({
-          category_id: defaultCat, name: r.name, sku: `IMP-${stamp}-${i}`, barcode: '', description: '',
+          category_id: defaultCat, name: r.name, sku: `IMP-${skuStamp}-${i}`, barcode: '', description: '',
           price: r.price, cost_price: r.price, stock: Math.max(0, r.qty), min_stock: 0, unit: 'pcs', is_active: true,
         }))
         const { products: created, failed: pf } = await bulkAdd(values)
         failed += pf
-        failed += await inv.bulkUpsert(outletId, created.map((p, i) => ({ productId: p.id, stock: Math.max(0, newRows[i].qty) })))
         created.forEach((p, i) => {
           const qty = Math.max(0, newRows[i].qty)
-          if (qty > 0) moves.push({
-            product_id: p.id, outlet_id: outletId, type: 'in',
-            quantity: qty, before_stock: 0, after_stock: qty,
-            notes: `Impor Excel ${stamp} (produk baru)`,
-          })
+          if (qty > 0) lines.push({ id: newMovementId(), outlet_id: outletId, product_id: p.id, delta: qty, type: 'in', notes: `Impor Excel ${dateLabel} (produk baru)` })
         })
         createdN = created.length - pf
       }
 
-      // Catat jejaknya SETELAH stok tersimpan, per potongan (impor bisa ribuan baris).
-      const moveFailed = moves.length ? await useStockMovementStore.getState().addMovementsBulk(moves) : 0
-      if (moveFailed > 0) toast.warning(`${moveFailed} jejak riwayat gagal tercatat (stok tetap tersimpan)`)
+      // Per potongan ≤200 baris; tiap potongan atomik & aman diulang (id sama).
+      const { failed: stockFailed } = await inv.applyStockNow(lines)
+      failed += stockFailed.length
 
-      useProductStore.getState().projectStock(activeOutletId)
-      useVariantStore.getState().projectVariantStock(activeOutletId)
       const oname = outlets.find((o) => o.id === outletId)?.name ?? ''
       if (failed > 0) {
-        toast.warning(`Import: ${matchedEntries.length} diperbarui${createdN ? `, ${createdN} baru` : ''}, tapi ${failed} baris GAGAL ke server — muat ulang halaman untuk cek & ulangi.`)
+        toast.warning(`Import: ${matchedN} diperbarui${createdN ? `, ${createdN} baru` : ''}, tapi ${failed} baris GAGAL ke server — muat ulang halaman untuk cek & ulangi.`)
       } else {
-        toast.success(`Import selesai: ${matchedEntries.length} produk diperbarui${createdN ? `, ${createdN} produk baru` : ''} di ${oname}`)
+        toast.success(`Import selesai: ${matchedN} produk diperbarui${createdN ? `, ${createdN} produk baru` : ''} di ${oname}`)
       }
       reset()
       onOpenChange(false)

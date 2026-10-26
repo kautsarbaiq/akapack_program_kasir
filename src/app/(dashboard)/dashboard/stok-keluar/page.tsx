@@ -12,11 +12,10 @@ import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { StockOutDocument, REASON_LABEL } from '@/components/dashboard/stockout-document'
 import { useStockOutStore } from '@/stores/use-stockout-store'
 import { useProductStore } from '@/stores/use-product-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
+import { newMovementId, stableUuid, describeStockError } from '@/lib/stock/stock-sync'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { formatRupiah, formatDate, generateId, localDay } from '@/lib/utils'
 import type { StockOut, StockOutItem, StockOutStatus, StockOutReason } from '@/types'
@@ -55,7 +54,6 @@ export default function StokKeluarPage() {
   const products = useProductStore((s) => s.products)
   const outlets = useOutletStore((s) => s.outlets)
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
 
   const [filter, setFilter] = useState<'all' | StockOutStatus>('all')
   const [detail, setDetail] = useState<StockOut | null>(null)
@@ -91,7 +89,7 @@ export default function StokKeluarPage() {
     // gabung qty bila produk sama dipilih dua kali
     const merged = new Map<string, number>()
     for (const i of valid) merged.set(i.product_id, (merged.get(i.product_id) ?? 0) + i.qty)
-    const docId = generateId('out')
+    const docId = newMovementId() // uuid asli → kunci posting stok sama di semua perangkat
     const docItems: StockOutItem[] = [...merged.entries()].map(([pid, qty]) => {
       const prod = products.find((p) => p.id === pid)
       const cost = prod?.cost_price ?? 0
@@ -108,33 +106,20 @@ export default function StokKeluarPage() {
     setOpen(false)
   }
 
-  const refreshProjection = (oid: string) => {
-    if (oid === activeOutletId) {
-      useProductStore.getState().projectStock(activeOutletId)
-      useVariantStore.getState().projectVariantStock(activeOutletId)
-    }
-  }
-
-  const post = (doc: StockOut) => {
+  const post = async (doc: StockOut) => {
     const live = useStockOutStore.getState().stockOuts.find((d) => d.id === doc.id)
     if (!live || live.status !== 'draft') return
-    const inv = useInventoryStore.getState()
-    // Tolak posting bila ada qty > stok tersedia — kalau dibiarkan, stok di-clamp ke 0 tapi
-    // movement mencatat qty penuh, dan MENGHAPUS dokumen itu mengembalikan qty penuh = stok hantu.
-    const short = live.items.find((it) => {
-      const avail = inv.stockAt(live.outlet_id, it.product_id) ?? products.find((p) => p.id === it.product_id)?.stock ?? 0
-      return it.qty > avail
-    })
-    if (short) {
-      toast.error(`Stok ${short.product_name} tidak cukup (butuh ${short.qty}). Sesuaikan qty dokumen dulu.`)
+    // Server menolak bila stok SEBENARNYA kurang (allow_negative=false) — seluruh dokumen batal, tak ada
+    // yang setengah keluar. id deterministik → dokumen terposting dua kali tetap mengurangi SEKALI.
+    const { failed } = await useInventoryStore.getState().applyStockNow(live.items.map((it) => ({
+      id: stableUuid(`so-post:${live.id}:${it.product_id}`), outlet_id: live.outlet_id, product_id: it.product_id,
+      delta: -it.qty, type: 'out' as const, notes: `Stok keluar ${live.number} (${REASON_LABEL[live.reason]})`,
+      reference_id: live.id, allow_negative: false,
+    })))
+    if (failed.length) {
+      toast.error(`Dokumen TIDAK diposting — ${describeStockError(failed[0].code, failed[0].message)}. Sesuaikan qty dokumen dulu.`, { duration: 12000 })
       return
     }
-    live.items.forEach((it) => {
-      const before = inv.stockAt(live.outlet_id, it.product_id) ?? 0
-      const { after } = inv.applyDelta(live.outlet_id, it.product_id, undefined, -it.qty)
-      addMovement({ product_id: it.product_id, type: 'out', quantity: -it.qty, before_stock: before, after_stock: after, notes: `Stok keluar ${live.number} (${REASON_LABEL[live.reason]})`, reference_id: live.id, created_by_name: 'Stok Keluar', outlet_id: live.outlet_id })
-    })
-    refreshProjection(live.outlet_id)
     setStatus(live.id, 'posted', new Date().toISOString())
     toast.success('Dokumen diposting — stok berkurang & pergerakan tercatat')
     setDetail(null)
@@ -144,17 +129,18 @@ export default function StokKeluarPage() {
     if (confirm(`Batalkan dokumen ${doc.number}?`)) { setStatus(doc.id, 'cancelled'); toast.success('Dokumen dibatalkan'); setDetail(null) }
   }
 
-  const remove = (doc: StockOut) => {
+  const remove = async (doc: StockOut) => {
     const wasPosted = doc.status === 'posted'
     if (!confirm(`Hapus dokumen ${doc.number}?${wasPosted ? ' Stok yang sudah keluar akan dikembalikan.' : ''}`)) return
     if (wasPosted) {
-      const inv = useInventoryStore.getState()
-      doc.items.forEach((it) => {
-        const before = inv.stockAt(doc.outlet_id, it.product_id) ?? 0
-        const { after } = inv.applyDelta(doc.outlet_id, it.product_id, undefined, it.qty)
-        addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: before, after_stock: after, notes: `Hapus stok keluar ${doc.number}`, reference_id: doc.id, created_by_name: 'Stok Keluar', outlet_id: doc.outlet_id })
-      })
-      refreshProjection(doc.outlet_id)
+      const { failed } = await useInventoryStore.getState().applyStockNow(doc.items.map((it) => ({
+        id: stableUuid(`so-del:${doc.id}:${it.product_id}`), outlet_id: doc.outlet_id, product_id: it.product_id,
+        delta: it.qty, type: 'in' as const, notes: `Hapus stok keluar ${doc.number}`, reference_id: doc.id,
+      })))
+      if (failed.length) {
+        toast.error(`Dokumen TIDAK dihapus — stok gagal dikembalikan (${describeStockError(failed[0].code, failed[0].message)}).`, { duration: 12000 })
+        return
+      }
     }
     deleteStockOut(doc.id)
     toast.success('Dokumen dihapus')

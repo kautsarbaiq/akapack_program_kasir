@@ -8,11 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useOutletStore } from '@/stores/use-outlet-store'
-import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useProductStore } from '@/stores/use-product-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
 import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { toast } from 'sonner'
 
@@ -22,8 +20,7 @@ export default function TransferStokPage() {
   const outlets = useOutletStore((s) => s.outlets)
   const products = useProductStore((s) => s.products)
   const invItems = useInventoryStore((s) => s.items)
-  const transfer = useInventoryStore((s) => s.transfer)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
+  const [busy, setBusy] = useState(false)
 
   const [fromId, setFromId] = useState(outlets[0]?.id ?? '')
   const [toId, setToId] = useState(outlets[1]?.id ?? '')
@@ -43,7 +40,8 @@ export default function TransferStokPage() {
   const addLine = () => setItems((ls) => [...ls, { product_id: '', qty: 1 }])
   const removeLine = (i: number) => setItems((ls) => (ls.length <= 1 ? ls : ls.filter((_, idx) => idx !== i)))
 
-  const process = () => {
+  const process = async () => {
+    if (busy) return
     if (!fromId || !toId) { toast.error('Pilih outlet asal & tujuan'); return }
     if (fromId === toId) { toast.error('Outlet asal & tujuan harus berbeda'); return }
     const valid = items.filter((i) => i.product_id && i.qty > 0)
@@ -58,19 +56,27 @@ export default function TransferStokPage() {
         toast.error(`Stok ${nm} di ${fromName} cuma ${avail} (diminta ${qty})`); return
       }
     }
-    const inv = useInventoryStore.getState()
-    for (const [pid, qty] of agg) {
-      const beforeFrom = inv.stockAt(fromId, pid) ?? 0
-      const beforeTo = inv.stockAt(toId, pid) ?? 0
-      transfer(fromId, toId, pid, undefined, qty)
-      addMovement({ product_id: pid, type: 'transfer', quantity: -qty, before_stock: beforeFrom, after_stock: Math.max(0, beforeFrom - qty), notes: `Transfer ke ${toName}`, outlet_id: fromId, created_by_name: 'Transfer' })
-      addMovement({ product_id: pid, type: 'transfer', quantity: qty, before_stock: beforeTo, after_stock: beforeTo + qty, notes: `Transfer dari ${fromName}`, outlet_id: toId, created_by_name: 'Transfer' })
+    // SATU panggilan untuk kedua sisi: server mengurangi asal & menambah tujuan dalam satu transaksi,
+    // menolak bila stok asal SEBENARNYA kurang (bukan angka di memori), dan mencatat riwayat dengan
+    // angka asli. Dulu dua kiriman terpisah + label dari memori (Math.max(0, …)) → riwayat meleset.
+    // Pasangan baris berurutan & potongan 200 = genap → kedua sisi satu produk tak pernah terpisah.
+    const transferId = newMovementId()
+    const at = new Date().toISOString()
+    const lines = [...agg].flatMap(([pid, qty]) => [
+      { id: newMovementId(), outlet_id: fromId, product_id: pid, delta: -qty, type: 'transfer' as const,
+        notes: `Transfer ke ${toName}`, reference_id: transferId, created_at: at, allow_negative: false },
+      { id: newMovementId(), outlet_id: toId, product_id: pid, delta: qty, type: 'transfer' as const,
+        notes: `Transfer dari ${fromName}`, reference_id: transferId, created_at: at },
+    ])
+    setBusy(true)
+    const { failed } = await useInventoryStore.getState().applyStockNow(lines)
+    setBusy(false)
+    if (failed.length) {
+      const f = failed[0]
+      toast.error(`Transfer GAGAL — tidak ada stok yang dipindah. ${describeStockError(f.code, f.message)}`, { duration: 12000 })
+      return
     }
-    // proyeksikan ulang stok outlet aktif (asal/tujuan mungkin = aktif)
-    const active = useActiveOutletStore.getState().activeOutletId
-    useProductStore.getState().projectStock(active)
-    useVariantStore.getState().projectVariantStock(active)
-    toast.success(`Transfer ${valid.length} produk: ${fromName} → ${toName}`)
+    toast.success(`Transfer ${agg.size} produk: ${fromName} → ${toName}`)
     setItems([{ product_id: '', qty: 1 }])
   }
 
@@ -120,7 +126,7 @@ export default function TransferStokPage() {
             <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs" onClick={addLine}><Plus size={13} /> Tambah Produk</Button>
           </div>
 
-          <Button onClick={process} className="w-full gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"><ArrowLeftRight size={16} /> Proses Transfer</Button>
+          <Button onClick={process} disabled={busy} className="w-full gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"><ArrowLeftRight size={16} /> {busy ? 'Memproses…' : 'Proses Transfer'}</Button>
         </CardContent>
       </Card>
     </div>

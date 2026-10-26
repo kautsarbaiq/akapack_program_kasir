@@ -33,11 +33,11 @@ import { useCustomerStore } from '@/stores/use-customer-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useHeldOrderStore } from '@/stores/use-held-order-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
+import { newMovementId } from '@/lib/stock/stock-sync'
 import { formatRupiah, calculateChange, generateId, nextTransactionNumber, cn, rankedSearch } from '@/lib/utils'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import type { Product, Customer, PaymentMethod, Transaction, TransactionItem, ProductVariant } from '@/types'
@@ -79,24 +79,30 @@ function linePriceFor(product: Product, unitName: string, qty: number): number {
 
 export default function POSPage() {
   const products = useProductStore((s) => s.products)
-  const decrementStock = useProductStore((s) => s.decrementStock)
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const categories = useCategoryStore((s) => s.categories)
   const recordPurchase = useCustomerStore((s) => s.recordPurchase)
   const addTransaction = useTransactionStore((s) => s.addTransaction)
   const currentShift = useShiftStore((s) => s.currentShift)
   const pendingTxns = useTransactionStore((s) => s.pendingCount) // transaksi menunggu koneksi
+  const pendingStock = useInventoryStore((s) => s.pendingLines) // perubahan stok menunggu koneksi
+  // Antrean stok ditulis dulu ke perangkat di SETIAP penjualan lalu terkirim ±0,3 dtk kemudian —
+  // tampilkan lencana hanya bila antrean bertahan >3 dtk (benar-benar menunggu sinyal), bukan berkedip.
+  const [showStockPending, setShowStockPending] = useState(false)
+  useEffect(() => {
+    if (pendingStock <= 0) { const t = window.setTimeout(() => setShowStockPending(false), 0); return () => window.clearTimeout(t) }
+    const t = window.setTimeout(() => setShowStockPending(true), 3000)
+    return () => window.clearTimeout(t)
+  }, [pendingStock])
   const recordSale = useShiftStore((s) => s.recordSale)
   const redeemPointsAction = useCustomerStore((s) => s.redeemPoints)
   const taxRate = useSettingsStore((s) => s.taxRate)
   const serviceRate = useSettingsStore((s) => s.serviceRate)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
   const heldOrders = useHeldOrderStore((s) => s.held)
   const holdOrder = useHeldOrderStore((s) => s.hold)
   const recallOrder = useHeldOrderStore((s) => s.recall)
   const removeHeld = useHeldOrderStore((s) => s.remove)
   const variants = useVariantStore((s) => s.variants)
-  const decrementVariantStock = useVariantStore((s) => s.decrementVariantStock)
 
   const [search, setSearch] = useState('')
   // Nilai pencarian "ditunda": input tetap responsif (prioritas tinggi), filter+render katalog besar
@@ -418,37 +424,21 @@ export default function POSPage() {
 
     submittingRef.current = true // kunci: mulai sini transaksi diproses
     addTransaction(txn)
-    cart.forEach((c) => {
-      if (c.variant_id) {
-        // before/after dari inventory NYATA (cabang aktif) — bukan stok proyeksi yang bisa basi.
-        const { before, after } = decrementVariantStock(c.variant_id, c.quantity)
-        addMovement({
-          product_id: c.product_id,
-          type: 'out',
-          quantity: -c.quantity,
-          before_stock: before,
-          after_stock: after,
-          notes: `Penjualan POS (${c.product_name})`,
-          reference_id: txnId,
-          created_by_name: emp?.name,
-          outlet_id: activeOutletId,
-        })
-        return
-      }
-      const qtyBase = c.quantity * c.factor
-      const { before, after } = decrementStock(c.product_id, qtyBase)
-      addMovement({
-        product_id: c.product_id,
-        type: 'out',
-        quantity: -qtyBase,
-        before_stock: before,
-        after_stock: after,
-        notes: 'Penjualan POS',
-        reference_id: txnId,
-        created_by_name: emp?.name,
-        outlet_id: activeOutletId,
-      })
-    })
+    // Potong stok + catat riwayat SEKALIGUS, lewat antrean tahan-offline (ditulis ke perangkat dulu).
+    // Server menghitung sebelum/sesudah yang sebenarnya; id baris = kunci idempoten (kirim ulang aman).
+    // Dulu riwayat dikirim terpisah sekali jalan → hilang saat sinyal tersendat (mis. TRX-20261023-A0074),
+    // dan saat offline potongan stoknya ikut hilang — hanya struknya yang selamat.
+    useInventoryStore.getState().applyStock(cart.map((c) => ({
+      id: newMovementId(),
+      outlet_id: outletId,
+      product_id: c.product_id,
+      variant_id: c.variant_id ?? null,
+      delta: -(c.variant_id ? c.quantity : c.quantity * c.factor), // satuan DASAR
+      type: 'out' as const,
+      notes: c.variant_id ? `Penjualan POS (${c.product_name})` : 'Penjualan POS',
+      reference_id: txnId,
+      created_at: now,
+    })))
     if (selectedCustomer) recordPurchase(selectedCustomer.id, total)
     if (selectedCustomer && pointsUsed > 0) redeemPointsAction(selectedCustomer.id, pointsUsed)
     recordSale(total)
@@ -578,6 +568,11 @@ export default function POSPage() {
             {pendingTxns > 0 && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 animate-pulse" title="Transaksi menunggu koneksi — otomatis terkirim saat online">
                 {pendingTxns} belum tersimpan
+              </span>
+            )}
+            {showStockPending && pendingStock > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 animate-pulse" title="Potongan stok menunggu koneksi — tersimpan di perangkat & otomatis terkirim saat online. Jangan hapus data browser.">
+                {pendingStock} stok menunggu sinyal
               </span>
             )}
             </div>

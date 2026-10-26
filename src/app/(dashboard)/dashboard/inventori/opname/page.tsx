@@ -6,16 +6,16 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProductStore } from '@/stores/use-product-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { rankedSearch } from '@/lib/utils'
 import { toast } from 'sonner'
 
 export default function StockOpnamePage() {
   const products = useProductStore((s) => s.products)
-  const setStock = useProductStore((s) => s.setStock)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
+  const [saving, setSaving] = useState(false)
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const outletName = useOutletStore((s) => s.outlets.find((o) => o.id === activeOutletId)?.name ?? 'Cabang aktif')
 
@@ -41,27 +41,31 @@ export default function StockOpnamePage() {
   })
   const counted = Object.values(actual).filter((v) => v !== '').length
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return
     if (changes.length === 0) {
       toast.error('Belum ada selisih untuk disimpan')
       return
     }
     // Opname menimpa stok — pastikan cabangnya benar dulu.
     if (!confirm(`Simpan opname ${changes.length} produk untuk cabang ${outletName}? Stok sistem akan ditimpa angka fisik.`)) return
-    changes.forEach((p) => {
-      const before = p.stock
-      const after = Number(actual[p.id])
-      setStock(p.id, after)
-      addMovement({
-        product_id: p.id,
-        type: 'opname',
-        quantity: after - before,
-        before_stock: before,
-        after_stock: after,
-        notes: `Stock opname (${outletName})`,
-        outlet_id: activeOutletId,
-      })
-    })
+    // Angka fisik = set ABSOLUT. Server menghitung selisih dari stok SEBENARNYA (bukan angka di layar
+    // yang bisa basi) dan mencatatnya di riwayat dalam transaksi yang sama.
+    const at = new Date().toISOString()
+    setSaving(true)
+    const { failed } = await useInventoryStore.getState().applyStockNow(changes.map((p) => ({
+      id: newMovementId(), outlet_id: activeOutletId, product_id: p.id,
+      set_to: Math.max(0, Number(actual[p.id])), type: 'opname' as const,
+      notes: `Stock opname (${outletName})`, created_at: at,
+    })))
+    setSaving(false)
+    if (failed.length) {
+      // Hitungan yang gagal TETAP di layar supaya bisa disimpan ulang; yang berhasil dibersihkan.
+      const bad = new Set(failed.map((f) => f.line.product_id))
+      setActual((a) => Object.fromEntries(Object.entries(a).filter(([pid]) => bad.has(pid))))
+      toast.error(`${failed.length} dari ${changes.length} produk GAGAL disimpan (${describeStockError(failed[0].code, failed[0].message)}). Hitungannya masih di layar — simpan ulang.`, { duration: 12000 })
+      return
+    }
     toast.success(`Opname ${outletName}: ${changes.length} produk disesuaikan`)
     setActual({})
   }
@@ -74,7 +78,7 @@ export default function StockOpnamePage() {
           <p className="text-muted-foreground text-sm mt-1">Hitung stok fisik & sesuaikan — cabang: <span className="font-semibold text-foreground">{outletName}</span></p>
         </div>
         <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
-          onClick={handleSave} disabled={changes.length === 0}>
+          onClick={handleSave} disabled={changes.length === 0 || saving}>
           <Save size={15} /> Simpan Opname{changes.length > 0 ? ` (${changes.length})` : ''}
         </Button>
       </div>

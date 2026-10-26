@@ -7,6 +7,7 @@ import { useCustomerStore } from '@/stores/use-customer-store'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { usePromotionStore } from '@/stores/use-promotion-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
+import { flushStockOutbox } from '@/lib/stock/stock-sync'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useVariantStore } from '@/stores/use-variant-store'
@@ -72,14 +73,18 @@ export function DataBootstrap() {
         useShiftStore.getState().fetch(),
         useAttendanceStore.getState().fetch(),
       ])
-      // Kirim ulang transaksi yang gagal tersimpan sebelumnya (sinyal putus) — jangan sampai hilang.
+      // Kirim ulang yang tertunda (sinyal putus): potongan stok + riwayat DULU, baru struknya —
+      // supaya nota tak pernah tampil di server lebih dulu daripada stoknya (void jadi akurat).
+      await flushStockOutbox()
       void useTransactionStore.getState().flushOutbox()
     }
     void run()
 
-    // SELF-HEALING: kirim ulang transaksi tertunda saat (a) koneksi balik, (b) tab kembali aktif,
-    // (c) berkala tiap 45 dtk. Jadi penjualan yang gagal saat sinyal putus otomatis tersimpan sendiri.
-    const flush = () => { void useTransactionStore.getState().flushOutbox() }
+    // SELF-HEALING: kirim ulang antrean stok & transaksi saat (a) koneksi balik, (b) tab kembali aktif,
+    // (c) berkala tiap 45 dtk. Penjualan saat sinyal putus — stok, riwayat & struknya — tersimpan sendiri.
+    const flush = () => {
+      void flushStockOutbox().then(() => useTransactionStore.getState().flushOutbox())
+    }
     const onVisible = () => { if (document.visibilityState === 'visible') flush() }
     window.addEventListener('online', flush)
     document.addEventListener('visibilitychange', onVisible)

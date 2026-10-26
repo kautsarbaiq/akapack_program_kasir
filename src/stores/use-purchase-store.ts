@@ -42,6 +42,8 @@ async function persistPurchase(po: PurchaseOrder): Promise<string | null> {
   try {
     const sb = getSupabaseBrowser()
     const base = {
+      // id uuid dari klien dipakai apa adanya → kunci posting stok (stableUuid('po-post:'+id…)) sama di semua perangkat.
+      ...(isUuid(po.id) ? { id: po.id } : {}),
       tenant_id: DEFAULT_TENANT_ID,
       number: po.number,
       supplier_id: isUuid(po.supplier_id) ? po.supplier_id : null,

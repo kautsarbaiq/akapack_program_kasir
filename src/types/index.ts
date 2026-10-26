@@ -203,6 +203,11 @@ export interface StockMovement {
   created_by: string
   created_by_name?: string
   created_at: string
+  variant_id?: string | null
+  /** Urutan TERAP di server (bukan jam perangkat) — rantai sebelum/sesudah hanya nyambung bila diurut ini. */
+  applied_seq?: number | null
+  /** true = masih di antrean perangkat (belum sampai server); angka sebelum/sesudah masih perkiraan. */
+  pending?: boolean
 }
 
 // ─── Karyawan ──────────────────────────

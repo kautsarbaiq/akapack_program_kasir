@@ -13,10 +13,9 @@ import { useTransactionStore } from '@/stores/use-transaction-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { useProductStore } from '@/stores/use-product-store'
-import { useVariantStore } from '@/stores/use-variant-store'
+import { voidSaleOnServer } from '@/lib/stock/stock-sync'
+import { pendingTxnIds } from '@/stores/use-transaction-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
-import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { useRole, useCurrentUserStore } from '@/stores/use-current-user-store'
 import { printReceipt } from '@/lib/print-receipt'
@@ -68,41 +67,35 @@ export default function PenjualanPage() {
   const statusTx = statusFilter === 'all' ? methodTx : methodTx.filter((t) => t.status === statusFilter)
   const filtered = rankedSearch(statusTx, search, (t) => [t.transaction_number, t.customer?.name], (t) => t.transaction_number)
 
-  /** VOID = batalkan penjualan → stok WAJIB kembali ke cabang transaksi + tercatat di pergerakan.
-   *  Qty item disimpan dalam satuan JUAL; satuan besar ditandai "(dus)" pada nama item, jadi
-   *  faktornya dibaca dari situ agar stok yang dikembalikan sesuai satuan dasar. */
-  const handleVoid = (t: Transaction) => {
+  /** VOID = batalkan penjualan → stok kembali ke cabang transaksi + tercatat di pergerakan.
+   *  Dikerjakan SERVER (void_sale_with_stock): membalik persis potongan stok yang tercatat untuk nota
+   *  ini, terkunci (tak bisa di-void dua kali dari dua perangkat) dan idempoten. */
+  const handleVoid = async (t: Transaction) => {
     if (t.status !== 'completed') { toast.error('Hanya transaksi selesai yang bisa di-void'); return }
-    if (!confirm(`Void transaksi ${t.transaction_number}?\n\nStok barang akan DIKEMBALIKAN ke ${outlets.find((o) => o.id === t.outlet_id)?.name ?? 'cabang'}.`)) return
-
-    const inv = useInventoryStore.getState()
-    const prods = useProductStore.getState().products
-    const addMovement = useStockMovementStore.getState().addMovement
-    let restored = 0
-    for (const it of t.items) {
-      if (!it.product_id) continue
-      const prod = prods.find((p) => p.id === it.product_id)
-      // Faktor satuan dari akhiran nama item, mis. "Botol X (dus)" → cari unit "dus" di produk.
-      const m = /\(([^)]+)\)\s*$/.exec(it.product_name || '')
-      const factor = (m && prod?.units?.find((u) => u.name === m[1])?.factor) || 1
-      const qtyBase = it.quantity * factor
-      const { before, after } = inv.applyDelta(t.outlet_id, it.product_id, undefined, qtyBase)
-      addMovement({
-        product_id: it.product_id, type: 'in', quantity: qtyBase,
-        before_stock: before, after_stock: after,
-        notes: `Void ${t.transaction_number}`, reference_id: t.id,
-        created_by_name: me?.name || 'Void', outlet_id: t.outlet_id,
-      })
-      restored++
+    if (pendingTxnIds().has(t.id)) {
+      toast.error('Nota ini masih menunggu sinyal di perangkat kasir — void setelah tersinkron.')
+      return
     }
-    // Segarkan tampilan stok bila cabang transaksi = cabang yang sedang dilihat.
-    const activeOutlet = useActiveOutletStore.getState().activeOutletId
-    if (t.outlet_id === activeOutlet) {
-      useProductStore.getState().projectStock(activeOutlet)
-      useVariantStore.getState().projectVariantStock(activeOutlet)
+    const outletName = outlets.find((o) => o.id === t.outlet_id)?.name ?? 'cabang'
+    if (!confirm(`Void transaksi ${t.transaction_number}?\n\nStok barang akan DIKEMBALIKAN ke ${outletName}.`)) return
+
+    let res = await voidSaleOnServer(t.id, me?.name)
+    if (!res.ok && res.reason === 'NO_STOCK_TRACE') {
+      // Nota offline lama yang potongan stoknya tak pernah sampai server: jangan "kembalikan" stok fantom.
+      if (!confirm(`Nota ${t.transaction_number} tidak punya jejak stok keluar (kemungkinan dibuat saat offline, stoknya tidak terpotong).\n\nVoid TANPA mengembalikan stok?`)) return
+      res = await voidSaleOnServer(t.id, me?.name, true)
+    }
+    if (!res.ok) {
+      toast.error(res.reason === 'NOT_ON_SERVER'
+        ? 'Nota belum sampai server (masih di antrean perangkat kasir). Coba lagi setelah kasir online.'
+        : `Void gagal: ${res.message}`)
+      return
     }
     voidTransaction(t.id)
-    toast.success(`Transaksi di-void — stok ${restored} barang dikembalikan`)
+    // Angka stok & riwayat dari server (pembaliknya ditulis server dengan angka sebenarnya).
+    void useInventoryStore.getState().fetch()
+    if (useStockMovementStore.getState().loaded) void useStockMovementStore.getState().refresh()
+    toast.success(res.restored ? `Transaksi di-void — stok ${res.restored} barang dikembalikan` : 'Transaksi di-void')
     setSelected(null)
   }
 

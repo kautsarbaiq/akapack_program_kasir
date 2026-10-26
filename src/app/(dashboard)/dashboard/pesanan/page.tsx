@@ -8,20 +8,15 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useTransactionStore } from '@/stores/use-transaction-store'
-import { useProductStore } from '@/stores/use-product-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { voidSaleOnServer } from '@/lib/stock/stock-sync'
 import { useSettingsStore } from '@/stores/use-settings-store'
-import { DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 import { PAYMENT_LABELS } from '@/lib/constants'
 import { formatRupiah, formatDateTime, waUrl } from '@/lib/utils'
 import type { Transaction, TransactionStatus } from '@/types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   pending: { label: 'Baru', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -40,7 +35,7 @@ const FILTERS: { value: 'all' | TransactionStatus; label: string }[] = [
 export default function PesananOnlinePage() {
   const transactions = useTransactionStore((s) => s.transactions)
   const setStatus = useTransactionStore((s) => s.setStatus)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
+  const setStatusLocal = useTransactionStore((s) => s.voidTransaction)
   const storeName = useSettingsStore((s) => s.storeName)
   const [filter, setFilter] = useState<'all' | TransactionStatus>('all')
   const [detail, setDetail] = useState<Transaction | null>(null)
@@ -51,21 +46,19 @@ export default function PesananOnlinePage() {
 
   const complete = (t: Transaction) => { setStatus(t.id, 'completed'); toast.success('Pesanan ditandai Selesai'); setDetail(null) }
 
-  const cancel = (t: Transaction) => {
+  const cancel = async (t: Transaction) => {
     if (!confirm('Batalkan pesanan ini? Stok yang sempat dipotong akan dikembalikan otomatis.')) return
-    // Kembalikan stok ke OUTLET pemenuhan order (yang dipotong saat order), bukan outlet aktif admin.
-    const outlet = UUID_RE.test(t.outlet_id) ? t.outlet_id : DEFAULT_OUTLET_ID
-    const inv = useInventoryStore.getState()
-    t.items.forEach((it) => {
-      const { before, after } = inv.applyDelta(outlet, it.product_id, it.variant_id, it.quantity)
-      addMovement({ product_id: it.product_id, type: 'in', quantity: it.quantity, before_stock: before, after_stock: after, notes: `Pembatalan pesanan ${t.transaction_number}`, reference_id: t.id, outlet_id: outlet, created_by_name: 'Admin' })
-    })
-    // proyeksikan ulang stok yang ditampilkan ke outlet aktif
-    const active = useActiveOutletStore.getState().activeOutletId
-    useProductStore.getState().projectStock(active)
-    useVariantStore.getState().projectVariantStock(active)
-    setStatus(t.id, 'void')
-    toast.success('Pesanan dibatalkan, stok dikembalikan')
+    // Server membalik persis potongan stok pesanan ini (outlet pemenuhan), terkunci & idempoten.
+    let res = await voidSaleOnServer(t.id, 'Admin')
+    if (!res.ok && res.reason === 'NO_STOCK_TRACE') {
+      // Pesanan lama: jejak potongannya tak tertaut ke nota → stok harus dikembalikan manual.
+      if (!confirm('Pesanan ini tidak punya jejak stok keluar yang tertaut. Batalkan TANPA mengembalikan stok? (Kembalikan manual lewat Stok Masuk bila perlu.)')) return
+      res = await voidSaleOnServer(t.id, 'Admin', true)
+    }
+    if (!res.ok) { toast.error(`Gagal membatalkan: ${res.message}`); return }
+    setStatusLocal(t.id)
+    void useInventoryStore.getState().fetch()
+    toast.success(res.restored ? 'Pesanan dibatalkan, stok dikembalikan' : 'Pesanan dibatalkan')
     setDetail(null)
   }
 

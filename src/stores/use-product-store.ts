@@ -22,8 +22,8 @@ function chunk<T>(arr: T[], size: number): T[][] {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
 }
-import { useInventoryStore } from './use-inventory-store'
-import { useStockMovementStore } from './use-stock-movement-store'
+import { useInventoryStore, onStockReconciled } from './use-inventory-store'
+import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
 import { useActiveOutletStore } from './use-active-outlet-store'
 
 interface ProductStore {
@@ -41,11 +41,8 @@ interface ProductStore {
    *  Gagal bila ada produk dipakai di dokumen Pembelian/Stok Keluar (FK RESTRICT). Kembalikan status jujur. */
   deleteAllProducts: () => Promise<{ ok: boolean; error?: string }>
   /** Kurangi stok saat transaksi POS. Mengembalikan before/after NYATA dari inventory. */
-  decrementStock: (id: string, qty: number) => { before: number; after: number }
   /** Tambah stok (stok masuk / pembatalan pesanan). Mengembalikan before/after NYATA dari inventory. */
-  incrementStock: (id: string, qty: number) => { before: number; after: number }
   /** Set stok absolut (stok masuk / opname) */
-  setStock: (id: string, newStock: number) => void
   /** Set harga modal (mis. moving-average saat terima pembelian) */
   setCostPrice: (id: string, newCost: number) => void
   /** Proyeksikan field `stock` produk dari inventory outlet tsb (dipanggil saat ganti outlet aktif) */
@@ -106,8 +103,8 @@ export const useProductStore = create<ProductStore>()((set) => ({
       updated_at: now,
     }
     set((s) => ({ products: [newProduct, ...s.products] }))
-    // Stok awal masuk ke inventory outlet aktif (per-outlet)
-    useInventoryStore.getState().setStockAt(useActiveOutletStore.getState().activeOutletId, newProduct.id, undefined, values.stock)
+    // Stok awal dikirim SETELAH produk punya id server (fungsi stok butuh uuid) — lihat .then di bawah.
+    const openingOutlet = useActiveOutletStore.getState().activeOutletId
     void insertRow<Product>('products', {
       tenant_id: DEFAULT_TENANT_ID,
       category_id: values.category_id,
@@ -127,7 +124,13 @@ export const useProductStore = create<ProductStore>()((set) => ({
     }).then((saved) => {
       if (saved) {
         useInventoryStore.getState().remapProduct(newProduct.id, saved.id)
-        // Pertahankan stok terproyeksi outlet aktif (mutasi selama insert tidak ter-undo)
+        // Stok awal = pergerakan 'in' bertanda jejak (dulu tanpa riwayat → total riwayat ≠ stok).
+        if (values.stock > 0) {
+          useInventoryStore.getState().applyStock([{
+            id: newMovementId(), outlet_id: openingOutlet, product_id: saved.id,
+            delta: values.stock, type: 'in', notes: 'Stok awal produk baru',
+          }])
+        }
         const projected = useInventoryStore.getState().stockAt(useActiveOutletStore.getState().activeOutletId, saved.id) ?? saved.stock
         set((s) => ({
           products: s.products.map((p) => (p.id === newProduct.id
@@ -253,17 +256,17 @@ export const useProductStore = create<ProductStore>()((set) => ({
     const invStore = useInventoryStore.getState()
     const liveStock = invStore.stockAt(outlet, id)
     if (liveStock === null || values.stock !== liveStock) {
-      const { before, after } = invStore.setStockAt(outlet, id, undefined, values.stock)
-      // Ubah stok lewat form produk HARUS ninggalin jejak — dulu angkanya berubah tanpa tercatat
-      // di History Item Produk, jadi selisih stok tak bisa ditelusuri sama sekali.
-      if (after !== before) {
-        useStockMovementStore.getState().addMovement({
-          product_id: id, outlet_id: outlet,
-          type: after > before ? 'in' : 'adjustment',
-          quantity: after - before, before_stock: before, after_stock: after,
-          notes: 'Ubah stok dari form produk',
-        })
-      }
+      // Angka yang diketik = angka absolut; server menghitung selisih dari stok SEBENARNYA dan
+      // mencatatnya di History Item Produk dalam transaksi yang sama.
+      void invStore.applyStockNow([{
+        id: newMovementId(), outlet_id: outlet, product_id: id,
+        set_to: Math.max(0, values.stock), type: 'adjustment', notes: 'Ubah stok dari form produk',
+      }]).then(({ failed }) => {
+        if (!failed.length) return
+        void import('sonner').then(({ toast }) => toast.error(
+          `Stok "${values.name}" GAGAL disimpan: ${describeStockError(failed[0].code, failed[0].message)}. Data lain tersimpan — ulangi ubah stoknya.`,
+          { duration: 12000 }))
+      })
     }
     void updateRow('products', id, {
       category_id: values.category_id,
@@ -309,27 +312,6 @@ export const useProductStore = create<ProductStore>()((set) => ({
     return { ok: true }
   },
 
-  // Stok kini per-outlet: mutasi diterapkan ke inventory outlet AKTIF, lalu proyeksi field `stock`.
-  decrementStock: (id, qty) => {
-    const outlet = useActiveOutletStore.getState().activeOutletId
-    const { before, after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, -qty)
-    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
-    return { before, after }
-  },
-
-  incrementStock: (id, qty) => {
-    const outlet = useActiveOutletStore.getState().activeOutletId
-    const { before, after } = useInventoryStore.getState().applyDelta(outlet, id, undefined, qty)
-    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
-    return { before, after }
-  },
-
-  setStock: (id, newStock) => {
-    const outlet = useActiveOutletStore.getState().activeOutletId
-    const { after } = useInventoryStore.getState().setStockAt(outlet, id, undefined, newStock)
-    set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: after, stock_status: getStockStatus(after, p.min_stock) } : p)) }))
-  },
-
   projectStock: (outletId) => {
     const inv = useInventoryStore.getState()
     set((s) => ({
@@ -367,3 +349,9 @@ export const useProductStore = create<ProductStore>()((set) => ({
     void updateRow('products', id, { is_active: value })
   },
 }))
+
+// Setiap kali angka stok disamakan dengan server (jawaban fungsi stok / muat ulang), proyeksikan ulang
+// field `stock` produk untuk outlet aktif — dulu kisi kasir tetap menampilkan angka basi (67 vs 97).
+if (typeof window !== 'undefined') {
+  onStockReconciled(() => useProductStore.getState().projectStock(useActiveOutletStore.getState().activeOutletId))
+}

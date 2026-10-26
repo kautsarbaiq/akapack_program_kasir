@@ -8,10 +8,9 @@ import { Button } from '@/components/ui/button'
 import { useProductStore } from '@/stores/use-product-store'
 import { usePurchaseStore } from '@/stores/use-purchase-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { useVariantStore } from '@/stores/use-variant-store'
+import { newMovementId, stableUuid, type StockLine } from '@/lib/stock/stock-sync'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { generateId } from '@/lib/utils'
 import type { PurchaseOrder, PurchaseItem } from '@/types'
@@ -134,9 +133,11 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
       let skipped = 0
       // Akumulasi delta stok & nilai per-produk (lintas semua dokumen) → 1x batch ke DB.
       const acc = new Map<string, { qty: number; costSum: number; costQty: number }>()
+      // Satu baris stok per (dokumen, produk): tertaut ke dokumennya & id-nya sama dgn posting manual.
+      const lines: StockLine[] = []
 
       for (const d of docs) {
-        const poId = generateId('po')
+        const poId = newMovementId() // uuid asli → id dokumen sama di server & kunci posting stok
         const poItems: PurchaseItem[] = []
         for (const it of d.items) {
           const prod = match(it)
@@ -164,36 +165,39 @@ export function ImportStokMasukDialog({ open, onOpenChange }: { open: boolean; o
         }
         ps.addPurchase(po)
         createdDocs++
+        const perDoc = new Map<string, number>()
+        for (const it of poItems) perDoc.set(it.product_id, (perDoc.get(it.product_id) ?? 0) + it.qty)
+        perDoc.forEach((qty, pid) => lines.push({
+          id: stableUuid(`po-post:${poId}:${pid}`), outlet_id: outlet, product_id: pid,
+          delta: qty, type: 'in', notes: `Stok Masuk ${po.number} (impor)`, reference_id: poId,
+        }))
       }
 
-      // Posting massal: tambah stok (current + delta) + moving-average cost, dalam batch.
-      const stockEntries: { productId: string; stock: number }[] = []
-      const costPatches: { id: string; cost_price: number }[] = []
-      const mv = useStockMovementStore.getState()
-      for (const [pid, a] of acc) {
-        const prod = prodStore.products.find((p) => p.id === pid)
-        const before = inv.stockAt(outlet, pid) ?? prod?.stock ?? 0
-        stockEntries.push({ productId: pid, stock: before + a.qty })
-        // Jejak audit: catat pergerakan 'in' per produk (samakan dgn posting manual).
-        mv.addMovement({ product_id: pid, type: 'in', quantity: a.qty, before_stock: before, after_stock: before + a.qty, notes: 'Import Stok Masuk', created_by_name: me, outlet_id: outlet })
-        // Update modal HANYA bila ada harga beli di file (costSum>0) — jangan menolkan modal.
-        if (a.costSum > 0 && a.costQty > 0) {
-          const beforeCost = prod?.cost_price ?? 0
-          // Bobot rata-rata pakai stok lama ter-clamp ≥0 (stok minus tak boleh menyeret modal).
-          const wBefore = Math.max(0, before)
-          const denom = wBefore + a.costQty
-          const newCost = denom > 0 ? Math.round((wBefore * beforeCost + a.costSum) / denom) : Math.round(a.costSum / a.costQty)
-          costPatches.push({ id: pid, cost_price: newCost })
-        }
+      // Posting massal lewat server: stok + riwayat sekaligus (DELTA, bukan "stok lama + qty" absolut
+      // yang dihitung dari memori — itu menghapus penjualan perangkat lain selama impor).
+      const { results, failed: stockFailed } = await inv.applyStockNow(lines)
+      let failed = stockFailed.length
+      // Stok SEBELUM impor per produk (dari server) = before_stock terkecil (semua delta positif).
+      const lineProduct = new Map(lines.map((l) => [l.id, l.product_id]))
+      const origBefore = new Map<string, number>()
+      for (const r of results) {
+        const pid = lineProduct.get(r.movement_id)
+        if (!pid || !r.applied) continue
+        origBefore.set(pid, Math.min(origBefore.get(pid) ?? Number.POSITIVE_INFINITY, r.before_stock))
       }
-      let failed = 0
-      if (stockEntries.length) failed += await inv.bulkUpsert(outlet, stockEntries)
+      const costPatches: { id: string; cost_price: number }[] = []
+      for (const [pid, a] of acc) {
+        // Update modal HANYA bila ada harga beli di file (costSum>0) & stoknya benar-benar masuk.
+        if (!(a.costSum > 0 && a.costQty > 0) || !origBefore.has(pid)) continue
+        const prod = prodStore.products.find((p) => p.id === pid)
+        const beforeCost = prod?.cost_price ?? 0
+        // Bobot rata-rata pakai stok lama ter-clamp ≥0 (stok minus tak boleh menyeret modal).
+        const wBefore = Math.max(0, origBefore.get(pid) ?? 0)
+        const denom = wBefore + a.costQty
+        const newCost = denom > 0 ? Math.round((wBefore * beforeCost + a.costSum) / denom) : Math.round(a.costSum / a.costQty)
+        costPatches.push({ id: pid, cost_price: newCost })
+      }
       if (costPatches.length) failed += await prodStore.bulkPatch(costPatches)
-      // Proyeksikan tampilan ke CABANG AKTIF (bukan cabang tujuan) — import ke Garut saat melihat
-      // Bandung tidak boleh menukar seluruh angka stok layar ke milik Garut.
-      const viewOutlet = useActiveOutletStore.getState().activeOutletId
-      prodStore.projectStock(viewOutlet)
-      useVariantStore.getState().projectVariantStock(viewOutlet)
 
       const tail = skipped > 0 ? ` (${skipped} item dilewati — produk tak ada di katalog)` : ''
       if (failed > 0) toast.warning(`${createdDocs} dokumen dibuat, tapi ${failed} update stok GAGAL ke server — muat ulang & cek.${tail}`)

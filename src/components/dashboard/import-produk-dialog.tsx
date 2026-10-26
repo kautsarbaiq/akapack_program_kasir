@@ -11,10 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { useProductStore, type BulkProductInput, type ProductPatch } from '@/stores/use-product-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { newMovementId, type StockLine } from '@/lib/stock/stock-sync'
 import { useCategoryStore } from '@/stores/use-category-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { formatRupiah, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -209,18 +208,13 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
         })
         const { products: created, failed: pf } = await bulkAdd(inputs)
         failed += pf
-        // Seed stok awal ke outlet terpilih (urutan `created` = urutan input)
-        failed += await inv.bulkUpsert(outletId, created.map((p, i) => ({ productId: p.id, stock: Math.max(0, newRows[i].stock) })))
-        // Jejak "Masuk Barang" untuk stok awal → muncul di History Item Produk.
-        const seedMoves = created
+        // Stok awal produk baru = pergerakan 'in' (urutan `created` = urutan input). Server menulis stok
+        // + riwayat sekaligus; per potongan ≤200 baris, aman diulang.
+        const seed: StockLine[] = created
           .map((p, i) => ({ p, qty: Math.max(0, newRows[i].stock) }))
           .filter((x) => x.qty > 0)
-          .map(({ p, qty }) => ({
-            product_id: p.id, outlet_id: outletId, type: 'in' as const,
-            quantity: qty, before_stock: 0, after_stock: qty,
-            notes: `Impor katalog ${formatDate(new Date())}`,
-          }))
-        if (seedMoves.length) await useStockMovementStore.getState().addMovementsBulk(seedMoves)
+          .map(({ p, qty }) => ({ id: newMovementId(), outlet_id: outletId, product_id: p.id, delta: qty, type: 'in' as const, notes: `Impor katalog ${formatDate(new Date())}` }))
+        if (seed.length) failed += (await inv.applyStockNow(seed)).failed.length
         createdN = created.length - pf
       }
 
@@ -243,27 +237,16 @@ export function ImportProdukDialog({ open, onOpenChange }: { open: boolean; onOp
       // hasil SO yang diimpor di sini "tidak mengubah stok sama sekali" tanpa penjelasan apa pun.
       let stockN = 0
       if (updateExisting && updateStock && existRows.length) {
-        const invNow = useInventoryStore.getState()
-        const entries = existRows.map(({ row, product }) => ({ productId: product.id, stock: Math.max(0, row.stock) }))
-        const moves = existRows.map(({ row, product }) => {
-          const before = invNow.stockAt(outletId, product.id, undefined) ?? 0
-          const after = Math.max(0, row.stock)
-          return { product_id: product.id, outlet_id: outletId, before, after }
-        }).filter((m) => m.after !== m.before)
-        failed += await inv.bulkUpsert(outletId, entries)
-        if (moves.length) {
-          await useStockMovementStore.getState().addMovementsBulk(moves.map((m) => ({
-            product_id: m.product_id, outlet_id: m.outlet_id,
-            type: m.after > m.before ? ('in' as const) : ('adjustment' as const),
-            quantity: m.after - m.before, before_stock: m.before, after_stock: m.after,
-            notes: `Impor katalog ${formatDate(new Date())} (set stok)`,
-          })))
-        }
-        stockN = entries.length
+        // Angka file = set ABSOLUT; server menghitung selisih dari stok SEBENARNYA & mencatatnya.
+        const sets: StockLine[] = existRows.map(({ row, product }) => ({
+          id: newMovementId(), outlet_id: outletId, product_id: product.id,
+          set_to: Math.max(0, row.stock), type: 'opname' as const, notes: `Impor katalog ${formatDate(new Date())} (set stok)`,
+        }))
+        const { failed: sf } = await inv.applyStockNow(sets)
+        failed += sf.length
+        stockN = sets.length - sf.length
       }
 
-      useProductStore.getState().projectStock(activeOutletId)
-      useVariantStore.getState().projectVariantStock(activeOutletId)
       const oname = outlets.find((o) => o.id === outletId)?.name ?? ''
       if (failed > 0) {
         toast.warning(`Import: ${createdN} produk baru${updatedN ? `, ${updatedN} diperbarui` : ''}, tapi ${failed} baris GAGAL ke server — muat ulang & ulangi yang gagal.`)

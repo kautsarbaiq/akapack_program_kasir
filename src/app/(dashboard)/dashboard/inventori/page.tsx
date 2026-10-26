@@ -17,9 +17,9 @@ import { Label } from '@/components/ui/label'
 import { useProductStore } from '@/stores/use-product-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
+import { newMovementId, describeStockError } from '@/lib/stock/stock-sync'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useOutletStore } from '@/stores/use-outlet-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useRole } from '@/stores/use-current-user-store'
 import { ImportStokDialog } from '@/components/dashboard/import-stok-dialog'
 import { ProductCombobox } from '@/components/dashboard/product-combobox'
@@ -39,7 +39,6 @@ export default function InventoriPage() {
   const setActive = useProductStore((s) => s.setActive)
   const movements = useStockMovementStore((s) => s.movements)
   useEffect(() => { useStockMovementStore.getState().ensure() }, []) // lazy: muat data saat halaman dibuka (hemat egress)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
   const invItems = useInventoryStore((s) => s.items)
   const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
   const outlets = useOutletStore((s) => s.outlets)
@@ -92,28 +91,31 @@ export default function InventoriPage() {
     setFlow({ mode, productId }); setQty(''); setDate(new Date().toISOString().slice(0, 10)); setNote(''); setOutletId(activeOutletId)
   }
 
-  const submitFlow = () => {
+  const submitFlow = async () => {
     if (!flow) return
     const product = products.find((p) => p.id === flow.productId)
     const n = Number(qty)
     if (!product) { toast.error('Pilih produk dulu'); return }
     if (!Number.isFinite(n) || n <= 0) { toast.error('Jumlah tidak valid'); return }
     if (!note.trim()) { toast.error('Catatan wajib diisi'); return }
+    const oname = outlets.find((o) => o.id === outletId)?.name ?? 'outlet'
     if (flow.mode === 'out') {
       const avail = useInventoryStore.getState().stockAt(outletId, product.id, undefined)
-      if (avail !== null && n > avail) { toast.error(`Stok di ${outlets.find((o) => o.id === outletId)?.name ?? 'outlet'} cuma ${avail}`); return }
+      if (avail !== null && n > avail) { toast.error(`Stok di ${oname} cuma ${avail}`); return }
     }
-    const delta = flow.mode === 'in' ? n : -n
-    const { before, after } = useInventoryStore.getState().applyDelta(outletId, product.id, undefined, delta)
-    const applied = after - before // perubahan nyata (konsisten dgn clamp ≥0)
-    if (applied === 0) { toast.error(flow.mode === 'out' ? 'Stok tidak mencukupi di outlet ini' : 'Tidak ada perubahan stok'); return }
-    addMovement({
-      product_id: product.id, type: flow.mode, quantity: applied, before_stock: before, after_stock: after,
-      notes: note.trim(), date: new Date(date).toISOString(), outlet_id: outletId, created_by_name: 'Inventori',
-    })
-    useProductStore.getState().projectStock(activeOutletId)
-    useVariantStore.getState().projectVariantStock(activeOutletId)
-    const oname = outlets.find((o) => o.id === outletId)?.name ?? ''
+    // Tanggal hari ini = waktu sekarang (urut wajar di riwayat); tanggal lain = dicatat mundur.
+    const today = new Date().toISOString().slice(0, 10)
+    const { failed } = await useInventoryStore.getState().applyStockNow([{
+      id: newMovementId(), outlet_id: outletId, product_id: product.id,
+      delta: flow.mode === 'in' ? n : -n, type: flow.mode,
+      notes: note.trim(),
+      created_at: date && date !== today ? new Date(date).toISOString() : undefined,
+      allow_negative: flow.mode === 'in', // keluar: server menolak bila stok SEBENARNYA kurang
+    }])
+    if (failed.length) {
+      toast.error(`Stok ${flow.mode === 'in' ? 'masuk' : 'keluar'} GAGAL: ${describeStockError(failed[0].code, failed[0].message)}`, { duration: 10000 })
+      return
+    }
     toast.success(`Stok ${flow.mode === 'in' ? 'masuk' : 'keluar'} ${product.name} ${flow.mode === 'in' ? '+' : '−'}${n} di ${oname}`)
     setFlow(null)
   }

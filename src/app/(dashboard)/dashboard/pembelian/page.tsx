@@ -15,10 +15,10 @@ import { ProductCombobox } from '@/components/dashboard/product-combobox'
 import { usePurchaseStore } from '@/stores/use-purchase-store'
 import { useSupplierStore } from '@/stores/use-supplier-store'
 import { useProductStore } from '@/stores/use-product-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
 import { useCurrentUserStore } from '@/stores/use-current-user-store'
 import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
+import { newMovementId, stableUuid, describeStockError } from '@/lib/stock/stock-sync'
 import { useOutletStore } from '@/stores/use-outlet-store'
 import { OutletFilter } from '@/components/dashboard/outlet-filter'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
@@ -57,7 +57,6 @@ export default function StokMasukPage() {
   const suppliers = useSupplierStore((s) => s.suppliers)
   const products = useProductStore((s) => s.products)
   const setCostPrice = useProductStore((s) => s.setCostPrice)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
   const currentUser = useCurrentUserStore((s) => s.user)
   const me = currentUser?.email || currentUser?.name || 'Sistem'
 
@@ -117,26 +116,34 @@ export default function StokMasukPage() {
     setItems([{ product_id: '', qty: 1, cost: 0 }]); setOpen(true)
   }
 
-  // Tambah stok + pergerakan + moving-average cost untuk dokumen yang diposting.
-  // PENTING: stok masuk ke CABANG DOKUMEN (po.outlet_id), BUKAN outlet aktif — supaya
-  // posting/menghapus dokumen Bandung saat sedang melihat Garut tak mengubah stok Garut.
-  const applyStock = (po: PurchaseOrder) => {
+  // Tambah stok + riwayat + moving-average cost untuk dokumen yang diposting.
+  // Stok masuk ke CABANG DOKUMEN (po.outlet_id), BUKAN outlet aktif.
+  // id baris DETERMINISTIK per dokumen+produk → dokumen yang terposting dua kali (dua perangkat, atau
+  // status yang gagal tersimpan) tetap hanya menambah stok SEKALI. Server mengembalikan stok sebelum
+  // yang SEBENARNYA → modal rata-rata dihitung dari angka asli, bukan memori perangkat.
+  const applyStock = async (po: PurchaseOrder): Promise<boolean> => {
     const outlet = po.outlet_id || useActiveOutletStore.getState().activeOutletId
-    const inv = useInventoryStore.getState()
-    po.items.forEach((it) => {
+    const lines = po.items.map((it) => ({
+      id: stableUuid(`po-post:${po.id}:${it.product_id}`), outlet_id: outlet, product_id: it.product_id,
+      delta: it.qty, type: 'in' as const, notes: `Stok Masuk ${po.number}`, reference_id: po.id,
+    }))
+    const { results, failed } = await useInventoryStore.getState().applyStockNow(lines)
+    if (failed.length) {
+      toast.error(`Stok GAGAL masuk (${describeStockError(failed[0].code, failed[0].message)}). Dokumen tetap tersimpan — posting ulang dari detail dokumen.`, { duration: 12000 })
+      return false
+    }
+    const byId = new Map(results.map((r) => [r.movement_id, r]))
+    for (const it of po.items) {
+      const r = byId.get(stableUuid(`po-post:${po.id}:${it.product_id}`))
       const prod = useProductStore.getState().products.find((p) => p.id === it.product_id)
-      const { before: invBefore, after: invAfter } = inv.applyDelta(outlet, it.product_id, undefined, it.qty)
-      if (prod && it.cost > 0) {
-        // Bobot rata-rata pakai stok lama ter-clamp ≥0 — stok MINUS (jual saat kosong) tidak boleh
-        // menyeret rumus jadi bobot negatif/modal ngaco.
-        const wBefore = Math.max(0, invBefore)
-        const denom = wBefore + it.qty
-        setCostPrice(it.product_id, denom > 0 ? Math.round((wBefore * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
-      }
-      addMovement({ product_id: it.product_id, type: 'in', quantity: it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: outlet })
-    })
-    // Segarkan tampilan stok outlet aktif (kalau dokumen ini memang di outlet aktif).
-    useProductStore.getState().projectStock(useActiveOutletStore.getState().activeOutletId)
+      if (!r || !r.applied || !prod || it.cost <= 0) continue // applied=false = sudah pernah diposting
+      // Bobot rata-rata pakai stok lama ter-clamp ≥0 — stok MINUS (jual saat kosong) tidak boleh
+      // menyeret rumus jadi bobot negatif/modal ngaco.
+      const wBefore = Math.max(0, r.before_stock)
+      const denom = wBefore + it.qty
+      setCostPrice(it.product_id, denom > 0 ? Math.round((wBefore * prod.cost_price + it.qty * it.cost) / denom) : it.cost)
+    }
+    return true
   }
 
   const create = (postNow: boolean) => {
@@ -153,7 +160,7 @@ export default function StokMasukPage() {
       } else mergedMap.set(i.product_id, { ...i })
     }
     const valid = [...mergedMap.values()]
-    const poId = generateId('po')
+    const poId = newMovementId() // uuid asli → id dokumen sama di semua perangkat (kunci posting stok)
     const poItems: PurchaseItem[] = valid.map((i) => {
       const prod = products.find((p) => p.id === i.product_id)
       return { id: generateId('poi'), purchase_id: poId, product_id: i.product_id, product_name: prod?.name ?? '-', qty: i.qty, cost: i.cost, subtotal: i.qty * i.cost }
@@ -175,15 +182,18 @@ export default function StokMasukPage() {
       date: new Date(date).toISOString(), received_at: postNow ? now : undefined, created_at: now,
     }
     addPurchase(po)
-    if (postNow) applyStock(po)
-    toast.success(postNow ? `Stok Masuk ${po.number} diposting — stok ${outletName(formOutletId)} bertambah` : `Stok Masuk ${po.number} disimpan (draft) — cabang ${outletName(formOutletId)}`)
     setOpen(false)
+    if (!postNow) { toast.success(`Stok Masuk ${po.number} disimpan (draft) — cabang ${outletName(formOutletId)}`); return }
+    void applyStock(po).then((ok) => {
+      if (ok) toast.success(`Stok Masuk ${po.number} diposting — stok ${outletName(formOutletId)} bertambah`)
+      else setStatus(po.id, 'ordered') // stok tak masuk → kembalikan ke draft supaya bisa diposting ulang
+    })
   }
 
-  const post = (po: PurchaseOrder) => {
+  const post = async (po: PurchaseOrder) => {
     const live = usePurchaseStore.getState().purchases.find((p) => p.id === po.id)
     if (!live || live.status === 'received') return
-    applyStock(live)
+    if (!(await applyStock(live))) return
     setStatus(live.id, 'received', new Date().toISOString())
     toast.success('Dokumen diposting — stok bertambah & jurnal tercatat')
     setDetail(null)
@@ -193,18 +203,20 @@ export default function StokMasukPage() {
     if (confirm(`Batalkan dokumen ${po.number}?`)) { setStatus(po.id, 'cancelled'); toast.success('Dokumen dibatalkan'); setDetail(null) }
   }
 
-  const remove = (po: PurchaseOrder) => {
+  const remove = async (po: PurchaseOrder) => {
     const wasPosted = po.status === 'received'
     if (!confirm(`Hapus dokumen ${po.number}?${wasPosted ? ' Stok yang sudah masuk akan dikembalikan.' : ''}`)) return
     if (wasPosted) {
+      // Kembalikan stok ke CABANG DOKUMEN; id deterministik → hapus dua kali tak mengurangi dua kali.
       const outlet = po.outlet_id || useActiveOutletStore.getState().activeOutletId
-      const inv = useInventoryStore.getState()
-      po.items.forEach((it) => {
-        // Kembalikan stok ke CABANG DOKUMEN, bukan outlet aktif (cegah salah cabang).
-        const { before: invBefore, after: invAfter } = inv.applyDelta(outlet, it.product_id, undefined, -it.qty)
-        addMovement({ product_id: it.product_id, type: 'out', quantity: -it.qty, before_stock: invBefore, after_stock: invAfter, notes: `Hapus Stok Masuk ${po.number}`, reference_id: po.id, created_by_name: me, outlet_id: outlet })
-      })
-      useProductStore.getState().projectStock(useActiveOutletStore.getState().activeOutletId)
+      const { failed } = await useInventoryStore.getState().applyStockNow(po.items.map((it) => ({
+        id: stableUuid(`po-del:${po.id}:${it.product_id}`), outlet_id: outlet, product_id: it.product_id,
+        delta: -it.qty, type: 'out' as const, notes: `Hapus Stok Masuk ${po.number}`, reference_id: po.id,
+      })))
+      if (failed.length) {
+        toast.error(`Dokumen TIDAK dihapus — stok gagal dikembalikan (${describeStockError(failed[0].code, failed[0].message)}).`, { duration: 12000 })
+        return
+      }
     }
     deletePurchase(po.id)
     toast.success('Dokumen dihapus')

@@ -39,6 +39,8 @@ async function persistStockOut(doc: StockOut): Promise<string | null> {
     const { data, error } = await sb
       .from('stock_outs')
       .insert({
+        // id uuid klien dipakai apa adanya → kunci posting stok sama di semua perangkat.
+        ...(isUuid(doc.id) ? { id: doc.id } : {}),
         tenant_id: DEFAULT_TENANT_ID,
         number: doc.number,
         outlet_id: isUuid(doc.outlet_id) ? doc.outlet_id : null,

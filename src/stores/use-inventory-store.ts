@@ -1,18 +1,13 @@
 import { create } from 'zustand'
 import { mockProducts } from '@/lib/mock-data'
 import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
-import { getSupabaseBrowser } from '@/lib/supabase/client'
-import { fetchAll, insertRow, updateRow } from '@/lib/supabase/repo'
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = []
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
-  return out
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
+import { DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
+import { fetchAll } from '@/lib/supabase/repo'
+import {
+  enqueueStock, applyStockNow as sendNow, pendingStockLines, registerStockSyncHandlers, flushStockOutbox,
+  describeStockError, type StockLine, type StockResult, type StockFailure,
+} from '@/lib/stock/stock-sync'
+import { useStockMovementStore } from './use-stock-movement-store'
 
 export interface InventoryRow {
   id: string
@@ -41,22 +36,49 @@ const seedRows: InventoryRow[] = mockProducts.map((p) => ({
   min_stock: p.min_stock,
 }))
 
-const matches = (r: InventoryRow, outletId: string, productId: string, variantId?: string) =>
+const matches = (r: InventoryRow, outletId: string, productId: string, variantId?: string | null) =>
   r.outlet_id === outletId && r.product_id === productId && (variantId ? r.variant_id === variantId : !r.variant_id)
+
+const rowKey = (outletId: string, productId: string, variantId?: string | null) => `${outletId}|${productId}|${variantId ?? ''}`
+const lineKey = (l: StockLine) => rowKey(l.outlet_id, l.product_id, l.variant_id)
+
+/** Terapkan baris ke sebuah angka: set_to menimpa, delta menambah (urutan penting). */
+function fold(start: number, lines: StockLine[]): number {
+  let v = start
+  for (const l of lines) v = l.set_to != null ? Math.max(0, Math.round(l.set_to)) : v + Math.round(l.delta ?? 0)
+  return v
+}
+
+/** Pemberitahuan ke store lain (produk/varian) bahwa angka stok berubah → proyeksikan ulang. */
+const reconciledListeners = new Set<() => void>()
+export function onStockReconciled(cb: () => void) { reconciledListeners.add(cb); return () => reconciledListeners.delete(cb) }
+function emitReconciled() { reconciledListeners.forEach((cb) => { try { cb() } catch { /* abaikan */ } }) }
+
+export interface Estimate { before: number; after: number }
 
 interface InventoryStore {
   items: InventoryRow[]
   loaded: boolean
+  /** Baris perubahan stok yang masih di antrean perangkat (belum sampai server). */
+  pendingLines: number
   fetch: () => Promise<void>
-  /** Stok di outlet tsb. null = inventory belum dikelola (kosong total) → pemanggil pakai fallback lama. */
+  /** Stok di outlet tsb. null = inventory belum dimuat sama sekali → pemanggil pakai fallback lama. */
   stockAt: (outletId: string, productId: string, variantId?: string) => number | null
   minStockAt: (outletId: string, productId: string, variantId?: string) => number | null
-  applyDelta: (outletId: string, productId: string, variantId: string | undefined, delta: number) => { before: number; after: number }
-  setStockAt: (outletId: string, productId: string, variantId: string | undefined, value: number) => { before: number; after: number }
-  transfer: (fromOutlet: string, toOutlet: string, productId: string, variantId: string | undefined, qty: number) => void
-  /** Saat produk baru tersimpan (id sementara → uuid), pindahkan & persist baris inventory-nya. */
+  /**
+   * Ubah stok — TAHAN OFFLINE. Baris ditulis ke antrean perangkat dulu, dikirim ke server yang
+   * mengubah stok + menulis riwayat dalam satu transaksi. Mengembalikan PERKIRAAN sebelum/sesudah
+   * per baris (dari memori); angka server menyusul dan otomatis menggantikannya.
+   */
+  applyStock: (lines: StockLine[]) => Estimate[]
+  /**
+   * Ubah stok dan TUNGGU server (impor, opname, ubah dari form) — pengguna butuh hasil/penolakan
+   * seketika (mis. STOK_BERUBAH). Tidak masuk antrean; yang gagal dilaporkan per baris.
+   */
+  applyStockNow: (lines: StockLine[]) => Promise<{ results: StockResult[]; failed: StockFailure[] }>
+  /** Saat produk baru tersimpan (id sementara → uuid), pindahkan baris memori ke id barunya. */
   remapProduct: (oldProductId: string, newProductId: string) => void
-  /** Saat varian baru tersimpan (id sementara → uuid), pindahkan & persist baris inventory varian. */
+  /** Saat varian baru tersimpan (id sementara → uuid), pindahkan baris memori ke id barunya. */
   remapVariant: (oldVariantId: string, newVariantId: string) => void
   /** Hapus baris inventory milik produk (saat produk dihapus). */
   removeProduct: (productId: string) => void
@@ -64,265 +86,164 @@ interface InventoryStore {
   removeByOutlet: (outletId: string) => void
   /** Kosongkan semua baris inventory di memori (saat hapus semua produk; DB ikut via cascade FK). */
   clearAll: () => void
-  /** Set stok massal (absolut) untuk banyak produk di satu outlet — 1x update memori + batch ke DB. Mengembalikan jumlah baris yang GAGAL ke DB. */
-  bulkUpsert: (outletId: string, entries: { productId: string; stock: number }[]) => Promise<number>
 }
 
-// Baris sementara yang insert-nya sedang berjalan — cegah double-insert (race) sebelum id ditukar.
-const inserting = new Set<string>()
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-/**
- * GAGAL SIMPAN STOK → jangan diam-diam. Dulu kegagalan cuma jadi warning di console, sementara
- * layar sudah terlanjur bilang "berhasil" — akibatnya stok terlihat bertambah lalu balik lagi
- * setelah refresh. Sekarang: beri tahu kasir DAN tarik ulang data dari server supaya angka di
- * layar = angka sebenarnya (bukan angka palsu).
- */
-let failureNotified = false
-function reportStockFailure() {
-  if (typeof window === 'undefined') return
-  void useInventoryStore.getState().fetch() // samakan lagi dgn server
-  if (failureNotified) return
-  failureNotified = true
-  setTimeout(() => { failureNotified = false }, 5000) // jangan spam saat banyak baris gagal
-  void import('sonner').then(({ toast }) =>
-    toast.error('Stok GAGAL tersimpan ke server — koneksi bermasalah. Angka dikembalikan ke data server, silakan ulangi.', { duration: 10000 })
-  )
-}
-
-/** Simpan perubahan stok dengan RETRY (3×, jeda menaik). true bila akhirnya tersimpan. */
-async function updateStockWithRetry(id: string, patch: { stock: number; min_stock: number }): Promise<boolean> {
-  for (let i = 0; i < 3; i++) {
-    const ok = await updateRow('inventory', id, patch)
-    if (ok) return true
-    if (i < 2) await sleep(700 * (i + 1))
+export const useInventoryStore = create<InventoryStore>()((set, get) => {
+  /** Ubah memori saja (optimistis) — dipakai applyStock & applyStockNow. */
+  const applyLocal = (lines: StockLine[]): Estimate[] => {
+    const items = get().items.slice()
+    const est: Estimate[] = []
+    for (const l of lines) {
+      const idx = items.findIndex((r) => matches(r, l.outlet_id, l.product_id, l.variant_id))
+      const before = idx >= 0 ? items[idx].stock : 0
+      const after = fold(before, [l])
+      if (idx >= 0) items[idx] = { ...items[idx], stock: after }
+      else items.push({ id: generateId('inv'), outlet_id: l.outlet_id, product_id: l.product_id, variant_id: l.variant_id ?? undefined, stock: after, min_stock: 0 })
+      est.push({ before, after })
+    }
+    set({ items })
+    return est
   }
-  return false
-}
 
-/**
- * Kirim PERUBAHAN (delta) ke server, bukan angka absolut.
- *
- * Menulis angka absolut hasil hitungan di memori bikin perubahan perangkat lain TERHAPUS
- * (lost update) — 17 Agu 2026 transfer 2000 pcs Brown Paper Cup hilang gara-gara ini.
- * Fungsi DB apply_stock_delta mengunci barisnya dan melakukan `stock = stock + delta`,
- * lalu mengembalikan stok sebenarnya → dipakai menyamakan angka di layar.
- */
-async function pushDelta(
-  outletId: string, productId: string, variantId: string | undefined, delta: number
-): Promise<boolean> {
-  const sb = getSupabaseBrowser()
-  for (let i = 0; i < 3; i++) {
-    const { data, error } = await sb.rpc('apply_stock_delta', {
-      p_outlet: outletId, p_product: productId, p_variant: variantId ?? null, p_delta: delta,
+  /**
+   * Samakan memori dengan server untuk baris-baris yang disentuh: angka server terakhir untuk
+   * baris itu + baris yang MASIH di antrean (belum terkirim) untuk baris yang sama.
+   */
+  const reconcile = (truth: Map<string, number>) => {
+    if (!truth.size) return
+    const pending = pendingStockLines()
+    const items = get().items.slice()
+    truth.forEach((serverAfter, key) => {
+      const [o, p, v] = key.split('|')
+      const later = pending.filter((l) => lineKey(l) === key)
+      const value = fold(serverAfter, later)
+      const idx = items.findIndex((r) => matches(r, o, p, v || undefined))
+      if (idx >= 0) items[idx] = { ...items[idx], stock: value }
+      else items.push({ id: generateId('inv'), outlet_id: o, product_id: p, variant_id: v || undefined, stock: value, min_stock: 0 })
     })
-    if (!error) {
-      const after = Array.isArray(data) ? (data[0] as { after_stock?: number })?.after_stock : undefined
-      if (typeof after === 'number') {
-        // Samakan dengan angka OTORITATIF dari server (bisa beda kalau perangkat lain ikut menulis).
-        useInventoryStore.setState((s) => ({
-          items: s.items.map((r) => (matches(r, outletId, productId, variantId) ? { ...r, stock: after } : r)),
-        }))
-      }
-      return true
-    }
-    if (i < 2) await sleep(700 * (i + 1))
-    else console.warn('[akapack] apply_stock_delta gagal:', error.message)
+    set({ items })
+    emitReconciled()
   }
-  return false
-}
 
-function persistRow(row: InventoryRow) {
-  if (isUuid(row.id)) {
-    void updateStockWithRetry(row.id, { stock: row.stock, min_stock: row.min_stock })
-      .then((ok) => { if (!ok) reportStockFailure() })
-    return row.id
-  }
-  // Baris baru → insert; FK butuh uuid. Jangan insert baris VARIAN sebelum variant_id jadi uuid
-  // (cegah baris varian salah jadi level-produk). Mock mode: config-gated → no-op.
-  if (isUuid(row.product_id) && (!row.variant_id || isUuid(row.variant_id))) {
-    if (inserting.has(row.id)) return null // insert sudah jalan; nilai terkini di-flush saat resolve
-    inserting.add(row.id)
-    void insertRow<InventoryRowDB>('inventory', {
-      tenant_id: DEFAULT_TENANT_ID,
-      outlet_id: row.outlet_id,
-      product_id: row.product_id,
-      variant_id: row.variant_id ?? null,
-      stock: row.stock,
-      min_stock: row.min_stock,
-    }).then((r) => {
-      inserting.delete(row.id)
-      if (!r) { reportStockFailure(); return } // insert gagal → jangan diam, samakan lagi dgn server
-      useInventoryStore.setState((s) => ({ items: s.items.map((x) => (x.id === row.id ? { ...x, id: r.id } : x)) }))
-      // Flush stok terkini bila berubah selama insert berjalan (mutasi di jendela race)
-      const cur = useInventoryStore.getState().items.find((x) => x.id === r.id)
-      if (cur && (cur.stock !== row.stock || cur.min_stock !== row.min_stock)) {
-        void updateStockWithRetry(r.id, { stock: cur.stock, min_stock: cur.min_stock })
-          .then((ok) => { if (!ok) reportStockFailure() })
+  registerStockSyncHandlers({
+    onQueueChange: (pending) => set({ pendingLines: pending }),
+    onApplied: (lines, results) => {
+      const byId = new Map(results.map((r) => [r.movement_id, r]))
+      const truth = new Map<string, number>()
+      // Baris diterapkan server dalam urutan kunci; untuk tiap baris stok, yang terakhir = angka terkini.
+      for (const r of results) {
+        const line = lines.find((l) => l.id === r.movement_id)
+        if (!line || !r.applied) continue // applied=false = kiriman ulang → angkanya historis, bukan terkini
+        truth.set(lineKey(line), r.after_stock)
       }
-    })
-  }
-  return null
-}
-
-export const useInventoryStore = create<InventoryStore>()((set, get) => ({
-  items: isSupabaseConfigured() ? [] : seedRows,
-  loaded: false,
-
-  fetch: async () => {
-    const rows = await fetchAll<InventoryRowDB>('inventory', 'created_at', true)
-    if (!rows) {
-      set({ loaded: true }) // tabel belum ada → pertahankan seed mock (fallback)
-      return
-    }
-    const mapped: InventoryRow[] = rows.map((r) => ({
-      id: r.id,
-      outlet_id: r.outlet_id,
-      product_id: r.product_id,
-      variant_id: r.variant_id ?? undefined,
-      stock: r.stock ?? 0,
-      min_stock: r.min_stock ?? 0,
-    }))
-    set({ items: mapped, loaded: true })
-  },
-
-  stockAt: (outletId, productId, variantId) => {
-    const items = get().items
-    if (items.length === 0) return null
-    const row = items.find((r) => matches(r, outletId, productId, variantId))
-    return row ? row.stock : 0
-  },
-
-  minStockAt: (outletId, productId, variantId) => {
-    const items = get().items
-    if (items.length === 0) return null
-    const row = items.find((r) => matches(r, outletId, productId, variantId))
-    return row ? row.min_stock : 0
-  },
-
-  applyDelta: (outletId, productId, variantId, delta) => {
-    const items = get().items
-    const row = items.find((r) => matches(r, outletId, productId, variantId))
-    const before = row ? row.stock : 0
-    // Boleh MINUS: kebijakan toko — barang kosong tetap boleh dijual (stok minus = "utang stok",
-    // jujur tercatat & dikoreksi lewat stok masuk/opname). Movement before/after tetap akurat.
-    const after = before + delta
-    if (row) {
-      const updated = { ...row, stock: after }
-      set({ items: items.map((r) => (r === row ? updated : r)) })
-    } else {
-      const nr: InventoryRow = { id: generateId('inv'), outlet_id: outletId, product_id: productId, variant_id: variantId, stock: after, min_stock: 0 }
-      set({ items: [...items, nr] })
-    }
-    // Ke server sebagai DELTA (anti saling-timpa antar perangkat). Produk/varian yang id-nya belum
-    // uuid (baru dibuat, belum tersimpan) tak bisa lewat RPC → pakai jalur lama sampai id-nya jadi.
-    const canRpc = isSupabaseConfigured() && isUuid(outletId) && isUuid(productId) && (!variantId || isUuid(variantId))
-    if (canRpc) {
-      void pushDelta(outletId, productId, variantId, delta).then((ok) => { if (!ok) reportStockFailure() })
-    } else {
-      const cur = get().items.find((r) => matches(r, outletId, productId, variantId))
-      if (cur) persistRow(cur)
-    }
-    return { before, after }
-  },
-
-  setStockAt: (outletId, productId, variantId, value) => {
-    const items = get().items
-    const row = items.find((r) => matches(r, outletId, productId, variantId))
-    const before = row ? row.stock : 0
-    const after = Math.max(0, value)
-    if (row) {
-      const updated = { ...row, stock: after }
-      set({ items: items.map((r) => (r === row ? updated : r)) })
-      persistRow(updated)
-    } else {
-      const nr: InventoryRow = { id: generateId('inv'), outlet_id: outletId, product_id: productId, variant_id: variantId, stock: after, min_stock: 0 }
-      set({ items: [...items, nr] })
-      persistRow(nr)
-    }
-    return { before, after }
-  },
-
-  transfer: (fromOutlet, toOutlet, productId, variantId, qty) => {
-    get().applyDelta(fromOutlet, productId, variantId, -qty)
-    get().applyDelta(toOutlet, productId, variantId, qty)
-  },
-
-  remapProduct: (oldId, newId) => {
-    const items = get().items
-    if (!items.some((r) => r.product_id === oldId)) return
-    const next = items.map((r) => (r.product_id === oldId ? { ...r, product_id: newId } : r))
-    set({ items: next })
-    next.filter((r) => r.product_id === newId).forEach((r) => persistRow(r))
-  },
-
-  remapVariant: (oldId, newId) => {
-    const items = get().items
-    if (!items.some((r) => r.variant_id === oldId)) return
-    const next = items.map((r) => (r.variant_id === oldId ? { ...r, variant_id: newId } : r))
-    set({ items: next })
-    next.filter((r) => r.variant_id === newId).forEach((r) => persistRow(r))
-  },
-
-  removeProduct: (productId) => set((s) => ({ items: s.items.filter((r) => r.product_id !== productId) })),
-
-  removeByOutlet: (outletId) => set((s) => ({ items: s.items.filter((r) => r.outlet_id !== outletId) })),
-
-  clearAll: () => set({ items: [] }),
-
-  bulkUpsert: async (outletId, entries) => {
-    const items = get().items
-    const idxByKey = new Map<string, number>()
-    items.forEach((r, i) => { if (!r.variant_id) idxByKey.set(`${r.outlet_id}|${r.product_id}`, i) })
-    const next = items.slice()
-    const updates: { id: string; stock: number; min_stock: number }[] = []
-    const inserts: InventoryRow[] = []
-    for (const e of entries) {
-      const stock = Math.max(0, Math.round(e.stock))
-      const k = `${outletId}|${e.productId}`
-      const idx = idxByKey.get(k)
-      if (idx !== undefined) {
-        next[idx] = { ...next[idx], stock }
-        if (isUuid(next[idx].id)) updates.push({ id: next[idx].id, stock, min_stock: next[idx].min_stock })
-      } else {
-        const nr: InventoryRow = { id: generateId('inv'), outlet_id: outletId, product_id: e.productId, stock, min_stock: 0 }
-        next.push(nr); idxByKey.set(k, next.length - 1)
-        if (isUuid(e.productId)) inserts.push(nr)
+      reconcile(truth)
+      useStockMovementStore.getState().resolvePending(lines.map((l) => {
+        const r = byId.get(l.id)
+        return r ? { id: l.id, before: r.before_stock, after: r.after_stock, quantity: r.quantity } : null
+      }).filter(Boolean) as { id: string; before: number; after: number; quantity: number }[])
+    },
+    onRejected: (lines, code, message, interactive) => {
+      // Ditolak permanen → batalkan efek optimisnya di memori dan riwayat, lalu beri tahu.
+      const items = get().items.slice()
+      for (const l of lines) {
+        if (l.set_to != null) continue // set absolut tak bisa dibalik tanpa angka lama → muat ulang di bawah
+        const idx = items.findIndex((r) => matches(r, l.outlet_id, l.product_id, l.variant_id))
+        if (idx >= 0) items[idx] = { ...items[idx], stock: items[idx].stock - Math.round(l.delta ?? 0) }
       }
-    }
-    set({ items: next })
-    if (!isSupabaseConfigured()) return 0
-    const sb = getSupabaseBrowser()
-    let failed = 0
-    for (const c of chunk(updates, 500)) {
-      // Retry 3× — upsert berdasarkan id bersifat idempoten, jadi aman diulang saat koneksi ngadat.
-      let ok = false
-      for (let i = 0; i < 3 && !ok; i++) {
-        try {
-          const { error } = await sb.from('inventory').upsert(c)
-          if (!error) ok = true
-          else { console.warn('[akapack] bulk update inventory:', error.message); if (i < 2) await sleep(700 * (i + 1)) }
-        } catch (e) { console.warn('[akapack] bulk update inventory:', e); if (i < 2) await sleep(700 * (i + 1)) }
+      set({ items })
+      useStockMovementStore.getState().dropPending(lines.map((l) => l.id))
+      if (lines.some((l) => l.set_to != null)) void get().fetch()
+      emitReconciled()
+      if (!interactive && typeof window !== 'undefined') {
+        void import('sonner').then(({ toast }) =>
+          toast.error(`Perubahan stok DITOLAK server: ${describeStockError(code, message)}. ${lines.length} baris dibatalkan.`, { duration: 15000 })
+        )
       }
-      if (!ok) failed += c.length
-    }
-    for (const c of chunk(inserts, 500)) {
-      try {
-        const rows = c.map((r) => ({ tenant_id: DEFAULT_TENANT_ID, outlet_id: r.outlet_id, product_id: r.product_id, variant_id: null, stock: r.stock, min_stock: r.min_stock }))
-        let { data, error } = await sb.from('inventory').insert(rows).select('id, product_id')
-        // Insert per-statement bersifat atomik: kalau gagal, tak ada baris masuk → aman dicoba ulang.
-        for (let i = 0; i < 2 && error; i++) {
-          await sleep(700 * (i + 1))
-          ;({ data, error } = await sb.from('inventory').insert(rows).select('id, product_id'))
+    },
+  })
+
+  return {
+    items: isSupabaseConfigured() ? [] : seedRows,
+    loaded: false,
+    pendingLines: typeof window !== 'undefined' ? pendingStockLines().length : 0,
+
+    fetch: async () => {
+      const rows = await fetchAll<InventoryRowDB>('inventory', 'created_at', true)
+      if (!rows) {
+        set({ loaded: true }) // tabel belum ada → pertahankan seed mock (fallback)
+        return
+      }
+      // Angka server + perubahan yang masih di antrean perangkat ini (belum sampai server) —
+      // dulu muat ulang membuang perubahan yang belum terkirim, stok "balik lagi".
+      const pending = pendingStockLines()
+      const mapped: InventoryRow[] = rows.map((r) => {
+        const key = rowKey(r.outlet_id, r.product_id, r.variant_id)
+        const mine = pending.filter((l) => lineKey(l) === key)
+        return {
+          id: r.id,
+          outlet_id: r.outlet_id,
+          product_id: r.product_id,
+          variant_id: r.variant_id ?? undefined,
+          stock: fold(r.stock ?? 0, mine),
+          min_stock: r.min_stock ?? 0,
         }
-        if (error || !data) { failed += c.length; if (error) console.warn('[akapack] bulk insert inventory:', error.message) }
-        else {
-          const idByProduct = new Map((data as { id: string; product_id: string }[]).map((d) => [d.product_id, d.id]))
-          set((s) => ({ items: s.items.map((r) => (r.outlet_id === outletId && !r.variant_id && !isUuid(r.id) && idByProduct.has(r.product_id) ? { ...r, id: idByProduct.get(r.product_id) as string } : r)) }))
-        }
-      } catch (e) { failed += c.length; console.warn('[akapack] bulk insert inventory:', e) }
-    }
-    return failed
-  },
-}))
+      })
+      // Baris antrean untuk kombinasi yang belum punya baris di server (stok pertama kali).
+      const known = new Set(mapped.map((m) => rowKey(m.outlet_id, m.product_id, m.variant_id)))
+      const extra = new Map<string, StockLine[]>()
+      for (const l of pending) if (!known.has(lineKey(l))) extra.set(lineKey(l), [...(extra.get(lineKey(l)) ?? []), l])
+      extra.forEach((ls, key) => {
+        const [o, p, v] = key.split('|')
+        mapped.push({ id: generateId('inv'), outlet_id: o, product_id: p, variant_id: v || undefined, stock: fold(0, ls), min_stock: 0 })
+      })
+      set({ items: mapped, loaded: true })
+      emitReconciled()
+      void flushStockOutbox()
+    },
+
+    stockAt: (outletId, productId, variantId) => {
+      const items = get().items
+      if (items.length === 0) return null
+      const row = items.find((r) => matches(r, outletId, productId, variantId))
+      return row ? row.stock : 0
+    },
+
+    minStockAt: (outletId, productId, variantId) => {
+      const items = get().items
+      if (items.length === 0) return null
+      const row = items.find((r) => matches(r, outletId, productId, variantId))
+      return row ? row.min_stock : 0
+    },
+
+    applyStock: (lines) => {
+      const est = applyLocal(lines)
+      useStockMovementStore.getState().addPending(lines, est)
+      enqueueStock(lines)
+      emitReconciled()
+      return est
+    },
+
+    applyStockNow: async (lines) => {
+      const est = applyLocal(lines)
+      useStockMovementStore.getState().addPending(lines, est)
+      emitReconciled()
+      return sendNow(lines)
+    },
+
+    remapProduct: (oldId, newId) => {
+      if (!get().items.some((r) => r.product_id === oldId)) return
+      set((s) => ({ items: s.items.map((r) => (r.product_id === oldId ? { ...r, product_id: newId } : r)) }))
+    },
+
+    remapVariant: (oldId, newId) => {
+      if (!get().items.some((r) => r.variant_id === oldId)) return
+      set((s) => ({ items: s.items.map((r) => (r.variant_id === oldId ? { ...r, variant_id: newId } : r)) }))
+    },
+
+    removeProduct: (productId) => set((s) => ({ items: s.items.filter((r) => r.product_id !== productId) })),
+
+    removeByOutlet: (outletId) => set((s) => ({ items: s.items.filter((r) => r.outlet_id !== outletId) })),
+
+    clearAll: () => set({ items: [] }),
+  }
+})

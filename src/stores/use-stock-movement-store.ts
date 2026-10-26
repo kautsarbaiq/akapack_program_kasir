@@ -1,27 +1,51 @@
 import { create } from 'zustand'
-import type { StockMovement, MovementType } from '@/types'
+import type { StockMovement } from '@/types'
 import { mockStockMovements } from '@/lib/mock-data'
-import { generateId } from '@/lib/utils'
-import { DEFAULT_TENANT_ID, isSupabaseConfigured } from '@/lib/supabase/config'
-import { getSupabaseBrowser } from '@/lib/supabase/client'
-import { fetchAll, insertRow } from '@/lib/supabase/repo'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
+import { fetchAll } from '@/lib/supabase/repo'
+import { pendingStockLines, type StockLine } from '@/lib/stock/stock-sync'
 import { useProductStore } from './use-product-store'
-import { useActiveOutletStore } from './use-active-outlet-store'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const isUuid = (s?: string | null): s is string => !!s && UUID_RE.test(s)
+/**
+ * Riwayat pergerakan stok.
+ *
+ * Riwayat TIDAK lagi ditulis dari sini. Setiap perubahan stok lewat useInventoryStore.applyStock
+ * → fungsi DB yang menulis stok + riwayat sekaligus dengan angka sebelum/sesudah yang sebenarnya.
+ * Store ini hanya menampilkan: baris server + baris "menunggu" (masih di antrean perangkat) yang
+ * diganti angka server begitu terkonfirmasi. id-nya sama, jadi muat ulang tak pernah menggandakan.
+ */
 
-export interface AddMovementInput {
-  product_id: string
-  type: MovementType
-  quantity: number
-  before_stock: number
-  after_stock: number
-  notes?: string
-  reference_id?: string
-  created_by_name?: string
-  outlet_id?: string // default: outlet aktif
-  date?: string      // tanggal pergerakan (default: sekarang)
+/** Urutan tampilan: urutan TERAP di server dulu (applied_seq), baris lama (tanpa seq) menurut waktu. */
+export function compareMovementsDesc(a: StockMovement, b: StockMovement): number {
+  if (a.pending !== b.pending) return a.pending ? -1 : 1 // yang masih menunggu paling atas (paling baru)
+  const sa = a.applied_seq ?? null
+  const sb = b.applied_seq ?? null
+  if (sa != null && sb != null && sa !== sb) return sb - sa
+  if (sa != null && sb == null) return -1
+  if (sa == null && sb != null) return 1
+  if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1
+  return a.id < b.id ? 1 : -1
+}
+
+function pendingRow(l: StockLine, before: number, after: number): StockMovement {
+  const qty = l.set_to != null ? after - before : Math.round(l.delta ?? 0)
+  return {
+    id: l.id,
+    outlet_id: l.outlet_id,
+    product_id: l.product_id,
+    variant_id: l.variant_id ?? null,
+    product: useProductStore.getState().products.find((p) => p.id === l.product_id),
+    type: l.type,
+    quantity: qty,
+    before_stock: before,
+    after_stock: after,
+    notes: l.notes,
+    reference_id: l.reference_id ?? undefined,
+    created_by: 'system',
+    created_at: l.created_at ?? new Date().toISOString(),
+    applied_seq: null,
+    pending: true,
+  }
 }
 
 interface StockMovementStore {
@@ -29,122 +53,69 @@ interface StockMovementStore {
   loaded: boolean
   /** Muat sekali saat halaman pemakainya dibuka (lazy — hemat bandwidth saat boot). */
   ensure: () => void
+  /** Paksa muat ulang (halaman History dibuka) — perubahan dari perangkat lain ikut tampil. */
+  refresh: () => Promise<void>
   fetch: () => Promise<void>
-  addMovement: (input: AddMovementInput) => void
-  /** Catat BANYAK pergerakan sekaligus (mis. impor Excel ribuan baris) — dikirim per potongan,
-   *  bukan satu-satu, supaya tak membanjiri server. Mengembalikan jumlah baris yang GAGAL. */
-  addMovementsBulk: (inputs: AddMovementInput[]) => Promise<number>
+  /** Tampilkan baris yang baru dikirim (perkiraan) — dipanggil useInventoryStore.applyStock. */
+  addPending: (lines: StockLine[], estimates: { before: number; after: number }[]) => void
+  /** Server mengonfirmasi → ganti perkiraan dengan angka sebenarnya. */
+  resolvePending: (rows: { id: string; before: number; after: number; quantity: number }[]) => void
+  /** Ditolak server → hapus baris perkiraannya. */
+  dropPending: (ids: string[]) => void
   /** Kosongkan semua pergerakan stok di memori (saat hapus semua produk; DB ikut via cascade FK). */
   clearAll: () => void
 }
 
-let __fetching = false // anti dobel-fetch saat 2 halaman ensure bersamaan (StrictMode/navigasi cepat)
+let __fetching: Promise<void> | null = null
+// Nomor urut sementara untuk baris yang baru dikonfirmasi (server tak mengembalikan applied_seq-nya):
+// diletakkan paling atas (paling baru) sampai muat ulang mengganti dengan nomor sebenarnya.
+let provisionalSeq = Number.MAX_SAFE_INTEGER
 export const useStockMovementStore = create<StockMovementStore>()((set, get) => ({
   movements: isSupabaseConfigured() ? [] : mockStockMovements,
   loaded: false,
 
-  ensure: () => { if (!get().loaded && !__fetching) { __fetching = true; void get().fetch().finally(() => { __fetching = false }) } },
+  ensure: () => { if (!get().loaded) void get().fetch() },
+
+  refresh: () => get().fetch(),
 
   fetch: async () => {
-    const rows = await fetchAll<StockMovement>('stock_movements', 'created_at', false)
-    if (rows) {
+    if (__fetching) return __fetching
+    const run = (async () => {
+      const rows = await fetchAll<StockMovement>('stock_movements', 'created_at', false)
+      if (!rows) { set({ loaded: true }); return }
       const products = useProductStore.getState().products
-      const withProduct = rows.map((m) => ({
-        ...m,
-        product: products.find((p) => p.id === m.product_id),
-        created_by_name: m.created_by_name ?? 'Sistem',
-      }))
-      set({ movements: withProduct, loaded: true })
-    } else {
-      set({ loaded: true })
-    }
+      const server = rows.map((m) => ({ ...m, product: products.find((p) => p.id === m.product_id), pending: false }))
+      const ids = new Set(server.map((m) => m.id))
+      // Baris yang masih di antrean perangkat & belum ada di server tetap ditampilkan sebagai "menunggu".
+      const stillPending = get().movements.filter((m) => m.pending && !ids.has(m.id))
+      const queued = new Set(pendingStockLines().map((l) => l.id))
+      const keep = stillPending.filter((m) => queued.has(m.id))
+      set({ movements: [...keep, ...server].sort(compareMovementsDesc), loaded: true })
+    })()
+    __fetching = run.finally(() => { __fetching = null })
+    return __fetching
   },
 
-  addMovement: (input) => {
-    const product = useProductStore.getState().products.find((p) => p.id === input.product_id)
-    const outletId = input.outlet_id ?? useActiveOutletStore.getState().activeOutletId
-    const createdAt = input.date ? new Date(input.date).toISOString() : new Date().toISOString()
-    const mv: StockMovement = {
-      id: generateId('mov'),
-      outlet_id: outletId,
-      product_id: input.product_id,
-      product,
-      type: input.type,
-      quantity: input.quantity,
-      before_stock: input.before_stock,
-      after_stock: input.after_stock,
-      notes: input.notes,
-      reference_id: input.reference_id,
-      created_by: 'system',
-      created_by_name: input.created_by_name ?? 'Sistem',
-      created_at: createdAt,
-    }
-    set((s) => ({ movements: [mv, ...s.movements] }))
-    void insertRow('stock_movements', {
-      tenant_id: DEFAULT_TENANT_ID,
-      outlet_id: isUuid(outletId) ? outletId : null,
-      product_id: isUuid(input.product_id) ? input.product_id : null,
-      type: input.type,
-      quantity: input.quantity,
-      before_stock: input.before_stock,
-      after_stock: input.after_stock,
-      notes: input.notes ?? null,
-      reference_id: isUuid(input.reference_id) ? input.reference_id : null,
-      created_at: createdAt,
-    })
+  addPending: (lines, estimates) => {
+    const rows = lines.map((l, i) => pendingRow(l, estimates[i]?.before ?? 0, estimates[i]?.after ?? 0))
+    const ids = new Set(rows.map((r) => r.id))
+    set((s) => ({ movements: [...rows, ...s.movements.filter((m) => !ids.has(m.id))] }))
   },
 
-  addMovementsBulk: async (inputs) => {
-    if (!inputs.length) return 0
-    const products = useProductStore.getState().products
-    const fallbackOutlet = useActiveOutletStore.getState().activeOutletId
-    const now = new Date().toISOString()
-
-    const local: StockMovement[] = inputs.map((input) => ({
-      id: generateId('mov'),
-      outlet_id: input.outlet_id ?? fallbackOutlet,
-      product_id: input.product_id,
-      product: products.find((p) => p.id === input.product_id),
-      type: input.type,
-      quantity: input.quantity,
-      before_stock: input.before_stock,
-      after_stock: input.after_stock,
-      notes: input.notes,
-      reference_id: input.reference_id,
-      created_by: 'system',
-      created_by_name: input.created_by_name ?? 'Sistem',
-      created_at: input.date ? new Date(input.date).toISOString() : now,
+  resolvePending: (rows) => {
+    if (!rows.length) return
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    set((s) => ({
+      movements: s.movements.map((m) => {
+        const r = byId.get(m.id)
+        return r ? { ...m, before_stock: r.before, after_stock: r.after, quantity: r.quantity, pending: false, applied_seq: provisionalSeq-- } : m
+      }),
     }))
-    set((s) => ({ movements: [...local, ...s.movements] }))
+  },
 
-    if (!isSupabaseConfigured()) return 0
-    const sb = getSupabaseBrowser()
-    const payload = local.map((m) => ({
-      tenant_id: DEFAULT_TENANT_ID,
-      outlet_id: isUuid(m.outlet_id) ? m.outlet_id : null,
-      product_id: isUuid(m.product_id) ? m.product_id : null,
-      type: m.type,
-      quantity: m.quantity,
-      before_stock: m.before_stock,
-      after_stock: m.after_stock,
-      notes: m.notes ?? null,
-      reference_id: isUuid(m.reference_id) ? m.reference_id : null,
-      created_at: m.created_at,
-    }))
-    let failed = 0
-    for (let i = 0; i < payload.length; i += 250) {
-      const chunk = payload.slice(i, i + 250)
-      // Sekali ulang kalau gagal — kedipan koneksi jangan sampai menghapus jejak seluruh potongan.
-      let ok = false
-      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-        const { error } = await sb.from('stock_movements').insert(chunk)
-        if (!error) { ok = true; break }
-        if (attempt === 0) await new Promise((r) => setTimeout(r, 600))
-        else console.warn('[akapack] gagal catat pergerakan massal:', error.message)
-      }
-      if (!ok) failed += chunk.length
-    }
-    return failed
+  dropPending: (ids) => {
+    const drop = new Set(ids)
+    set((s) => ({ movements: s.movements.filter((m) => !(m.pending && drop.has(m.id))) }))
   },
 
   clearAll: () => set({ movements: [] }),

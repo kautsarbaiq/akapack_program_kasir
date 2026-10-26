@@ -9,11 +9,8 @@ import { Label } from '@/components/ui/label'
 import { useStoreCart } from '@/stores/use-store-cart'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useTransactionStore } from '@/stores/use-transaction-store'
-import { useProductStore } from '@/stores/use-product-store'
-import { useVariantStore } from '@/stores/use-variant-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
-import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
-import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { newMovementId } from '@/lib/stock/stock-sync'
 import { useSettingsStore } from '@/stores/use-settings-store'
 import { DEFAULT_OUTLET_ID } from '@/lib/supabase/config'
 import { formatRupiah, generateId, nextTransactionNumber, waUrl, cn } from '@/lib/utils'
@@ -28,7 +25,6 @@ export default function CheckoutPage() {
   const clear = useStoreCart((s) => s.clear)
   const addCustomer = useCustomerStore((s) => s.addCustomer)
   const addTransaction = useTransactionStore((s) => s.addTransaction)
-  const addMovement = useStockMovementStore((s) => s.addMovement)
   const storeName = useSettingsStore((s) => s.storeName)
   const waNumber = useSettingsStore((s) => s.waNumber)
   const bankInfo = useSettingsStore((s) => s.bankInfo)
@@ -53,7 +49,8 @@ export default function CheckoutPage() {
     await new Promise((r) => setTimeout(r, 500))
 
     const customer = addCustomer({ name: name.trim(), phone: phone.trim(), email: '', address: address.trim(), points: 0 })
-    const txnId = generateId('trx')
+    // uuid asli (bukan 'trx-…') → jadi id transaksi di server & tertaut ke potongan stoknya (bisa dibatalkan rapi).
+    const txnId = newMovementId()
     const txnItems: TransactionItem[] = items.map((i) => ({
       id: generateId('item'),
       transaction_id: txnId,
@@ -89,16 +86,18 @@ export default function CheckoutPage() {
       created_at: new Date().toISOString(),
     }
     addTransaction(txn)
-    // Stok dipotong saat order (reservasi); pesanan mulai berstatus "pending" sampai dikonfirmasi admin.
-    const inv = useInventoryStore.getState()
-    items.forEach((i) => {
-      const { before, after } = inv.applyDelta(ONLINE_OUTLET, i.product_id, i.variant_id, -i.quantity)
-      addMovement({ product_id: i.product_id, type: 'out', quantity: -i.quantity, before_stock: before, after_stock: after, notes: i.variant_id ? `Online (${i.name})` : 'Pesanan Online', reference_id: txnId, outlet_id: ONLINE_OUTLET, created_by_name: 'Online Store' })
-    })
-    // proyeksikan ulang stok yang ditampilkan ke outlet aktif visitor
-    const active = useActiveOutletStore.getState().activeOutletId
-    useProductStore.getState().projectStock(active)
-    useVariantStore.getState().projectVariantStock(active)
+    // Stok dipotong saat order (reservasi); pesanan "pending" sampai dikonfirmasi admin.
+    // Lewat antrean tahan-offline: stok + riwayat ditulis server sekaligus, tertaut ke nota ini.
+    useInventoryStore.getState().applyStock(items.map((i) => ({
+      id: newMovementId(),
+      outlet_id: ONLINE_OUTLET,
+      product_id: i.product_id,
+      variant_id: i.variant_id ?? null,
+      delta: -i.quantity,
+      type: 'out' as const,
+      notes: i.variant_id ? `Online (${i.name})` : 'Pesanan Online',
+      reference_id: txnId,
+    })))
     clear()
     setSuccess(txn)
     setSubmitting(false)

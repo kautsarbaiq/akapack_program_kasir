@@ -133,6 +133,9 @@ function enqueueOutbox(txn: Transaction) {
 }
 function dequeueOutbox(id: string) { writeOutbox(readOutbox().filter((t) => t.id !== id)) }
 
+/** id transaksi yang masih di antrean perangkat ini (belum sampai server) — jangan di-void dulu. */
+export function pendingTxnIds(): Set<string> { return new Set(readOutbox().map((t) => t.id)) }
+
 /** Simpan transaksi dengan RETRY (3×, backoff). Return id bila sukses, null bila semua gagal. */
 async function persistWithRetry(txn: Transaction, tries = 3): Promise<string | null> {
   for (let i = 0; i < tries; i++) {
@@ -291,11 +294,12 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
     }
   },
 
+  // Status void di SERVER ditulis oleh fungsi void_sale_with_stock (bersama pembalik stoknya, di bawah
+  // kunci status). Di sini hanya menandai di memori setelah server mengonfirmasi.
   voidTransaction: (id) => {
     set((s) => ({
       transactions: s.transactions.map((t) => (t.id === id ? { ...t, status: 'void' } : t)),
     }))
-    if (isUuid(id)) void updateRow('transactions', id, { status: 'void' })
   },
 
   setStatus: (id, status) => {
