@@ -23,11 +23,54 @@ import { toast } from 'sonner'
 type Row = {
   date: string; time: string; type: string
   qty: number; ref: string; outlet: string; after: number
+  /** masih di antrean perangkat (belum sampai server) — angka sisa stok masih perkiraan */
+  pending: boolean
 }
 
 const TYPE_LABEL: Record<string, string> = {
   in: 'Masuk', out: 'Keluar', transfer: 'Transfer', opname: 'Opname', adjustment: 'Penyesuaian',
 }
+
+// Komponen di tingkat modul (bukan di dalam render) → tidak dibuat ulang tiap render, gulir tabel tak ter-reset.
+const Table = ({ rs, refLabel }: { rs: Row[]; refLabel: string }) => (
+  <div className="max-h-[60vh] overflow-y-auto">
+    <table className="w-full text-sm">
+      <thead className="sticky top-0 bg-background z-10">
+        <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
+          {['Tanggal', 'Jam', 'Jumlah / Qty', refLabel, 'Cabang', 'Sisa Stok'].map((h) => (
+            <th key={h} className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground bg-muted/50 whitespace-nowrap">{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rs.map((r, i) => (
+          <tr key={r.ref + i} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-muted/30">
+            <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(r.date)}</td>
+            <td className="py-2.5 px-3 text-muted-foreground text-xs">{r.time}</td>
+            <td className={`py-2.5 px-3 font-semibold ${r.qty >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+              {r.qty >= 0 ? '+' : ''}{formatNumber(r.qty)}
+            </td>
+            <td className="py-2.5 px-3 text-xs font-mono">{r.ref}</td>
+            <td className="py-2.5 px-3 text-xs">{r.outlet}</td>
+            <td className="py-2.5 px-3 text-muted-foreground">
+              {r.pending
+                ? <span className="text-amber-600 text-xs" title="Masih di antrean perangkat — angka pasti muncul setelah tersinkron">⏳ menunggu sinyal</span>
+                : formatNumber(r.after)}
+            </td>
+          </tr>
+        ))}
+        {rs.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-muted-foreground">Belum ada data</td></tr>}
+      </tbody>
+    </table>
+  </div>
+)
+
+const Stat = ({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ size?: number }>; label: string; value: string; color: string }) => (
+  <Card><CardContent className="p-4">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1"><Icon size={14} /> {label}</div>
+    <p className="text-xl font-bold" style={{ color }}>{value}</p>
+  </CardContent></Card>
+)
 
 export default function RiwayatItemPage() {
   const movements = useStockMovementStore((s) => s.movements)
@@ -38,9 +81,14 @@ export default function RiwayatItemPage() {
   const { isCashier } = useRole()
   const me = useCurrentUserStore((s) => s.user)
 
-  // Riwayat lengkap butuh SEMUA pergerakan + transaksi (bukan hanya jendela awal).
+  const [search, setSearch] = useState('')
+  const [picked, setPicked] = useState<Product | null>(null)
+
+  // Riwayat lengkap butuh SEMUA pergerakan + transaksi. Dimuat ULANG tiap halaman dibuka (bukan sekali
+  // per sesi) supaya perubahan dari perangkat/cabang lain ikut tampil, dan "Stok Sekarang" = server.
   useEffect(() => {
-    useStockMovementStore.getState().ensure()
+    void useStockMovementStore.getState().refresh()
+    void useInventoryStore.getState().fetch()
     useTransactionStore.getState().ensureAll()
   }, [])
 
@@ -53,11 +101,11 @@ export default function RiwayatItemPage() {
     if (p) { setPicked(p); setSearch(p.name) }
   }, [products])
 
-  const [search, setSearch] = useState('')
-  const [picked, setPicked] = useState<Product | null>(null)
   // Kasir dikunci ke cabangnya (fail-closed); lainnya bebas pilih.
   const lockedOutlet = isCashier ? (me?.outletId ?? '__none__') : null
-  const [outletFilter, setOutletFilter] = useState('all')
+  // Default = cabang aktif. Dulu 'all' mencampur sisa stok Bandung & Garut dalam satu daftar dan
+  // MENJUMLAHKAN "Stok Sekarang" dua cabang — terlihat seperti stok tidak sinkron.
+  const [outletFilter, setOutletFilter] = useState(activeOutletId || 'all')
   const effectiveOutlet = lockedOutlet ?? outletFilter
 
   const list = useMemo(() => {
@@ -72,10 +120,17 @@ export default function RiwayatItemPage() {
     return m
   }, [transactions])
 
-  const rows = useMemo<Row[]>(() => {
-    if (!picked) return []
-    return movements
-      .filter((mv) => mv.product_id === picked.id && (effectiveOutlet === 'all' || mv.outlet_id === effectiveOutlet))
+  // Hasil SO yang angkanya sama dengan stok tercatat sebagai baris 0 (bukti "sudah dicek") —
+  // disembunyikan dari daftar supaya tidak tenggelam (SO September: 4.062 barang tanpa perubahan).
+  const [showZero, setShowZero] = useState(false)
+  const { rows, zeroCount } = useMemo(() => {
+    if (!picked) return { rows: [] as Row[], zeroCount: 0 }
+    // Urutan = urutan TERAP di server (store sudah mengurutkan). Dulu diurut ulang dengan teks jam
+    // "HH:MM" → baris dalam menit yang sama bisa tertukar & rantai sisa stok tampak loncat.
+    const mine = movements.filter((mv) => mv.product_id === picked.id && !mv.variant_id && (effectiveOutlet === 'all' || mv.outlet_id === effectiveOutlet))
+    const zero = mine.filter((mv) => mv.quantity === 0).length
+    const out = mine
+      .filter((mv) => showZero || mv.quantity !== 0)
       .map((mv) => {
         // Nomor rujukan: nota penjualan (dari reference_id) → kalau tidak ada, pakai catatan
         // (mis. "Stok Masuk IN26080600000059" / "Transfer ke Toko Kemasan Garut").
@@ -88,10 +143,11 @@ export default function RiwayatItemPage() {
           ref: trxNo || mv.notes || '—',
           outlet: outlets.find((o) => o.id === mv.outlet_id)?.name ?? '—',
           after: mv.after_stock,
+          pending: !!mv.pending,
         }
       })
-      .sort((a, b) => (a.date === b.date ? b.time.localeCompare(a.time) : b.date.localeCompare(a.date)))
-  }, [picked, movements, effectiveOutlet, outlets, trxNoById])
+    return { rows: out, zeroCount: zero }
+  }, [picked, movements, effectiveOutlet, outlets, trxNoById, showZero])
 
   const masuk = rows.filter((r) => r.type === 'in')
   const keluar = rows.filter((r) => r.type === 'out')
@@ -120,42 +176,6 @@ export default function RiwayatItemPage() {
     XLSX.writeFile(wb, `history-${picked.sku}-${localDay(new Date())}.xlsx`)
     toast.success('Riwayat diunduh')
   }
-
-  const Table = ({ rs, refLabel }: { rs: Row[]; refLabel: string }) => (
-    <div className="max-h-[60vh] overflow-y-auto">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-background z-10">
-          <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-            {['Tanggal', 'Jam', 'Jumlah / Qty', refLabel, 'Cabang', 'Sisa Stok'].map((h) => (
-              <th key={h} className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground bg-muted/50 whitespace-nowrap">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rs.map((r, i) => (
-            <tr key={r.ref + i} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-muted/30">
-              <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(r.date)}</td>
-              <td className="py-2.5 px-3 text-muted-foreground text-xs">{r.time}</td>
-              <td className={`py-2.5 px-3 font-semibold ${r.qty >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                {r.qty >= 0 ? '+' : ''}{formatNumber(r.qty)}
-              </td>
-              <td className="py-2.5 px-3 text-xs font-mono">{r.ref}</td>
-              <td className="py-2.5 px-3 text-xs">{r.outlet}</td>
-              <td className="py-2.5 px-3 text-muted-foreground">{formatNumber(r.after)}</td>
-            </tr>
-          ))}
-          {rs.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-muted-foreground">Belum ada data</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  )
-
-  const Stat = ({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ size?: number }>; label: string; value: string; color: string }) => (
-    <Card><CardContent className="p-4">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1"><Icon size={14} /> {label}</div>
-      <p className="text-xl font-bold" style={{ color }}>{value}</p>
-    </CardContent></Card>
-  )
 
   return (
     <div className="space-y-6">
@@ -211,7 +231,14 @@ export default function RiwayatItemPage() {
           </div>
 
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-base">Riwayat Pergerakan · {rows.length} baris</CardTitle></CardHeader>
+            <CardHeader className="pb-3 flex-row items-center justify-between gap-3 flex-wrap">
+              <CardTitle className="text-base">Riwayat Pergerakan · {rows.length} baris</CardTitle>
+              {zeroCount > 0 && (
+                <button type="button" onClick={() => setShowZero((v) => !v)} className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
+                  {showZero ? 'Sembunyikan' : 'Tampilkan'} {zeroCount} pengecekan SO tanpa perubahan
+                </button>
+              )}
+            </CardHeader>
             <CardContent>
               <Tabs defaultValue="semua">
                 <TabsList>
