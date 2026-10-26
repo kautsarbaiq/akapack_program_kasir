@@ -52,7 +52,7 @@ export default function CheckoutPage() {
     // uuid asli (bukan 'trx-…') → jadi id transaksi di server & tertaut ke potongan stoknya (bisa dibatalkan rapi).
     const txnId = newMovementId()
     const txnItems: TransactionItem[] = items.map((i) => ({
-      id: generateId('item'),
+      id: newMovementId(), // uuid tetap → item tak bisa tersimpan dobel walau nota dikirim ulang
       transaction_id: txnId,
       product_id: i.product_id,
       variant_id: i.variant_id,

@@ -379,7 +379,7 @@ export default function POSPage() {
     // (bukan id sementara yg jadi NULL). Fallback ke generateId bila crypto tak tersedia.
     const txnId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : generateId('trx')
     const items: TransactionItem[] = cart.map((c) => ({
-      id: generateId('item'),
+      id: newMovementId(), // uuid tetap → item tak bisa tersimpan dobel walau nota dikirim ulang
       transaction_id: txnId,
       product_id: c.product_id,
       product_name: c.factor !== 1 ? `${c.product_name} (${c.unit})` : c.product_name,

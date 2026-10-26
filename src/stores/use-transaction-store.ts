@@ -79,20 +79,36 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         notes: txn.notes ?? null,
         source: txn.source ?? 'pos',
         shipping_cost: txn.shipping_cost ?? 0,
+        // Waktu jual SEBENARNYA. Tanpa ini server memakai now() → nota yang tertahan di antrean
+        // offline tercatat pada jam terkirim (pernah sampai keesokan harinya, TRX-20261021-A0072).
+        ...(txn.created_at ? { created_at: txn.created_at } : {}),
       })
       .select('id')
       .single()
+    let txnId: string
     if (error || !data) {
-      // IDEMPOTEN: kalau baris dgn id ini SUDAH ada (retry setelah timeout padahal DB sudah commit),
-      // jangan anggap gagal & JANGAN insert item lagi (cegah dobel). id klien = PK → 23505 = sudah tersimpan.
+      // IDEMPOTEN: header dgn id ini SUDAH ada (percobaan sebelumnya ter-commit tapi responsnya hilang).
       const dup = error && ((error as { code?: string }).code === '23505' || /duplicate key|already exists/i.test(error.message || ''))
-      if (dup && isUuid(txn.id)) return txn.id
-      console.warn('[akapack] gagal simpan transaksi:', error?.message)
-      return null
+      if (!(dup && isUuid(txn.id))) {
+        console.warn('[akapack] gagal simpan transaksi:', error?.message)
+        return null
+      }
+      txnId = txn.id
+      // Dulu langsung "sukses" di sini TANPA menyimpan item → 4 nota sejak 7 Sep tersimpan dengan 0 item
+      // (mis. TRX-20261021-A0065), omzetnya ada tapi barangnya hilang dari laporan per produk.
+      // Item ber-id uuid tetap → di-upsert di bawah (idempoten). Nota lama di antrean (id item bukan
+      // uuid) → cek dulu apakah itemnya sudah ada supaya tak dobel.
+      if (!txn.items.every((it) => isUuid(it.id))) {
+        const { count, error: cntErr } = await sb.from('transaction_items').select('id', { count: 'exact', head: true }).eq('transaction_id', txnId)
+        if (cntErr) return null // belum bisa memastikan → ulangi nanti
+        if ((count ?? 0) > 0) return txnId
+      }
+    } else {
+      txnId = (data as { id: string }).id
     }
-    const txnId = (data as { id: string }).id
     if (txn.items.length) {
       const rows = txn.items.map((it) => ({
+        ...(isUuid(it.id) ? { id: it.id } : {}),
         transaction_id: txnId,
         product_id: isUuid(it.product_id) ? it.product_id : null,
         product_name: it.product_name,
@@ -102,8 +118,16 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         discount: it.discount,
         subtotal: it.subtotal,
       }))
-      const { error: itemsErr } = await sb.from('transaction_items').insert(rows)
-      if (itemsErr) console.warn('[akapack] gagal simpan item transaksi:', itemsErr.message)
+      // id item uuid → upsert abaikan-duplikat: kiriman ganda/bersamaan (antrean + kirim pertama) tak
+      // pernah menggandakan item (pola TRX-20260828-G0043, omzet tercatat 2×). Satu pernyataan = atomik.
+      const allUuid = txn.items.every((it) => isUuid(it.id))
+      const { error: itemsErr } = allUuid
+        ? await sb.from('transaction_items').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })
+        : await sb.from('transaction_items').insert(rows)
+      if (itemsErr) {
+        console.warn('[akapack] gagal simpan item transaksi:', itemsErr.message)
+        return null // JANGAN dianggap sukses — antrean akan mengulang & melengkapi itemnya
+      }
     }
     return txnId
   } catch (e) {
@@ -259,9 +283,13 @@ export const useTransactionStore = create<TransactionStore>()((set, get) => ({
 
   addTransaction: (txn) => {
     set((s) => ({ transactions: [txn, ...s.transactions], lastTransaction: txn }))
+    // WRITE-AHEAD: nota ditulis ke antrean perangkat SEBELUM kiriman pertama, dihapus setelah server
+    // mengonfirmasi. Dulu baru masuk antrean setelah 3 percobaan gagal (±2,4 dtk) — tab tertutup di
+    // jeda itu = nota hilang. Idempoten via id, jadi kiriman ulang tak menggandakan.
+    if (isSupabaseConfigured() && isUuid(txn.id)) enqueueOutbox(txn) // pendingCount baru naik bila kiriman gagal
     void persistWithRetry(txn).then((newId) => {
       if (!newId) {
-        // Semua percobaan gagal (sinyal putus) → simpan ke OUTBOX, coba lagi nanti. Transaksi TIDAK hilang.
+        // Semua percobaan gagal (sinyal putus) → tetap di OUTBOX, dikirim ulang nanti. Transaksi TIDAK hilang.
         enqueueOutbox(txn)
         set({ pendingCount: readOutbox().length })
         if (isSupabaseConfigured() && typeof window !== 'undefined') {
