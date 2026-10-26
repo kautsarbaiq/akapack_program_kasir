@@ -70,6 +70,9 @@ let __fetching: Promise<void> | null = null
 // Nomor urut sementara untuk baris yang baru dikonfirmasi (server tak mengembalikan applied_seq-nya):
 // diletakkan paling atas (paling baru) sampai muat ulang mengganti dengan nomor sebenarnya.
 let provisionalSeq = Number.MAX_SAFE_INTEGER
+// Kapan baris lokal dikonfirmasi server — muat ulang yang dimulai SEBELUM itu bisa belum memuatnya,
+// jadi baris tsb dipertahankan alih-alih hilang dari tampilan.
+const resolvedAt = new Map<string, number>()
 export const useStockMovementStore = create<StockMovementStore>()((set, get) => ({
   movements: isSupabaseConfigured() ? [] : mockStockMovements,
   loaded: false,
@@ -81,15 +84,22 @@ export const useStockMovementStore = create<StockMovementStore>()((set, get) => 
   fetch: async () => {
     if (__fetching) return __fetching
     const run = (async () => {
+      const startedAt = Date.now()
       const rows = await fetchAll<StockMovement>('stock_movements', 'created_at', false)
       if (!rows) { set({ loaded: true }); return }
       const products = useProductStore.getState().products
-      const server = rows.map((m) => ({ ...m, product: products.find((p) => p.id === m.product_id), pending: false }))
+      const byId = new Map(products.map((p) => [p.id, p]))
+      const server = rows.map((m) => ({ ...m, product: byId.get(m.product_id), pending: false }))
       const ids = new Set(server.map((m) => m.id))
-      // Baris yang masih di antrean perangkat & belum ada di server tetap ditampilkan sebagai "menunggu".
-      const stillPending = get().movements.filter((m) => m.pending && !ids.has(m.id))
+      // Pertahankan baris lokal yang belum ada di potret server:
+      //  - masih di antrean perangkat ("menunggu sinyal"), atau sedang dikirim langsung (applyStockNow);
+      //  - sudah dikonfirmasi server SETELAH muat ulang ini dimulai (potretnya belum memuatnya).
       const queued = new Set(pendingStockLines().map((l) => l.id))
-      const keep = stillPending.filter((m) => queued.has(m.id))
+      const keep = get().movements.filter((m) => !ids.has(m.id) && (
+        (m.pending && (queued.has(m.id) || !resolvedAt.has(m.id))) ||
+        (resolvedAt.get(m.id) ?? 0) >= startedAt
+      ))
+      for (const id of ids) resolvedAt.delete(id)
       set({ movements: [...keep, ...server].sort(compareMovementsDesc), loaded: true })
     })()
     __fetching = run.finally(() => { __fetching = null })
@@ -108,12 +118,15 @@ export const useStockMovementStore = create<StockMovementStore>()((set, get) => 
     set((s) => ({
       movements: s.movements.map((m) => {
         const r = byId.get(m.id)
-        return r ? { ...m, before_stock: r.before, after_stock: r.after, quantity: r.quantity, pending: false, applied_seq: provisionalSeq-- } : m
+        if (!r) return m
+        resolvedAt.set(m.id, Date.now())
+        return { ...m, before_stock: r.before, after_stock: r.after, quantity: r.quantity, pending: false, applied_seq: provisionalSeq-- }
       }),
     }))
   },
 
   dropPending: (ids) => {
+    ids.forEach((id) => resolvedAt.delete(id))
     const drop = new Set(ids)
     set((s) => ({ movements: s.movements.filter((m) => !(m.pending && drop.has(m.id))) }))
   },

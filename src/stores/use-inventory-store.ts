@@ -5,7 +5,7 @@ import { DEFAULT_OUTLET_ID, isSupabaseConfigured } from '@/lib/supabase/config'
 import { fetchAll } from '@/lib/supabase/repo'
 import {
   enqueueStock, applyStockNow as sendNow, pendingStockLines, registerStockSyncHandlers, flushStockOutbox,
-  describeStockError, onStockReconciled, emitStockReconciled as emitReconciled,
+  describeStockError, onStockReconciled, emitStockReconciled as emitReconciled, remapQueuedIds, deadLetters,
   type StockLine, type StockResult, type StockFailure,
 } from '@/lib/stock/stock-sync'
 import { useStockMovementStore } from './use-stock-movement-store'
@@ -57,11 +57,28 @@ export { onStockReconciled }
 
 export interface Estimate { before: number; after: number }
 
+// Setiap jawaban server menaikkan epoch. Muat ulang (fetch) yang berjalan bersamaan bisa menimpa angka
+// yang lebih baru dengan potret lama → kalau epoch berubah selama fetch, muat ulang sekali lagi.
+let applyEpoch = 0
+let refetchTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleRefetch(ms = 1200) {
+  if (typeof window === 'undefined') return
+  if (refetchTimer) clearTimeout(refetchTimer)
+  refetchTimer = setTimeout(() => {
+    refetchTimer = null
+    void useInventoryStore.getState().fetch()
+    const mv = useStockMovementStore.getState()
+    if (mv.loaded) void mv.refresh()
+  }, ms)
+}
+
 interface InventoryStore {
   items: InventoryRow[]
   loaded: boolean
   /** Baris perubahan stok yang masih di antrean perangkat (belum sampai server). */
   pendingLines: number
+  /** Baris yang DITOLAK server & disisihkan (perlu keputusan: kirim ulang / buang). */
+  deadLines: number
   fetch: () => Promise<void>
   /** Stok di outlet tsb. null = inventory belum dimuat sama sekali → pemanggil pakai fallback lama. */
   stockAt: (outletId: string, productId: string, variantId?: string) => number | null
@@ -76,7 +93,7 @@ interface InventoryStore {
    * Ubah stok dan TUNGGU server (impor, opname, ubah dari form) — pengguna butuh hasil/penolakan
    * seketika (mis. STOK_BERUBAH). Tidak masuk antrean; yang gagal dilaporkan per baris.
    */
-  applyStockNow: (lines: StockLine[]) => Promise<{ results: StockResult[]; failed: StockFailure[] }>
+  applyStockNow: (lines: StockLine[]) => Promise<{ results: StockResult[]; failed: StockFailure[]; queued: StockLine[] }>
   /** Saat produk baru tersimpan (id sementara → uuid), pindahkan baris memori ke id barunya. */
   remapProduct: (oldProductId: string, newProductId: string) => void
   /** Saat varian baru tersimpan (id sementara → uuid), pindahkan baris memori ke id barunya. */
@@ -127,21 +144,31 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => {
   }
 
   registerStockSyncHandlers({
-    onQueueChange: (pending) => set({ pendingLines: pending }),
+    onQueueChange: (pending, dead) => set({ pendingLines: pending, deadLines: dead }),
     onApplied: (lines, results) => {
+      applyEpoch++
       const byId = new Map(results.map((r) => [r.movement_id, r]))
       const truth = new Map<string, number>()
+      const notApplied: string[] = []
       // Baris diterapkan server dalam urutan kunci; untuk tiap baris stok, yang terakhir = angka terkini.
       for (const r of results) {
         const line = lines.find((l) => l.id === r.movement_id)
-        if (!line || !r.applied) continue // applied=false = kiriman ulang → angkanya historis, bukan terkini
+        if (!line) continue
+        if (!r.applied) { notApplied.push(line.id); continue }
         truth.set(lineKey(line), r.after_stock)
       }
       reconcile(truth)
       useStockMovementStore.getState().resolvePending(lines.map((l) => {
         const r = byId.get(l.id)
-        return r ? { id: l.id, before: r.before_stock, after: r.after_stock, quantity: r.quantity } : null
+        return r && r.applied ? { id: l.id, before: r.before_stock, after: r.after_stock, quantity: r.quantity } : null
       }).filter(Boolean) as { id: string; before: number; after: number; quantity: number }[])
+      // applied=false: kiriman ULANG (sudah diterapkan sebelumnya — jawaban pertama hilang) atau produk
+      // sudah dihapus. Angkanya historis, jadi efek optimis di memori bisa terhitung dua kali → ambil
+      // ulang angka server, dan buang baris perkiraannya (baris aslinya ikut termuat dari server).
+      if (notApplied.length) {
+        useStockMovementStore.getState().dropPending(notApplied)
+        scheduleRefetch(300)
+      }
     },
     onRejected: (lines, code, message, interactive) => {
       // Ditolak permanen → batalkan efek optimisnya di memori dan riwayat, lalu beri tahu.
@@ -167,8 +194,10 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => {
     items: isSupabaseConfigured() ? [] : seedRows,
     loaded: false,
     pendingLines: typeof window !== 'undefined' ? pendingStockLines().length : 0,
+    deadLines: typeof window !== 'undefined' ? deadLetters().reduce((n, d) => n + d.lines.length, 0) : 0,
 
     fetch: async () => {
+      const epochAtStart = applyEpoch
       const rows = await fetchAll<InventoryRowDB>('inventory', 'created_at', true)
       if (!rows) {
         set({ loaded: true }) // tabel belum ada → pertahankan seed mock (fallback)
@@ -199,6 +228,8 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => {
       })
       set({ items: mapped, loaded: true })
       emitReconciled()
+      // Jawaban server datang SELAMA fetch → potret di atas bisa lebih lama dari angka itu.
+      if (applyEpoch !== epochAtStart) scheduleRefetch(500)
       void flushStockOutbox()
     },
 
@@ -232,11 +263,13 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => {
     },
 
     remapProduct: (oldId, newId) => {
+      remapQueuedIds('product', oldId, newId) // baris antrean dgn id sementara jadi bisa terkirim
       if (!get().items.some((r) => r.product_id === oldId)) return
       set((s) => ({ items: s.items.map((r) => (r.product_id === oldId ? { ...r, product_id: newId } : r)) }))
     },
 
     remapVariant: (oldId, newId) => {
+      remapQueuedIds('variant', oldId, newId)
       if (!get().items.some((r) => r.variant_id === oldId)) return
       set((s) => ({ items: s.items.map((r) => (r.variant_id === oldId ? { ...r, variant_id: newId } : r)) }))
     },

@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, AlertTriangle } from 'lucide-react'
+import { useInventoryStore } from '@/stores/use-inventory-store'
+import { deadLetters, retryDeadLetters, discardDeadLetters, describeStockError } from '@/lib/stock/stock-sync'
 
 const MINE = process.env.NEXT_PUBLIC_BUILD_ID
 
@@ -41,5 +43,27 @@ export function UpdateBanner() {
         <RefreshCw size={13} /> Muat ulang
       </button>
     </div>
+  )
+}
+
+/**
+ * Perubahan stok yang DITOLAK server (mis. stok kurang saat transfer/stok keluar yang tertunda, produk
+ * terhapus) disisihkan dari antrean. Dulu hanya notifikasi 15 dtk lalu hilang tanpa jejak — kini lencana
+ * tetap di pojok sampai diputuskan: kirim ulang (setelah masalahnya dibereskan) atau buang.
+ */
+export function DeadLetterBadge() {
+  const dead = useInventoryStore((s) => s.deadLines)
+  if (!dead) return null
+  const decide = () => {
+    const entries = deadLetters()
+    const sample = entries.slice(0, 5).map((e) => `• ${e.lines[0]?.notes ?? 'perubahan stok'} — ${describeStockError(e.code, e.lastError ?? '')}`).join('\n')
+    if (window.confirm(`${dead} perubahan stok DITOLAK server dan belum diterapkan:\n\n${sample}${entries.length > 5 ? '\n…' : ''}\n\nKirim ULANG sekarang? (pilih Batal untuk opsi membuang)`)) { retryDeadLetters(); return }
+    if (window.confirm('BUANG perubahan stok yang ditolak ini? Stok tidak akan diubah olehnya. Tindakan ini tidak bisa dibatalkan.')) discardDeadLetters()
+  }
+  return (
+    <button type="button" onClick={decide}
+      className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded-full bg-red-600 text-white px-4 py-2 text-xs font-semibold shadow-lg hover:bg-red-700 print:hidden">
+      <AlertTriangle size={14} /> {dead} perubahan stok ditolak — klik untuk tindak lanjut
+    </button>
   )
 }
