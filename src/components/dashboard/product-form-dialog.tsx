@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ChangeEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2, Package, Wand2, Trash2 } from 'lucide-react'
@@ -31,7 +31,7 @@ import type { Product, ProductUnit, PriceTier } from '@/types'
 
 const UNITS = ['pcs', 'buah', 'unit', 'kg', 'gram', 'liter', 'ml', 'lusin', 'karton', 'box', 'pack', 'roll', 'meter', 'lembar']
 
-type VariantRow = { id?: string; name: string; price: number; cost_price: number; stock: number }
+type VariantRow = { id?: string; name: string; price: number; cost_price: number; stock: number; openingStock?: number }
 
 interface Props {
   open: boolean
@@ -70,6 +70,8 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
   const unitBase = watch('unit')
   const margin = price > 0 ? Math.round(((price - costPrice) / price) * 100) : 0
   const [units, setUnits] = useState<ProductUnit[]>([])
+  // Angka stok saat form dibuka — stok hanya ditulis bila pengguna mengubah kolomnya dari angka ini.
+  const openingStockRef = useRef<number | undefined>(undefined)
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
   const [priceOnline, setPriceOnline] = useState(0)
   const [imageUrl, setImageUrl] = useState('')
@@ -83,6 +85,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
         // Stok diambil dari inventory cabang aktif (sumber kebenaran), bukan product.stock
         // yang bisa basi — supaya menyimpan edit TIDAK menimpa hasil Stok Masuk/Keluar.
         const liveStock = useInventoryStore.getState().stockAt(activeOutletId, product.id)
+        openingStockRef.current = liveStock ?? product.stock
         reset({
           name: product.name,
           category_id: product.category_id,
@@ -111,6 +114,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
       setVariantRows(existingVars.map((v) => ({
         id: v.id, name: v.name, price: v.price, cost_price: v.cost_price,
         stock: invStore.stockAt(activeOutletId, v.product_id, v.id) ?? v.stock, // dari inventory cabang aktif
+        openingStock: invStore.stockAt(activeOutletId, v.product_id, v.id) ?? v.stock,
       })))
       setHasVariantsLocal(product?.has_variants ?? existingVars.length > 0)
     }
@@ -134,7 +138,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
     let productId: string
     if (isEdit && product) {
       productId = product.id
-      updateProduct(product.id, data, cleanUnits, cleanTiers, priceOnline)
+      updateProduct(product.id, data, cleanUnits, cleanTiers, priceOnline, openingStockRef.current)
     } else {
       productId = addProduct(data, cleanUnits, cleanTiers, priceOnline).id
     }
@@ -145,7 +149,7 @@ export function ProductFormDialog({ open, onOpenChange, product, onSuccess }: Pr
     original.forEach((o) => { if (!cleanRows.some((r) => r.id === o.id)) deleteVariant(o.id) })
     cleanRows.forEach((r) => {
       const vdata = { name: r.name, price: r.price, cost_price: r.cost_price, stock: r.stock }
-      if (r.id) updateVariant(r.id, vdata)
+      if (r.id) updateVariant(r.id, vdata, r.openingStock)
       else addVariant(productId, vdata)
     })
     setHasVariants(productId, cleanRows.length > 0)

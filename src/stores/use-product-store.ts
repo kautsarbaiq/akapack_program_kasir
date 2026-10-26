@@ -35,7 +35,8 @@ interface ProductStore {
   bulkAdd: (rows: BulkProductInput[]) => Promise<{ products: Product[]; failed: number }>
   /** Perbarui sebagian field banyak produk (re-import katalog). Update memori 1x + batch DB. Kembalikan jumlah gagal. */
   bulkPatch: (patches: ProductPatch[]) => Promise<number>
-  updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number) => void
+  /** openingStock = angka stok saat form DIBUKA; stok hanya ditulis bila pengguna mengubahnya dari angka itu. */
+  updateProduct: (id: string, values: ProductFormValues, units?: ProductUnit[], priceTiers?: PriceTier[], priceOnline?: number, openingStock?: number) => void
   deleteProduct: (id: string) => void
   /** Hapus SEMUA produk (katalog) — DB dulu, baru memori. Cascade: inventory, varian, pergerakan stok.
    *  Gagal bila ada produk dipakai di dokumen Pembelian/Stok Keluar (FK RESTRICT). Kembalikan status jujur. */
@@ -230,7 +231,7 @@ export const useProductStore = create<ProductStore>()((set) => ({
     return failed
   },
 
-  updateProduct: (id, values, units, priceTiers, priceOnline) => {
+  updateProduct: (id, values, units, priceTiers, priceOnline, openingStock) => {
     set((s) => ({
       products: s.products.map((p) =>
         p.id === id
@@ -255,7 +256,11 @@ export const useProductStore = create<ProductStore>()((set) => ({
     const outlet = useActiveOutletStore.getState().activeOutletId
     const invStore = useInventoryStore.getState()
     const liveStock = invStore.stockAt(outlet, id)
-    if (liveStock === null || values.stock !== liveStock) {
+    // Bandingkan dengan angka saat form DIBUKA (bila ada), bukan memori saat disimpan: kalau memori
+    // berubah selama form terbuka (sinkron server / penjualan), edit HARGA saja tak boleh dianggap
+    // "ubah stok" lalu menimpa stok dengan angka lama.
+    const userChangedStock = openingStock !== undefined ? values.stock !== openingStock : (liveStock === null || values.stock !== liveStock)
+    if (userChangedStock) {
       // Angka yang diketik = angka absolut; server menghitung selisih dari stok SEBENARNYA dan
       // mencatatnya di History Item Produk dalam transaksi yang sama.
       void invStore.applyStockNow([{

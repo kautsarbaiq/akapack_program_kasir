@@ -21,7 +21,8 @@ interface VariantStore {
   fetch: () => Promise<void>
   byProduct: (productId: string) => ProductVariant[]
   addVariant: (productId: string, data: VariantFormValues) => ProductVariant
-  updateVariant: (id: string, data: VariantFormValues) => void
+  /** openingStock = angka stok varian saat form dibuka; stok hanya ditulis bila diubah dari angka itu. */
+  updateVariant: (id: string, data: VariantFormValues, openingStock?: number) => void
   deleteVariant: (id: string) => void
   /** Kurangi stok varian saat transaksi POS */
   clearAll: () => void
@@ -81,7 +82,7 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
     return v
   },
 
-  updateVariant: (id, data) => {
+  updateVariant: (id, data, openingStock) => {
     set((s) => ({
       variants: s.variants.map((v) =>
         v.id === id ? { ...v, name: data.name, sku: data.sku || undefined, price: data.price, cost_price: data.cost_price, stock: data.stock } : v
@@ -94,7 +95,8 @@ export const useVariantStore = create<VariantStore>()((set, get) => ({
       const outlet = useActiveOutletStore.getState().activeOutletId
       const invStore = useInventoryStore.getState()
       const liveStock = invStore.stockAt(outlet, pv.product_id, id)
-      if (liveStock === null || data.stock !== liveStock) {
+      const userChangedStock = openingStock !== undefined ? data.stock !== openingStock : (liveStock === null || data.stock !== liveStock)
+      if (userChangedStock) {
         // Dulu ubah stok varian TANPA riwayat sama sekali. Kini angka absolut dihitung & dicatat server.
         void invStore.applyStockNow([{
           id: newMovementId(), outlet_id: outlet, product_id: pv.product_id, variant_id: id,
