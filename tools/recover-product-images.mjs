@@ -79,10 +79,11 @@ async function main() {
   for (let offset = 0; ; offset += 100) {
     const r = await fetch(`${OLD_URL}/storage/v1/object/list/${BUCKET}`, {
       method: 'POST', headers: { ...h(OLD_KEY), 'content-type': 'application/json' },
-      body: JSON.stringify({ limit: 100, offset, sortBy: { column: 'name', order: 'asc' } }),
+      body: JSON.stringify({ prefix: '', limit: 100, offset, sortBy: { column: 'name', order: 'asc' } }),
     })
     const page = await r.json()
-    if (!Array.isArray(page) || page.length === 0) break
+    if (!Array.isArray(page)) throw new Error(`daftar file lama gagal: ${JSON.stringify(page).slice(0, 160)}`)
+    if (page.length === 0) break
     files.push(...page.map((f) => f.name))
     if (page.length < 100) break
   }
@@ -93,7 +94,7 @@ async function main() {
   for (let offset = 0; ; offset += 100) {
     const r = await fetch(`${NEW_URL}/storage/v1/object/list/${BUCKET}`, {
       method: 'POST', headers: { ...h(NEW_KEY), 'content-type': 'application/json' },
-      body: JSON.stringify({ limit: 100, offset }),
+      body: JSON.stringify({ prefix: '', limit: 100, offset }),
     })
     const page = await r.json().catch(() => [])
     if (!Array.isArray(page) || page.length === 0) break
@@ -125,6 +126,11 @@ async function main() {
     if ((i + 1) % 100 === 0) { console.log(`   ${i + 1}/${files.length} (ok ${ok}, gagal ${fail})`); await sleep(200) }
   }
   console.log(`   selesai — tersalin ${ok}, gagal ${fail}`)
+  // Jangan arahkan URL ke proyek baru kalau filenya tidak ada di sana.
+  if (!files.length || fail) {
+    console.log('\n❌ Ada file yang belum tersalin — URL di database TIDAK diubah. Jalankan lagi.')
+    process.exit(1)
+  }
 
   // 4) Arahkan ulang URL produk: ref lama → ref baru.
   console.log('\n4/4 Memperbarui URL foto di database…')
