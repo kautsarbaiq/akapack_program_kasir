@@ -6,8 +6,8 @@ import { useProductStore } from '@/stores/use-product-store'
 import { useCustomerStore } from '@/stores/use-customer-store'
 import { useEmployeeStore } from '@/stores/use-employee-store'
 import { usePromotionStore } from '@/stores/use-promotion-store'
-import { useTransactionStore } from '@/stores/use-transaction-store'
-import { flushStockOutbox } from '@/lib/stock/stock-sync'
+import { useTransactionStore, pendingTxnIds } from '@/stores/use-transaction-store'
+import { flushStockOutbox, stockOutboxCount } from '@/lib/stock/stock-sync'
 import { UpdateBanner, DeadLetterBadge } from '@/components/update-banner'
 import { useShiftStore } from '@/stores/use-shift-store'
 import { useSettingsStore } from '@/stores/use-settings-store'
@@ -90,7 +90,19 @@ export function DataBootstrap() {
     window.addEventListener('online', flush)
     document.addEventListener('visibilitychange', onVisible)
     const timer = window.setInterval(flush, 45000)
+
+    // Antrean nota & stok hanya ada di peramban ini sampai terkirim. Minta penyimpanan PERMANEN supaya
+    // peramban tak menghapusnya sendiri saat disk penuh, dan peringatkan sebelum tab/peramban ditutup
+    // selagi masih ada yang menunggu sinyal.
+    void navigator.storage?.persist?.().catch(() => {})
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingTxnIds().size + stockOutboxCount() === 0) return
+      e.preventDefault()
+      e.returnValue = '' // peramban lama butuh ini untuk memunculkan dialog konfirmasi
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
     return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
       window.removeEventListener('online', flush)
       document.removeEventListener('visibilitychange', onVisible)
       window.clearInterval(timer)
