@@ -252,7 +252,8 @@ function isPermanent(code: string): boolean {
 
 // ── kirim ──────────────────────────────────────────────────────────────────────────────────────
 
-function toPayload(l: StockLine) {
+/** Bentuk baris untuk server (RPC apply_stock_movements & kolom transactions.stock_lines). */
+export function toPayload(l: StockLine) {
   return {
     id: l.id,
     outlet_id: l.outlet_id,

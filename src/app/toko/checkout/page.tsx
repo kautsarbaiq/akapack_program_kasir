@@ -62,6 +62,17 @@ export default function CheckoutPage() {
       discount: 0,
       subtotal: i.price * i.quantity,
     }))
+    // Baris yang SAMA ikut di nota (server memotongnya saat nota masuk) dan dikirim langsung di bawah.
+    const stockLines = items.map((i) => ({
+      id: newMovementId(),
+      outlet_id: ONLINE_OUTLET,
+      product_id: i.product_id,
+      variant_id: i.variant_id ?? null,
+      delta: -i.quantity,
+      type: 'out' as const,
+      notes: i.variant_id ? `Online (${i.name})` : 'Pesanan Online',
+      reference_id: txnId,
+    }))
     const pm: PaymentMethod = method === 'cod' ? 'cash' : 'transfer_bca'
     const txn: Transaction = {
       id: txnId,
@@ -84,22 +95,14 @@ export default function CheckoutPage() {
       notes: `Pesanan Online · ${delivery === 'kirim' ? 'Dikirim' : 'Ambil di toko'} · ${method === 'cod' ? 'COD' : 'Transfer'}`,
       status: 'pending',
       created_at: new Date().toISOString(),
+      stock_lines: stockLines,
     }
     addTransaction(txn)
     // Stok dipotong saat order (reservasi); pesanan "pending" sampai dikonfirmasi admin.
     // DITUNGGU selama pembeli masih di halaman (3× percobaan) — perangkat pembeli bukan antrean yang
     // bisa diandalkan (tab ditutup/dibekukan setelah buka WA). Hasil belum pasti tetap masuk antrean
     // dengan id yang sama sebagai cadangan.
-    await useInventoryStore.getState().applyStockNow(items.map((i) => ({
-      id: newMovementId(),
-      outlet_id: ONLINE_OUTLET,
-      product_id: i.product_id,
-      variant_id: i.variant_id ?? null,
-      delta: -i.quantity,
-      type: 'out' as const,
-      notes: i.variant_id ? `Online (${i.name})` : 'Pesanan Online',
-      reference_id: txnId,
-    })))
+    await useInventoryStore.getState().applyStockNow(stockLines)
     clear()
     setSuccess(txn)
     setSubmitting(false)

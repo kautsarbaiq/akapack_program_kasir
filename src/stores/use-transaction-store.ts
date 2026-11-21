@@ -4,6 +4,7 @@ import { mockTransactions } from '@/lib/mock-data'
 import { getSupabaseBrowser } from '@/lib/supabase/client'
 import { isSupabaseConfigured, DEFAULT_TENANT_ID } from '@/lib/supabase/config'
 import { updateRow } from '@/lib/supabase/repo'
+import { toPayload } from '@/lib/stock/stock-sync'
 import { useCustomerStore } from './use-customer-store'
 import { useEmployeeStore } from './use-employee-store'
 
@@ -50,6 +51,9 @@ function empToUser(e?: Employee): User | undefined {
   return { id: e.id, email: e.email ?? '', full_name: e.name, role: e.role, is_active: e.is_active, created_at: e.created_at }
 }
 
+// false setelah server menolak kolom transactions.stock_lines (migrasi 0026 belum ada) — sesi ini saja.
+let stockLinesColumn = true
+
 /** Simpan header transaksi + item-nya. Mengembalikan id (uuid) dari DB, atau null. */
 async function persistTransaction(txn: Transaction): Promise<string | null> {
   if (!isSupabaseConfigured()) return null
@@ -79,6 +83,9 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
         notes: txn.notes ?? null,
         source: txn.source ?? 'pos',
         shipping_cost: txn.shipping_cost ?? 0,
+        // Potongan stoknya ikut di nota → server memotong stok saat nota masuk (migrasi 0026), jadi
+        // nota yang sampai tak pernah lagi tanpa stok walau antrean stok di perangkat ini hilang.
+        ...(txn.stock_lines?.length && stockLinesColumn ? { stock_lines: txn.stock_lines.map(toPayload) } : {}),
         // Waktu jual SEBENARNYA. Tanpa ini server memakai now() → nota yang tertahan di antrean
         // offline tercatat pada jam terkirim (pernah sampai keesokan harinya, TRX-20261021-A0072).
         // Jam perangkat yang kebablasan ke depan dijepit ke sekarang; pesanan toko online memakai jam
@@ -89,6 +96,11 @@ async function persistTransaction(txn: Transaction): Promise<string | null> {
       })
       .select('id')
       .single()
+    if (error && stockLinesColumn && txn.stock_lines?.length && /stock_lines/.test(error.message || '')) {
+      // Server belum punya kolomnya (migrasi 0026 belum dijalankan): kirim tanpa — antrean stok tetap jalan.
+      stockLinesColumn = false
+      return persistTransaction(txn)
+    }
     let txnId: string
     if (error || !data) {
       // IDEMPOTEN: header dgn id ini SUDAH ada (percobaan sebelumnya ter-commit tapi responsnya hilang).

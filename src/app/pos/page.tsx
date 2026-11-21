@@ -375,6 +375,7 @@ export default function POSPage() {
       : undefined
 
     const now = new Date().toISOString()
+    const outletId = useActiveOutletStore.getState().activeOutletId
     // UUID asli sejak awal supaya reference_id pergerakan stok tertaut ke transaksi di DB
     // (bukan id sementara yg jadi NULL). newMovementId punya cadangan uuid untuk peramban lama.
     const txnId = newMovementId() // selalu uuid (ada cadangan untuk peramban lama) — dulu bisa 'trx-…'
@@ -393,9 +394,23 @@ export default function POSPage() {
       discount: c.discount,
       subtotal: c.subtotal,
     }))
+    // Potong stok + catat riwayat SEKALIGUS (server menghitung sebelum/sesudah; id baris = kunci idempoten).
+    // Baris yang SAMA ikut di nota (stock_lines) dan di antrean stok perangkat: mana pun yang sampai duluan
+    // memotong stok, yang lain jadi kiriman ulang. Dulu hanya lewat antrean stok → bila antrean itu hilang
+    // (offline, data peramban dibersihkan) nota tersimpan tanpa stok terpotong (TRX-20261117-A0050).
+    const stockLines = cart.map((c) => ({
+      id: newMovementId(),
+      outlet_id: outletId,
+      product_id: c.product_id,
+      variant_id: c.variant_id ?? null,
+      delta: -(c.variant_id ? c.quantity : c.quantity * c.factor), // satuan DASAR
+      type: 'out' as const,
+      notes: c.variant_id ? `Penjualan POS (${c.product_name})` : 'Penjualan POS',
+      reference_id: txnId,
+      created_at: now,
+    }))
     const emp = currentShift.employee
     // Nomor BERURUTAN per cabang/hari dari transaksi yang sudah ada di store (bukan acak → tak bentrok).
-    const outletId = useActiveOutletStore.getState().activeOutletId
     const outletName = useOutletStore.getState().outlets.find((o) => o.id === outletId)?.name
     const existingNums = useTransactionStore.getState().transactions.map((t) => t.transaction_number)
     const txn: Transaction = {
@@ -420,25 +435,12 @@ export default function POSPage() {
       payment_method: paymentMethod,
       status: 'completed',
       created_at: now,
+      stock_lines: stockLines,
     }
 
     submittingRef.current = true // kunci: mulai sini transaksi diproses
     addTransaction(txn)
-    // Potong stok + catat riwayat SEKALIGUS, lewat antrean tahan-offline (ditulis ke perangkat dulu).
-    // Server menghitung sebelum/sesudah yang sebenarnya; id baris = kunci idempoten (kirim ulang aman).
-    // Dulu riwayat dikirim terpisah sekali jalan → hilang saat sinyal tersendat (mis. TRX-20261023-A0074),
-    // dan saat offline potongan stoknya ikut hilang — hanya struknya yang selamat.
-    useInventoryStore.getState().applyStock(cart.map((c) => ({
-      id: newMovementId(),
-      outlet_id: outletId,
-      product_id: c.product_id,
-      variant_id: c.variant_id ?? null,
-      delta: -(c.variant_id ? c.quantity : c.quantity * c.factor), // satuan DASAR
-      type: 'out' as const,
-      notes: c.variant_id ? `Penjualan POS (${c.product_name})` : 'Penjualan POS',
-      reference_id: txnId,
-      created_at: now,
-    })))
+    useInventoryStore.getState().applyStock(stockLines)
     if (selectedCustomer) recordPurchase(selectedCustomer.id, total)
     if (selectedCustomer && pointsUsed > 0) redeemPointsAction(selectedCustomer.id, pointsUsed)
     recordSale(total)

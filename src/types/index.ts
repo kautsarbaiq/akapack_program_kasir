@@ -1,3 +1,4 @@
+import type { StockLine } from '@/lib/stock/stock-sync'
 // ═══════════════════════════════════════
 // AKAPACK — TypeScript Types & Interfaces
 // ═══════════════════════════════════════
@@ -169,6 +170,8 @@ export interface Transaction {
   shipping_cost?: number
   status: TransactionStatus
   created_at: string
+  /** Potongan stok penjualan ini (id sama dgn antrean stok) — server menerapkannya saat nota masuk. */
+  stock_lines?: StockLine[]
 }
 
 export interface TransactionItem {
