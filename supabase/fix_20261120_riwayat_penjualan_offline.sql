@@ -1,7 +1,7 @@
 -- Perbaikan penjualan tanpa riwayat stok sejak 6 Nov 2026 (termasuk TRX-20261117-A0050).
 -- Aman dijalankan ulang: id baris tetap (md5), sudah tercatat = dilewati.
-begin;
-create temp table fx on commit drop as
+drop table if exists public._fix_20261120;
+create table public._fix_20261120 as
 with li as (
   select t.id tid, t.transaction_number trx, t.outlet_id, t.created_at, ti.product_id, ti.product_name, sum(ti.quantity)::int qty
   from transactions t join transaction_items ti on ti.transaction_id=t.id
@@ -27,19 +27,19 @@ from x;
 -- 1) Stok sudah terpotong, riwayat hilang → tambah riwayat saja (disisipkan setelah baris sebelumnya).
 insert into stock_movements (id, outlet_id, product_id, type, quantity, before_stock, after_stock, notes, reference_id, created_at, applied_seq)
 select mid, outlet_id, product_id, 'out', -qty, prev_after, prev_after - qty, 'Penjualan POS (riwayat dicatat ulang)', tid, created_at, prev_seq
-from fx where cls = 'cut' on conflict (id) do nothing;
+from public._fix_20261120 where cls = 'cut' on conflict (id) do nothing;
 
 -- 2) Sudah dibetulkan lewat opname → riwayat saja, stok tidak diubah.
 insert into stock_movements (id, outlet_id, product_id, type, quantity, before_stock, after_stock, notes, reference_id, created_at, applied_seq)
 select mid, outlet_id, product_id, 'out', -qty, prev_after, prev_after, 'Penjualan POS (offline — stok sudah dibetulkan lewat opname)', tid, created_at, prev_seq
-from fx where cls = 'absorbed' on conflict (id) do nothing;
+from public._fix_20261120 where cls = 'absorbed' on conflict (id) do nothing;
 
 -- 3) Stok tidak pernah terpotong → potong sekarang + riwayat (fungsi atomik, idempoten per id).
 select apply_stock_movement(mid, outlet_id, product_id, null, -qty, 'out',
   'Penjualan POS (offline — stok dipotong susulan)', tid, created_at, null, true, null)
-from (select * from fx where cls = 'notcut' order by created_at) s;
+from (select * from public._fix_20261120 where cls = 'notcut' order by created_at) s;
 
-commit;
+drop table public._fix_20261120;
 
 -- Cek hasil: harus 0.
 select count(*) as sisa_penjualan_tanpa_riwayat
