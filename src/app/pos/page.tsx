@@ -6,7 +6,8 @@ import {
   Search, Plus, Minus, Trash2, User, Tag, Banknote,
   QrCode, CheckCircle2,
   ShoppingCart, ChevronRight, Receipt, Lock, PlayCircle, X, Gift, Pause, Clock, Split,
-  Landmark, ShoppingBag, Music2, Store, LayoutDashboard, Fingerprint, Users
+  Landmark, ShoppingBag, Music2, Store, LayoutDashboard, Fingerprint, Users,
+  AlertTriangle,
 } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { ProductImg } from '@/components/product-img'
@@ -119,6 +120,8 @@ export default function POSPage() {
   const [splitAmount1, setSplitAmount1] = useState(0)
   const [paidAmount, setPaidAmount] = useState(0)
   const [showPayment, setShowPayment] = useState(false)
+  // Kasir sudah menyatakan "tetap jual" untuk barang yang stok cabangnya kurang (direset tiap buka bayar).
+  const [shortAck, setShortAck] = useState(false)
 
   const [shiftOpenModal, setShiftOpenModal] = useState(false)
   const [shiftCloseModal, setShiftCloseModal] = useState(false)
@@ -345,8 +348,23 @@ export default function POSPage() {
     if (cart.length === 0) { toast.error('Keranjang masih kosong!'); return }
     if (paymentMethod === 'cash' && paidAmount === 0) setPaidAmount(total)
     submittingRef.current = false // mulai alur bayar baru
+    setShortAck(false)
     setShowPayment(true)
   }
+
+  // Barang yang dijual MELEBIHI stok cabang ini. Tetap boleh dijual (kebijakan), tapi kasir harus
+  // menyatakannya: dulu cuma toast sekilas → Garut menjual 438 Toples BKM 608 dari stok 265 (barangnya
+  // dari Bandung tanpa transfer tercatat) dan 100+ barang Garut jadi minus tanpa ada yang sadar.
+  const shortItems = useMemo(() => {
+    if (!showPayment) return []
+    const inv = useInventoryStore.getState()
+    return cart.flatMap((c) => {
+      const need = c.variant_id ? c.quantity : c.quantity * c.factor
+      const live = inv.stockAt(activeOutletId, c.product_id, c.variant_id)
+      return live !== null && need > live ? [{ key: c.key, name: c.product_name, need, live }] : []
+    })
+  }, [showPayment, cart, activeOutletId])
+  const activeOutletName = useOutletStore((s) => s.outlets.find((o) => o.id === activeOutletId)?.name)
 
   const handleConfirm = () => {
     if (submittingRef.current) return // sudah diproses — abaikan klik berulang
@@ -360,15 +378,11 @@ export default function POSPage() {
       toast.error('Pilih 2 metode berbeda untuk split')
       return
     }
-    // Info stok FINAL terhadap inventory nyata — TIDAK memblokir (kebijakan: stok kosong boleh dijual,
-    // hasilnya stok minus yang jujur tercatat & dikoreksi lewat stok masuk/opname).
-    const invNow = useInventoryStore.getState()
-    const short = cart.find((c) => {
-      const need = c.variant_id ? c.quantity : c.quantity * c.factor
-      const live = invNow.stockAt(activeOutletId, c.product_id, c.variant_id)
-      return live !== null && need > live
-    })
-    if (short) toast.warning(`Ada barang melebihi stok (${short.product_name}) — transaksi diproses, stok jadi minus`)
+    // Stok kosong BOLEH dijual (kebijakan), tapi hanya setelah kasir menyatakannya di dialog bayar.
+    if (shortItems.length && !shortAck) {
+      toast.error('Stok cabang ini kurang — centang "Tetap jual" dulu, atau catat transfer stoknya')
+      return
+    }
     const splitAmt1 = Math.min(splitAmount1, total)
     const splitDetails = paymentMethod === 'split'
       ? { [splitMethod1]: splitAmt1, [splitMethod2]: total - splitAmt1 }
@@ -856,10 +870,33 @@ export default function POSPage() {
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">{PAYMENT_METHODS.find((m) => m.value === splitMethod2)?.label ?? splitMethod2}</span><span className="font-semibold">{formatRupiah(total - Math.min(splitAmount1, total))}</span></div>
               </>}
             </div>
+            {shortItems.length > 0 && (
+              <div className="rounded-xl p-3 space-y-2 border border-amber-300 bg-amber-50 text-amber-900 text-sm">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle size={15} /> Stok {activeOutletName ?? 'cabang ini'} tidak cukup
+                </div>
+                <ul className="space-y-0.5">
+                  {shortItems.map((s) => (
+                    <li key={s.key} className="flex justify-between gap-3">
+                      <span className="truncate">{s.name}</span>
+                      <span className="shrink-0 tabular-nums">stok {s.live} · dijual {s.need}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs">
+                  Barangnya diambil dari cabang lain? Batalkan, catat <b>Transfer Stok</b> dulu, lalu jual.
+                  Stok di sistem salah? Minta admin <b>opname</b>.
+                </p>
+                <label className="flex items-center gap-2 font-medium cursor-pointer">
+                  <input type="checkbox" className="size-4 accent-amber-600" checked={shortAck} onChange={(e) => setShortAck(e.target.checked)} />
+                  Tetap jual — stok {activeOutletName ?? 'cabang ini'} jadi minus
+                </label>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => setShowPayment(false)}>Kembali</Button>
-            <Button className="flex-1 font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={handleConfirm}>
+            <Button className="flex-1 font-semibold gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" disabled={shortItems.length > 0 && !shortAck} onClick={handleConfirm}>
               <CheckCircle2 size={16} /> Konfirmasi
             </Button>
           </div>
