@@ -25,6 +25,8 @@ import { useCategoryStore } from '@/stores/use-category-store'
 import { useInventoryStore } from '@/stores/use-inventory-store'
 import { useVariantStore } from '@/stores/use-variant-store'
 import { useStockMovementStore } from '@/stores/use-stock-movement-store'
+import { useActiveOutletStore } from '@/stores/use-active-outlet-store'
+import { useOutletStore } from '@/stores/use-outlet-store'
 import { ProductFormDialog } from '@/components/dashboard/product-form-dialog'
 import { ImportProdukDialog } from '@/components/dashboard/import-produk-dialog'
 import { formatRupiah, getStockStatus, rankedSearch } from '@/lib/utils'
@@ -42,6 +44,11 @@ export default function ProdukPage() {
   const deleteAllProducts = useProductStore((s) => s.deleteAllProducts)
   const categories = useCategoryStore((s) => s.categories)
   const { canSeeCost } = useRole() // HPP/harga modal hanya owner
+  // Stok di katalog = stok cabang AKTIF (bukan total) — tulis nama cabangnya supaya tak tertukar
+  // dengan History yang difilter ke cabang lain (Toples BKM 608: Garut -173 vs Bandung 1.488).
+  const activeOutletId = useActiveOutletStore((s) => s.activeOutletId)
+  const activeOutletName = useOutletStore((s) => s.outlets.find((o) => o.id === activeOutletId)?.name)
+  const stockHeader = activeOutletName ? `Stok (${activeOutletName})` : 'Stok'
 
   const [view, setView] = useState<ViewMode>('table')
   const [search, setSearch] = useState('')
@@ -244,7 +251,7 @@ export default function ProdukPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/50" style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['Produk', 'Kategori', 'Harga Jual', ...(canSeeCost ? ['HPP'] : []), 'Stok', 'Status', 'Aksi'].map((h) => (
+                    {['Produk', 'Kategori', 'Harga Jual', ...(canSeeCost ? ['HPP'] : []), stockHeader, 'Status', 'Aksi'].map((h) => (
                       <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">{h}</th>
                     ))}
                   </tr>
